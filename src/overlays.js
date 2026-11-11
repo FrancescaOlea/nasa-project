@@ -1,0 +1,144 @@
+// Coloured data overlays (terrain slope, roughness, ...) drawn over a map.
+//
+// The data comes as 8-bit grayscale tiles made by tools/build_terrain.py:
+// value 0 = no data, 1..255 = position between `min` and `max` on a linear
+// or logarithmic scale (described in public/overlays/index.json). The browser
+// turns those values into colours, low = blue, high = red.
+import L from 'leaflet';
+
+const BASE = `${import.meta.env.BASE_URL}overlays`;
+export const OVERLAY_OPACITY = 0.6;
+
+// What each view is called and how it's explained in the menu.
+export const VIEWS = {
+  slope: {
+    name: 'Terrain slope',
+    about: 'How steep the ground is, in degrees, measured between points ~1.9 km apart.',
+  },
+  roughness: {
+    name: 'Terrain roughness',
+    about: 'How bumpy the ground is: height variation (m) left after removing the overall tilt, over ~9 km.',
+  },
+};
+
+let indexPromise = null;
+export function loadIndex() {
+  indexPromise ??= fetch(`${BASE}/index.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return indexPromise;
+}
+
+// Blue -> light grey -> red ("cool-warm"), easy to read over imagery.
+const STOPS = [
+  [0.0, [49, 54, 149]], [0.15, [69, 117, 180]], [0.3, [116, 173, 209]], [0.45, [224, 243, 248]],
+  [0.55, [254, 224, 144]], [0.7, [253, 174, 97]], [0.85, [244, 109, 67]], [1.0, [165, 0, 38]],
+];
+function colourAt(t) {
+  for (let i = 1; i < STOPS.length; i++) {
+    const [t1, c1] = STOPS[i];
+    const [t0, c0] = STOPS[i - 1];
+    if (t <= t1) {
+      const f = (t - t0) / (t1 - t0);
+      return c0.map((c, k) => Math.round(c + (c1[k] - c) * f));
+    }
+  }
+  return STOPS[STOPS.length - 1][1];
+}
+// Lookup table: tile value (0..255) -> RGBA
+const LUT = new Uint8ClampedArray(256 * 4);
+for (let v = 1; v < 256; v++) {
+  LUT.set([...colourAt((v - 1) / 254), 255], v * 4);
+}
+export const GRADIENT_CSS = `linear-gradient(to right, ${STOPS.map(([t, c]) => `rgb(${c}) ${t * 100}%`).join(', ')})`;
+
+// Decoded data tiles, shared between zoom levels (small cache).
+const images = new Map();
+function loadImage(url) {
+  if (!images.has(url)) {
+    if (images.size > 400) images.delete(images.keys().next().value);
+    images.set(url, new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    }));
+  }
+  return images.get(url);
+}
+
+const DataTiles = L.GridLayer.extend({
+  createTile(coords, done) {
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 256;
+    // Past the data's own detail, take the matching part of a coarser tile and
+    // enlarge it smoothly *before* colouring, so it doesn't turn into squares.
+    const dz = Math.max(0, coords.z - this.options.nativeZoom);
+    const n = 2 ** dz;
+    const size = 256 / n;
+    const src = `${this.options.url}/${coords.z - dz}/${Math.floor(coords.y / n)}/${Math.floor(coords.x / n)}.${this.options.format}`;
+    loadImage(src).then((img) => {
+      const ctx = tile.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, (coords.x % n) * size, (coords.y % n) * size, size, size, 0, 0, 256, 256);
+      const data = ctx.getImageData(0, 0, 256, 256);
+      const px = data.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const v = px[i] * 4;
+        px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2]; px[i + 3] = LUT[v + 3];
+      }
+      ctx.putImageData(data, 0, 0);
+      done(null, tile);
+    }).catch(() => done(null, tile)); // missing tile: leave it transparent
+    return tile;
+  },
+});
+
+export function createOverlay(body, view, meta, pane) {
+  return new DataTiles({
+    url: `${BASE}/${body}/${view}`,
+    format: meta.format ?? 'png',
+    pane,
+    opacity: OVERLAY_OPACITY,
+    nativeZoom: meta.max_zoom, // deepest level that has its own data tiles
+    maxZoom: 30,
+    noWrap: true,
+    bounds: [[-90, -180], [90, 180]],
+  });
+}
+
+// Tick values for the legend.
+function ticks(meta) {
+  if (meta.log) {
+    const out = [];
+    for (let e = Math.floor(Math.log10(meta.min)); 10 ** e <= meta.max; e++) {
+      for (const m of [1]) { // powers of ten only, so labels don't crowd
+        const v = Number((m * 10 ** e).toPrecision(2));
+        if (v >= meta.min && v <= meta.max) out.push(v);
+      }
+    }
+    // always label the top of the scale, unless a tick is already close to it
+    if (position(meta, meta.max) - position(meta, out[out.length - 1]) > 0.12) out.push(meta.max);
+    return out;
+  }
+  const step = meta.max <= 20 ? 5 : 10;
+  const out = [];
+  for (let v = meta.min; v <= meta.max; v += step) out.push(v);
+  return out;
+}
+
+function position(meta, v) {
+  if (meta.log) return (Math.log10(v) - Math.log10(meta.min)) / (Math.log10(meta.max) - Math.log10(meta.min));
+  return (v - meta.min) / (meta.max - meta.min);
+}
+
+export function legendHtml(view, meta) {
+  const marks = ticks(meta).map((v, i, all) => {
+    const label = `${v}${meta.unit === '°' ? '°' : ` ${meta.unit}`}${i === all.length - 1 && v === meta.max ? '+' : ''}`;
+    return `<span style="left:${(position(meta, v) * 100).toFixed(1)}%">${label}</span>`;
+  }).join('');
+  return `
+    <div class="legend-title">${VIEWS[view].name}</div>
+    <div class="legend-bar" style="background:${GRADIENT_CSS}"></div>
+    <div class="legend-ticks">${marks}</div>
+    <div class="legend-note">${meta.log ? 'Logarithmic' : 'Linear'} scale · ~${meta.pixel_km} km data</div>`;
+}

@@ -27,8 +27,29 @@
     </main>
 
     <section id="map-view" class="map-view" hidden>
-      <button id="back" class="back">&larr; Home</button>
+      <div class="top-buttons">
+        <button id="back" class="map-btn">&larr; Home</button>
+        <button id="menu-btn" class="map-btn" aria-expanded="false" aria-controls="menu" hidden>&#9776; Menu</button>
+      </div>
       <div id="map"></div>
+
+      <!-- Options menu (Moon and Mars) -->
+      <aside id="menu" class="panel drawer" hidden aria-label="Map options">
+        <div class="panel-head">
+          <span class="drawer-title">Options</span>
+          <button id="menu-close" class="icon-btn" aria-label="Close menu">&times;</button>
+        </div>
+
+        <section class="menu-section">
+          <span class="eyebrow">View</span>
+          <div id="view-options" class="view-options" role="radiogroup" aria-label="Map view"></div>
+        </section>
+
+        <section class="menu-section">
+          <span class="eyebrow">Selection radius</span>
+          <div id="radius-options" class="chips" role="radiogroup" aria-label="Selection radius"></div>
+        </section>
+      </aside>
 
       <!-- Area selection panel (Moon and Mars) -->
       <aside id="select-panel" class="panel" hidden>
@@ -39,16 +60,12 @@
             <button id="clear-selection" class="icon-btn" aria-label="Clear selection">&times;</button>
           </div>
           <p id="select-coords" class="coords"></p>
-          <p class="sub">Click elsewhere to move it</p>
+          <p id="select-radius" class="sub"></p>
           <div class="actions">
             <button id="find-analogs" class="primary">Find Earth analogs</button>
             <button id="find-similar">Find similar spots</button>
           </div>
           <p id="toast" class="toast" hidden>Coming soon</p>
-        </div>
-        <div class="radius">
-          <span class="eyebrow">Radius</span>
-          <div id="radius-options" class="chips" role="radiogroup" aria-label="Selection radius"></div>
         </div>
       </aside>
 

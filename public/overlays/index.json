@@ -1,0 +1,42 @@
+{
+  "mars": {
+    "slope": {
+      "unit": "\u00b0",
+      "log": true,
+      "min": 0.1,
+      "max": 30,
+      "pixel_km": 1.85,
+      "max_zoom": 4,
+      "format": "webp"
+    },
+    "roughness": {
+      "unit": "m",
+      "log": true,
+      "min": 1,
+      "max": 500,
+      "pixel_km": 1.85,
+      "max_zoom": 4,
+      "format": "webp"
+    }
+  },
+  "moon": {
+    "slope": {
+      "unit": "\u00b0",
+      "log": true,
+      "min": 0.1,
+      "max": 30,
+      "pixel_km": 1.9,
+      "max_zoom": 3,
+      "format": "webp"
+    },
+    "roughness": {
+      "unit": "m",
+      "log": true,
+      "min": 1,
+      "max": 500,
+      "pixel_km": 1.9,
+      "max_zoom": 3,
+      "format": "webp"
+    }
+  }
+}
