@@ -36,9 +36,9 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 
 .map-view, #map { position: fixed; inset: 0; }
 #map { background: #000; }
-.top-buttons { position: absolute; top: 12px; left: 12px; z-index: 1001; display: flex; gap: 8px; }
-.map-btn { padding: .5rem .9rem; background: rgba(0,0,0,.75); color: #fff; border: 1px solid #555;
-  border-radius: 6px; font: inherit; font-size: .9rem; cursor: pointer; }
+.top-buttons { position: absolute; top: 12px; left: 12px; z-index: 1001; display: flex; gap: 10px; }
+.map-btn { min-height: 46px; padding: .65rem 1.2rem; background: rgba(0,0,0,.78); color: #fff; border: 1px solid #666;
+  border-radius: 8px; font: inherit; font-size: 1.05rem; font-weight: 500; cursor: pointer; }
 .map-btn:hover, .map-btn[aria-expanded="true"] { background: #222; border-color: #888; }
 
 .zoom-readout { display: flex; flex-direction: column; gap: 2px; padding: .45rem .7rem;
@@ -83,7 +83,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .panel .chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; }
 
 /* ---- Options menu ---- */
-.drawer { top: 58px; left: 12px; right: auto; bottom: auto; width: min(320px, calc(100% - 24px));
+.drawer { top: 70px; left: 12px; right: auto; bottom: auto; width: min(320px, calc(100% - 24px));
   max-height: calc(100% - 80px); overflow-y: auto; }
 .drawer-title { font-weight: 600; font-size: 1rem; }
 .menu-section { margin-top: .75rem; padding-top: .7rem; border-top: 1px solid #333; }
@@ -117,3 +117,68 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   .banner { top: 56px; }
 }
 
+
+/* ---- Bigger zoom buttons ---- */
+.leaflet-touch .leaflet-bar a, .leaflet-bar a { width: 46px; height: 46px; line-height: 46px; font-size: 24px; }
+.leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out { font-size: 24px; }
+
+/* Bigger buttons in the selection panel */
+.actions button { min-height: 42px; font-size: .92rem !important; }
+
+/* ---- Landmarks ---- */
+/* Leaflet positions the marker element with a transform, so the offset goes on .lm */
+.landmark { white-space: nowrap; pointer-events: none; }
+.landmark .lm { display: flex; align-items: center; gap: 4px; transform: translate(-6px, -50%);
+  font-size: 12.5px; line-height: 1.1; color: #fff;
+  text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 6px #000, 0 1px 2px #000; }
+.landmark-feature .lm { transform: translate(-50%, -50%); font-style: italic; letter-spacing: .04em;
+  color: #e6ebf5; font-size: 12px; }
+.landmark-feature .lm-icon { display: none; }
+.landmark-human .lm { color: #ffd166; font-weight: 600; }
+.landmark-robotic .lm { color: #8be0a4; font-weight: 500; }
+.landmark-peak .lm { color: #f2f2f2; }
+.lm-icon { font-size: 10px; width: 12px; text-align: center; }
+
+/* ---- Switch (show landmarks) ---- */
+.switch-row { display: flex; align-items: center; gap: .6rem; cursor: pointer; font-size: .9rem; }
+.switch-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch { position: relative; width: 36px; height: 20px; border-radius: 10px; background: #444; transition: background .15s; flex: none; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform .15s; }
+.switch-row input:checked + .switch { background: #2b7bd6; }
+.switch-row input:checked + .switch::after { transform: translateX(16px); }
+.switch-row input:focus-visible + .switch { outline: 2px solid #7fd4ff; outline-offset: 2px; }
+
+/* ---- Weights dialog ---- */
+.weights { width: min(620px, calc(100% - 24px)); max-height: calc(100% - 32px); overflow-y: auto; padding: 0; border: 1px solid #444;
+  border-radius: 14px; background: #121217; color: #eee; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.weights::backdrop { background: rgba(0,0,0,.65); backdrop-filter: blur(3px); }
+.weights header { padding: 1.3rem 1.5rem .6rem; }
+.weights h2 { margin: 0; font-size: 1.35rem; font-weight: 600; }
+.w-subheading { margin: .3rem 0 0; color: #7fd4ff; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.w-help { margin: .7rem 0 0; color: #a0a0a8; font-size: .84rem; line-height: 1.45; }
+.w-list { display: grid; gap: .15rem; padding: .3rem 1.5rem .4rem; }
+.w-row { display: grid; grid-template-columns: minmax(9rem, 1.2fr) 2fr 3.2rem 2.8rem; align-items: center; gap: .9rem;
+  padding: .45rem 0; border-bottom: 1px solid #23232a; }
+.w-row:last-child { border-bottom: 0; }
+.w-name { font-size: .93rem; }
+.w-row.off .w-name, .w-row.off .w-value, .w-row.off .w-share { color: #666; }
+.w-value { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.w-share { text-align: right; color: #9a9aa2; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.w-row input[type=range] { width: 100%; accent-color: #7fd4ff; height: 28px; cursor: pointer; }
+.w-warning { margin: 0 1.5rem; color: #fc6; font-size: .88rem; }
+.weights footer { position: sticky; bottom: 0; background: #121217; display: flex; justify-content: space-between;
+  align-items: center; gap: .6rem; flex-wrap: wrap; padding: .9rem 1.5rem 1.2rem; border-top: 1px solid #2a2a31; }
+.w-presets, .w-actions { display: flex; gap: .5rem; }
+.weights button { font: inherit; font-size: .92rem; min-height: 42px; padding: .55rem 1rem; border-radius: 8px;
+  border: 1px solid #555; background: #1c1c22; color: #eee; cursor: pointer; }
+.weights button:hover { background: #2a2a32; }
+.weights button.primary { background: #2b7bd6; border-color: #2b7bd6; color: #fff; font-weight: 600; }
+.weights button.primary:hover { background: #3a8be6; }
+.weights button:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 600px) {
+  .w-row { grid-template-columns: 1fr 3rem 2.6rem; gap: .2rem .6rem; }
+  .w-row input[type=range] { grid-column: 1 / -1; grid-row: 2; }
+  .weights header, .w-list { padding-left: 1rem; padding-right: 1rem; }
+  .weights footer { padding: .8rem 1rem 1rem; }
+}

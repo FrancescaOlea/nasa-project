@@ -6,6 +6,8 @@ import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe } from './globes.js';
 import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml } from './overlays.js';
+import { askWeights, parseWeights, formatWeights } from './weights.js';
+import { addLandmarks } from './landmarks.js';
 import moonTexture from './assets/moon-texture.jpg';
 import marsTexture from './assets/mars-texture.jpg';
 
@@ -166,6 +168,8 @@ function setUpSelection(key, body, params) {
   const r = parseFloat(params.get('r'));
   let radiusKm = RADIUS_OPTIONS_KM.includes(r) ? r : DEFAULT_RADIUS_KM;
   let view = VIEWS[params.get('view')] ? params.get('view') : null;
+  let weights = parseWeights(params.get('w')); // last weights chosen for this site
+  let available = {};                          // data layers for this body (from index.json)
 
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
@@ -174,6 +178,7 @@ function setUpSelection(key, body, params) {
     if (current) { q.set('lat', current.lat.toFixed(4)); q.set('lon', current.lon.toFixed(4)); }
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
+    if (Object.keys(weights).length) q.set('w', formatWeights(weights));
     return q.toString();
   }
   const saveToUrl = () => {
@@ -197,9 +202,19 @@ function setUpSelection(key, body, params) {
   const legend = L.control({ position: 'bottomleft' });
   legend.onAdd = () => L.DomUtil.create('div', 'legend');
 
+  // ---- Landmarks (on/off remembered in this browser)
+  const showLandmarks = addLandmarks(map, key);
+  const toggle = $('landmarks-toggle');
+  try { toggle.checked = localStorage.getItem('planet-maps:landmarks') !== 'off'; } catch { /* storage blocked */ }
+  showLandmarks(toggle.checked);
+  toggle.onchange = () => {
+    showLandmarks(toggle.checked);
+    try { localStorage.setItem('planet-maps:landmarks', toggle.checked ? 'on' : 'off'); } catch { /* ignore */ }
+  };
+
   loadIndex().then((index) => {
     if (!map) return;
-    const available = index[key] ?? {};
+    available = index[key] ?? {};
     const options = [[null, { name: 'None', short: 'None', about: 'Just the imagery, no data layer.' }],
       ...Object.entries(VIEWS).filter(([v]) => available[v])
         .map(([v, info]) => [v, { ...info, about: available[v].about }])];
@@ -215,15 +230,15 @@ function setUpSelection(key, body, params) {
       label.querySelector('span').textContent = info.short;
       const input = label.querySelector('input');
       input.checked = v === view;
-      input.onchange = () => { view = v; showView(available); describe(); saveToUrl(); };
+      input.onchange = () => { view = v; showView(); describe(); saveToUrl(); };
       return label;
     }));
     describe();
     if (view && !available[view]) view = null;
-    showView(available);
+    showView();
   });
 
-  function showView(available) {
+  function showView() {
     if (overlay) { overlay.remove(); overlay = null; }
     legend.remove();
     if (!view) return;
@@ -289,8 +304,27 @@ function setUpSelection(key, body, params) {
   map.on('click', (e) => select(e.latlng.lat, e.latlng.lng));
   $('clear-selection').onclick = clear;
 
-  $('find-analogs').onclick = () => { location.hash = `#/earth?from=${key}&${query()}`; };
-  $('find-similar').onclick = () => { $('toast').hidden = false; }; // not built yet
+  // Both searches first ask how much each characteristic should count.
+  async function chooseWeights(action) {
+    const layers = Object.keys(VIEWS).filter((v) => available[v]);
+    const chosen = await askWeights({
+      heading: action === 'analogs' ? 'Find Earth analogs' : `Find similar spots on ${body.name}`,
+      subheading: `${body.name} · ${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius`,
+      action: action === 'analogs' ? 'Find Earth analogs →' : 'Find similar spots →',
+      layers,
+      initial: weights,
+    });
+    if (!chosen) return false;
+    weights = chosen;
+    saveToUrl();
+    return true;
+  }
+  $('find-analogs').onclick = async () => {
+    if (await chooseWeights('analogs')) location.hash = `#/earth?from=${key}&${query()}`;
+  };
+  $('find-similar').onclick = async () => {
+    if (await chooseWeights('similar')) $('toast').hidden = false; // search not built yet
+  };
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
@@ -306,6 +340,11 @@ function showAnalogBanner(params) {
   const r = parseFloat(params.get('r')) || DEFAULT_RADIUS_KM;
   $('analog-source').textContent = `${BODIES[from].name} · ${formatLatLon(lat, lon)}`;
   $('analog-radius').textContent = `Area: ${r} km radius`;
+  const w = Object.entries(parseWeights(params.get('w'))).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const total = w.reduce((a, [, v]) => a + v, 0);
+  $('analog-weights').textContent = w.length
+    ? `Weights: ${w.map(([k, v]) => `${VIEWS[k].name} ${Math.round((v / total) * 100)}%`).join(' · ')}`
+    : '';
   $('back-to-site').onclick = () => {
     const back = new URLSearchParams(params);
     back.delete('from');

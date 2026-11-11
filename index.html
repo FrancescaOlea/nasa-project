@@ -48,6 +48,14 @@
         </section>
 
         <section class="menu-section">
+          <label class="switch-row">
+            <input id="landmarks-toggle" type="checkbox" checked>
+            <span class="switch" aria-hidden="true"></span>
+            <span>Show landmarks</span>
+          </label>
+        </section>
+
+        <section class="menu-section">
           <span class="eyebrow">Selection radius</span>
           <div id="radius-options" class="chips" role="radiogroup" aria-label="Selection radius"></div>
         </section>
@@ -76,10 +84,34 @@
         <span class="eyebrow">Earth analogs for</span>
         <p id="analog-source" class="coords"></p>
         <p id="analog-radius" class="sub"></p>
+        <p id="analog-weights" class="sub"></p>
         <p class="sub">Analog search coming soon.</p>
         <button id="back-to-site">&larr; Back to this site</button>
       </aside>
     </section>
+
+    <!-- Weights for the analog / similar-spot search -->
+    <dialog id="weights" class="weights" aria-labelledby="w-heading">
+      <header>
+        <h2 id="w-heading" class="w-heading"></h2>
+        <p class="w-subheading"></p>
+        <p class="w-help">How much should each characteristic count when comparing places?
+          Weights are relative: a characteristic at ×2 counts twice as much as one at ×1, and
+          “off” ignores it. The percentage is its share of the comparison.</p>
+      </header>
+      <div class="w-list"></div>
+      <p class="w-warning" role="alert" hidden>Turn on at least one characteristic to continue.</p>
+      <footer>
+        <div class="w-presets">
+          <button type="button" class="w-all-1">All ×1</button>
+          <button type="button" class="w-all-0">All off</button>
+        </div>
+        <div class="w-actions">
+          <button type="button" class="w-cancel">Cancel</button>
+          <button type="button" class="w-go primary"></button>
+        </div>
+      </footer>
+    </dialog>
 
     <script type="module" src="/src/main.js"></script>
   </body>
