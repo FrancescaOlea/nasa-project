@@ -53,6 +53,36 @@
       "pixel_km": 237.1,
       "max_zoom": 2,
       "format": "webp"
+    },
+    "temperature": {
+      "unit": "°C",
+      "log": false,
+      "min": -120,
+      "max": -40,
+      "about": "Average surface temperature over a Mars year. Calculated with a thermal model from TES albedo and thermal inertia and MOLA elevation; matches lander measurements within ~10 °C.",
+      "pixel_km": 59.3,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temp_range": {
+      "unit": "°C",
+      "log": false,
+      "min": 0,
+      "max": 130,
+      "about": "Typical day-night swing (daily max - min, averaged over the year). Calculated with a thermal model from TES and MOLA data.",
+      "pixel_km": 59.3,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temp_yearly": {
+      "unit": "°C",
+      "log": false,
+      "min": 0,
+      "max": 170,
+      "about": "Hottest minus coldest moment of the whole Mars year: daily swing plus seasons. Calculated with a thermal model from TES and MOLA data.",
+      "pixel_km": 59.3,
+      "max_zoom": 2,
+      "format": "webp"
     }
   },
   "moon": {

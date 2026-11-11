@@ -54,12 +54,33 @@ both share one colour range, so the same colour means the same value on each.
 | Dusty or rocky terrain | LRO Diviner rock abundance (% of ground covered by >1 m rocks), ~3 km, 60S-60N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km, 70S-70N | log |
 | Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 57.5S-57.5N | linear; own range per body |
 | Underground ice | *no global map product found* | Mars Odyssey HEND epithermal neutrons: % fewer neutrons than the driest ground (hydrogen, mostly ice near the poles), ~240 km | linear |
-| Temperature | Diviner: average over a full lunar day, ~15 km | *no global NASA product found* | linear |
-| Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | *no global NASA product found* | linear |
+| Temperature | Diviner: average over a full lunar day, ~15 km | **Calculated** (see below): average over a Mars year, ~60 km | linear |
+| Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | **Calculated**: typical day-night swing | linear |
+| Maximum temperature variation | *not added* | **Calculated**: hottest minus coldest moment of the year | linear |
 
-Not added: **maximum temperature variation**. On the Moon (1.5 deg axial tilt) it is essentially the
-same as the daily variation, and Diviner's archived global product holds per-time-of-day
-averages, not all-time extremes. For Mars no global surface-temperature product was found.
+On the Moon (1.5 deg axial tilt) the maximum variation is essentially the daily variation, and
+Diviner's archived product holds per-time-of-day averages, not all-time extremes, so it isn't added.
+
+### Mars temperatures: a thermal model
+
+No global measured surface-temperature map of Mars exists in the PDS (orbiters only pass each
+place at ~2-3 am and pm). `tools/mars_thermal.py` calculates them instead, in the spirit of
+NASA/USGS's KRC model, for every 1 x 1 degree cell from NASA data:
+
+- **Inputs:** MGS TES albedo (`mgs-m-tes-special-v1`), TES night thermal inertia, MOLA elevation.
+- **Sunlight:** Mars's real orbit (eccentricity 0.0934, tilt 25.19 deg), hour by hour over the year;
+  dimmed by dust (optical depth 0.3) along the slanted path, half of it arriving as skylight.
+- **Atmosphere's infrared glow:** 5.5% of local noon sunlight.
+- **Ground:** heat diffusion through 30 layers (heat capacity 1.2 MJ/m3/K, conductivity from thermal inertia).
+- **CO2 frost:** the surface can't cool below the frost point (~148 K, from local pressure);
+  extra cooling builds frost (albedo 0.6) that must evaporate before the ground warms.
+- Two Mars years are simulated (implicit time steps, Newton iterations on frost-free ground);
+  the second is kept. All of Mars runs in a few minutes on 4 cores (numba).
+
+**Check against landers** (typical night / day surface temperature, model vs. published):
+Curiosity 189 / 269 K vs ~180-200 / 270-295 K; InSight 185 / 274 K vs ~170-190 / 250-270 K;
+Perseverance 191 / 269 K vs ~180-190 / 270-290 K; Viking 1 188 / 264 K vs ~180-190 / 260-270 K.
+Within ~10 K. It is still a model: no dust storms, seasonal pressure changes or water-ice caps.
 
 **Why linear or logarithmic.** Elevation, iron, temperatures and ice are roughly bell-shaped over a
 limited range, and equal steps are what people compare: linear. Slope, rock cover and thermal
@@ -88,5 +109,5 @@ Mars has slopes under 0.6 deg, 99% under 13 deg): logarithmic, otherwise most of
 The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value -> real units in
 `index.json`); the browser colours them. To rebuild (downloads ~3.6 GB into `data/raw/`):
 
-    pip install numpy scipy pandas pillow
+    pip install numpy scipy pandas pillow numba
     python3 tools/build_layers.py              # or e.g.: python3 tools/build_layers.py mars iron

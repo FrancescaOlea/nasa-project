@@ -6,8 +6,9 @@ NASA / PDS data, as 8-bit data tiles the web app colours in the browser.
   elevation    LRO LOLA LDEM 64 ppd -> 16 ppd         MGS MOLA MEGDR 32 ppd
   slope        (from the same elevation grids, both ~1.9 km per pixel)
   iron         Lunar Prospector GRS FeO, 2 deg        Odyssey GRS Fe (as FeO), 5 deg
-  temperature  LRO Diviner global cumulative Tbol     (no global NASA product found)
-  temp_range   LRO Diviner (daily max - min)          (no global NASA product found)
+  temperature  LRO Diviner global cumulative Tbol     thermal model from TES albedo + TI + MOLA
+  temp_range   LRO Diviner (daily max - min)          thermal model (tools/mars_thermal.py)
+  temp_yearly  (Moon: same as daily, 1.5 deg tilt)    thermal model: hottest - coldest of the year
   ice          (no global map product found)          Odyssey HEND epithermal neutrons, 4 deg
   surface      LRO Diviner rock abundance, 32 ppd     MGS TES night thermal inertia, 20 ppd
 
@@ -308,6 +309,16 @@ def catalogue():
         d, ppd = dem(body)
         return slope_deg(d, ppd, RADIUS_KM[body]), 1 / ppd
 
+    mars_temps = {}
+
+    def mars_temp(which):
+        if not mars_temps:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import mars_thermal
+            mars_temps['mean'], mars_temps['daily'], mars_temps['yearly'] = \
+                mars_thermal.mars_temperature_maps(RAW, res=1.0)
+        return mars_temps[which], 1.0
+
     temps = {}
 
     def moon_temp(which):
@@ -344,6 +355,18 @@ def catalogue():
                                   'Average surface temperature over a whole lunar day and night (Diviner, LRO).'),
         ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=0, max=300), 2,
                                  'Difference between the hottest and coldest time of a lunar day (Diviner, LRO).'),
+        # Mars temperatures are calculated (no global measured product exists), with
+        # their own ranges: Mars is far milder than the Moon.
+        ('mars', 'temperature'): (lambda: mars_temp('mean'), dict(unit='°C', log=False, min=-120, max=-40), 2,
+                                  'Average surface temperature over a Mars year. Calculated with a thermal model '
+                                  'from TES albedo and thermal inertia and MOLA elevation; matches lander '
+                                  'measurements within ~10 °C.'),
+        ('mars', 'temp_range'): (lambda: mars_temp('daily'), dict(unit='°C', log=False, min=0, max=130), 2,
+                                 'Typical day-night swing (daily max - min, averaged over the year). Calculated '
+                                 'with a thermal model from TES and MOLA data.'),
+        ('mars', 'temp_yearly'): (lambda: mars_temp('yearly'), dict(unit='°C', log=False, min=0, max=170), 2,
+                                  'Hottest minus coldest moment of the whole Mars year: daily swing plus seasons. '
+                                  'Calculated with a thermal model from TES and MOLA data.'),
     }
 
 

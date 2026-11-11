@@ -20,6 +20,7 @@ export const VIEWS = {
   ice: { name: 'Underground ice', short: 'Ice' },
   temperature: { name: 'Temperature', short: 'Temperature' },
   temp_range: { name: 'Daily temperature variation', short: 'Daily temp. swing' },
+  temp_yearly: { name: 'Maximum temperature variation', short: 'Yearly temp. range' },
 };
 
 let indexPromise = null;
