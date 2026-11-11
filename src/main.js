@@ -200,20 +200,25 @@ function setUpSelection(key, body, params) {
   loadIndex().then((index) => {
     if (!map) return;
     const available = index[key] ?? {};
-    const options = [[null, { name: 'None', about: 'Just the imagery.' }],
+    const options = [[null, { name: 'None', short: 'None', about: 'Just the imagery, no data layer.' }],
       ...Object.entries(VIEWS).filter(([v]) => available[v])
         .map(([v, info]) => [v, { ...info, about: available[v].about }])];
+    const describe = () => {
+      const info = options.find(([v]) => v === view)?.[1] ?? options[0][1];
+      $('view-about').textContent = info.about;
+    };
     $('view-options').replaceChildren(...options.map(([v, info]) => {
       const label = document.createElement('label');
-      label.className = 'view-option';
-      label.innerHTML = `<input type="radio" name="view"><strong></strong><small></small>`;
-      label.querySelector('strong').textContent = info.name;
-      label.querySelector('small').textContent = info.about;
+      label.className = 'view-chip';
+      label.title = `${info.name}: ${info.about}`;
+      label.innerHTML = '<input type="radio" name="view"><span></span>';
+      label.querySelector('span').textContent = info.short;
       const input = label.querySelector('input');
       input.checked = v === view;
-      input.onchange = () => { view = v; showView(available); saveToUrl(); };
+      input.onchange = () => { view = v; showView(available); describe(); saveToUrl(); };
       return label;
     }));
+    describe();
     if (view && !available[view]) view = null;
     showView(available);
   });

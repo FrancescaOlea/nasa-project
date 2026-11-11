@@ -11,14 +11,15 @@ export const OVERLAY_OPACITY = 0.6;
 
 // The views, in menu order. Each body's own description (data source,
 // resolution) comes from public/overlays/index.json.
+// `short` is the label on the menu button; `name` is used in the legend and tooltip.
 export const VIEWS = {
-  elevation: { name: 'Elevation' },
-  slope: { name: 'Terrain slope' },
-  surface: { name: 'Dusty or rocky terrain' },
-  iron: { name: 'Minerals: iron content' },
-  ice: { name: 'Underground ice' },
-  temperature: { name: 'Temperature' },
-  temp_range: { name: 'Daily temperature variation' },
+  elevation: { name: 'Elevation', short: 'Elevation' },
+  slope: { name: 'Terrain slope', short: 'Slope' },
+  surface: { name: 'Dusty or rocky terrain', short: 'Dust / rock' },
+  iron: { name: 'Minerals: iron content', short: 'Iron' },
+  ice: { name: 'Underground ice', short: 'Ice' },
+  temperature: { name: 'Temperature', short: 'Temperature' },
+  temp_range: { name: 'Daily temperature variation', short: 'Daily temp. swing' },
 };
 
 let indexPromise = null;
