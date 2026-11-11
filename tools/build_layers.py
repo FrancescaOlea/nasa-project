@@ -100,12 +100,44 @@ def grid_from_cells(lat_lo, lat_hi, lon_lo, lon_hi, values, res_deg):
     return g
 
 
+def smooth_fill(grid, sigma_px):
+    """Gaussian smoothing that ignores gaps (a weighted average of the nearby data), so
+    coarse cells become a smooth map and small holes get filled from their neighbours."""
+    valid = np.isfinite(grid)
+    modes = ('nearest', 'wrap')  # don't wrap over the poles; do wrap around in longitude
+    num = ndimage.gaussian_filter(np.where(valid, grid, 0).astype(np.float64), sigma_px, mode=modes)
+    den = ndimage.gaussian_filter(valid.astype(np.float64), sigma_px, mode=modes)
+    return np.where(den > 0.05, num / np.maximum(den, 1e-9), np.nan).astype(np.float32)
+
+
+def fill_holes(grid, sigma_px=1.5):
+    """Fill only the missing cells, from their neighbours; keep measured cells as they are."""
+    return np.where(np.isfinite(grid), grid, smooth_fill(grid, sigma_px))
+
+
+def destripe(grid, across=15, along=151, log=True, smooth=None):
+    """Remove orbit-track stripes (thin north-south lines). Take what differs from the
+    east-west neighbourhood, keep only the part that stays consistent over a long
+    north-south stretch (that's the stripe, not a crater or dune field), subtract it."""
+    valid = np.isfinite(grid)
+    v = np.log10(np.maximum(fill_holes(grid, 3), 1e-6)) if log else fill_holes(grid, 3)
+    v = np.where(np.isfinite(v), v, np.nanmedian(v))
+    base = ndimage.median_filter(v, size=(1, across), mode='wrap')
+    stripes = ndimage.uniform_filter1d(v - base, along, axis=0, mode='nearest')
+    out = v - stripes
+    if smooth:  # (north-south, east-west) gaussian sigma in pixels, stronger across the stripes
+        out = ndimage.gaussian_filter(out, smooth, mode=('nearest', 'wrap'))
+    out = 10 ** out if log else out
+    return np.where(valid, out, np.nan).astype(np.float32)
+
+
 # ---- Layers -----------------------------------------------------------------
 
 def moon_iron():
     path = fetch(f'{PDS}/lunar/lp-l-grs-5-elem-abundance-v1/lp_9001/data/lpgrs_high1_elem_abundance_2deg.tab')
     t = np.loadtxt(path, usecols=(1, 2, 3, 4, 12))  # min/max lat, min/max lon, W_FEO (g/g)
-    return grid_from_cells(t[:, 0], t[:, 1], t[:, 2], t[:, 3], t[:, 4] * 100, 0.5), 2.0
+    cells = grid_from_cells(t[:, 0], t[:, 1], t[:, 2], t[:, 3], t[:, 4] * 100, 0.5)
+    return smooth_fill(cells, 2), 2.0  # smooth the 2-degree cells at ~1 degree
 
 
 def mars_grs(name):
@@ -114,7 +146,8 @@ def mars_grs(name):
     ok = t[:, 2] < 9000
     lat, lon, v = t[ok, 0], t[ok, 1], t[ok, 2]
     lon = np.where(lon > 180, lon - 360, lon)
-    return grid_from_cells(lat - 2.5, lat + 2.5, lon - 2.5, lon + 2.5, v, 5.0)
+    cells = grid_from_cells(lat - 2.5, lat + 2.5, lon - 2.5, lon + 2.5, v, 0.5)
+    return smooth_fill(cells, 5)  # smooth the 5-degree cells at ~2.5 degrees
 
 
 def mars_iron():
@@ -129,7 +162,8 @@ def mars_ice():
     lon, lat, flux = t[:, 0], t[:, 1], t[:, 2]
     dry = np.percentile(flux, 95)
     suppression = np.clip((1 - flux / dry) * 100, 0, None)
-    return grid_from_cells(lat - 2, lat + 2, lon - 2, lon + 2, suppression, 4.0), 4.0
+    cells = grid_from_cells(lat - 2, lat + 2, lon - 2, lon + 2, suppression, 0.5)
+    return smooth_fill(cells, 4), 4.0  # smooth the 4-degree cells at ~2 degrees
 
 
 def mars_surface():
@@ -138,7 +172,7 @@ def mars_surface():
     fetch(base + '.lbl')
     ti = np.fromfile(fetch(base + '.img'), dtype='>i2').reshape(3600, 7200).astype(np.float32)
     ti[ti <= 0] = np.nan
-    return ti, 1 / 20
+    return destripe(ti, across=15, along=121, smooth=(0.8, 2)), 1 / 20
 
 
 def moon_surface():
@@ -149,8 +183,11 @@ def moon_surface():
     ra[ra == -32768] = np.nan
     ra = np.roll(ra * 0.001 * 100, 11520 // 2, axis=1)  # -> %, 0..360E -> -180..180
     g = np.full((5760, 11520), np.nan, dtype=np.float32)
-    g[960:960 + 3840] = ra  # rows for 60N..60S
-    return g, 1 / 32
+    ra[ra <= 0] = np.nan  # log scale: treat 0 as no measurement
+    # This product is speckly and striped at full detail; rocky craters are 5-50 km
+    # across, so destripe and smooth at ~2-4 km (more across the stripes than along).
+    g[960:960 + 3840] = destripe(ra, across=21, along=121, smooth=(2, 4))  # rows for 60N..60S
+    return g, 0.1  # effective detail after smoothing: ~3 km
 
 
 DIVINER_BANDS = ['90s80s', '80s70s', '70s60s', '60s50s', '50s40s', '40s30s', '30s20s', '20s10s', '10s00s',
@@ -196,7 +233,8 @@ def moon_temperatures():
         mean[rows] = np.where(ok, np.nanmean(filled, axis=2) - 273.15, np.nan)
         rng[rows] = np.where(ok, np.nanmax(filled, axis=2) - np.nanmin(filled, axis=2), np.nan)
         print(f'  diviner {band}: {ok.mean():.0%} of cells usable')
-    return mean, rng
+    # a few spots never got enough readings: fill them from their neighbours
+    return fill_holes(mean), fill_holes(rng)
 
 
 # ---- Encoding and tiles -------------------------------------------------------
@@ -213,32 +251,30 @@ def encode(values, lo, hi, log):
     return out
 
 
-def write_tiles(encoded, folder, max_zoom):
-    """Write a tile pyramid. Gaps are filled from the nearest data before resizing (so
-    edges don't smear towards 'no data') and cut out again afterwards. Tiles with no
-    data at all are skipped; the app shows a missing tile as transparent."""
+def write_tiles(encoded, folder, max_zoom, lat_range=(-90, 90)):
+    """Write a tile pyramid. Gaps are filled from the nearest data: a "no data" value
+    would not survive lossy compression (0 turns into 1-2 = "very low"). Instead, layers
+    that only cover part of the globe are cut at a clean latitude in the browser
+    (`lat_min`/`lat_max` in index.json), and tiles wholly outside are skipped."""
     valid = encoded > 0
     if not valid.all():
         idx = ndimage.distance_transform_edt(~valid, return_distances=False, return_indices=True)
-        filled = encoded[tuple(idx)]
-    else:
-        filled = encoded
-    fimg = Image.fromarray(filled, 'L')
-    mimg = Image.fromarray(valid.astype(np.uint8) * 255, 'L')
+        encoded = encoded[tuple(idx)]
+    img = Image.fromarray(encoded, 'L')
     written = 0
     for z in range(max_zoom + 1):
         w, h = 512 * 2 ** z, 256 * 2 ** z
-        level = np.asarray(fimg.resize((w, h), Image.BOX if w <= fimg.width else Image.BILINEAR))
-        mask = np.asarray(mimg.resize((w, h), Image.BOX if w <= mimg.width else Image.NEAREST)) >= 128
-        level = np.where(mask, np.maximum(level, 1), 0).astype(np.uint8)
-        for y in range(h // 256):
+        level = img.resize((w, h), Image.BOX if w <= img.width else Image.BILINEAR)
+        rows = h // 256
+        for y in range(rows):
+            top, bottom = 90 - y * 180 / rows, 90 - (y + 1) * 180 / rows
+            if bottom >= lat_range[1] or top <= lat_range[0]:
+                continue  # tile entirely outside the layer's coverage
             for x in range(w // 256):
-                tile = level[y * 256:(y + 1) * 256, x * 256:(x + 1) * 256]
-                if not tile.any():
-                    continue
                 d = os.path.join(folder, str(z), str(y))
                 os.makedirs(d, exist_ok=True)
-                Image.fromarray(tile, 'L').save(os.path.join(d, f'{x}.{TILE_FORMAT}'), quality=90, method=6)
+                level.crop((x * 256, y * 256, x * 256 + 256, y * 256 + 256)).save(
+                    os.path.join(d, f'{x}.{TILE_FORMAT}'), quality=90, method=6)
                 written += 1
     return written
 
@@ -250,10 +286,9 @@ def write_tiles(encoded, folder, max_zoom):
 #  * slope, rock cover, thermal inertia: logarithmic - each spans 2-3 orders of
 #    magnitude with most values bunched at the low end.
 # Where the same quantity exists on both bodies, the range is shared so the same
-# colour means the same value on the Moon and on Mars.
+# colour means the same value on the Moon and on Mars - except iron (see below).
 
 SLOPE = dict(unit='°', log=True, min=0.1, max=30)
-IRON = dict(unit='%', log=False, min=0, max=25)
 
 
 def catalogue():
@@ -289,14 +324,17 @@ def catalogue():
                             'How steep the ground is, in degrees, between points ~1.9 km apart (MOLA).'),
         ('moon', 'slope'): (lambda: slope('moon'), SLOPE, 3,
                             'How steep the ground is, in degrees, between points ~1.9 km apart (LOLA).'),
-        ('mars', 'surface'): (mars_surface, dict(unit='TIU', log=True, min=30, max=1000), 3,
-                              'Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS).'),
-        ('moon', 'surface'): (moon_surface, dict(unit='%', log=True, min=0.1, max=10), 4,
+        ('mars', 'surface'): (mars_surface, dict(unit='TIU', log=True, min=30, max=1000, lat_min=-70, lat_max=70), 3,
+                              'Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS). '
+                              '70°S–70°N; nearer the poles seasonal frost spoils the readings.'),
+        ('moon', 'surface'): (moon_surface, dict(unit='%', log=True, min=0.1, max=3, lat_min=-60, lat_max=60), 3,
                               'Share of the ground covered by rocks bigger than ~1 m (Diviner, LRO). 60°S–60°N.'),
-        ('mars', 'iron'): (mars_iron, IRON, 2,
+        # Iron: each body gets its own range. Mars only varies between ~15 and 23 %,
+        # which on a shared 0-25 % scale would be one flat orange.
+        ('mars', 'iron'): (mars_iron, dict(unit='%', log=False, min=14, max=24, lat_min=-57.5, lat_max=57.5), 2,
                            'Iron in the top few tens of cm, as FeO weight % (gamma-ray spectrometer, Mars Odyssey). '
                            '~300 km pixels; none beyond ~60° latitude.'),
-        ('moon', 'iron'): (moon_iron, IRON, 2,
+        ('moon', 'iron'): (moon_iron, dict(unit='%', log=False, min=0, max=24), 2,
                            'Iron in the soil, as FeO weight % (gamma-ray spectrometer, Lunar Prospector). '
                            '~60 km pixels. Dark volcanic plains are iron-rich, bright highlands iron-poor.'),
         ('mars', 'ice'): (mars_ice, dict(unit='%', log=False, min=0, max=80), 2,
@@ -328,7 +366,8 @@ def main():
         if os.path.isdir(folder):
             for f in glob.glob(os.path.join(folder, '**', '*.*'), recursive=True):
                 os.remove(f)
-        n = write_tiles(encode(grid, scale['min'], scale['max'], scale['log']), folder, max_zoom)
+        lat_range = (scale.get('lat_min', -90), scale.get('lat_max', 90))
+        n = write_tiles(encode(grid, scale['min'], scale['max'], scale['log']), folder, max_zoom, lat_range)
         print(f'  {n} tiles')
         index.setdefault(body, {})[layer] = {
             **scale, 'about': about, 'pixel_km': round(pixel_km(body, 1 / deg), 1),

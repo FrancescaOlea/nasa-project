@@ -51,8 +51,8 @@ both share one colour range, so the same colour means the same value on each.
 |---|---|---|---|
 | Elevation | LRO LOLA, ~1.9 km | MGS MOLA, ~1.9 km | linear |
 | Terrain slope | LOLA, ~1.9 km | MOLA, ~1.9 km | log, 0.1-30 deg |
-| Dusty or rocky terrain | LRO Diviner rock abundance (% of ground covered by >1 m rocks), ~0.9 km, 60S-60N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km | log |
-| Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 60S-60N | linear, 0-25% |
+| Dusty or rocky terrain | LRO Diviner rock abundance (% of ground covered by >1 m rocks), ~3 km, 60S-60N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km, 70S-70N | log |
+| Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 57.5S-57.5N | linear; own range per body |
 | Underground ice | *no global map product found* | Mars Odyssey HEND epithermal neutrons: % fewer neutrons than the driest ground (hydrogen, mostly ice near the poles), ~240 km | linear |
 | Temperature | Diviner: average over a full lunar day, ~15 km | *no global NASA product found* | linear |
 | Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | *no global NASA product found* | linear |
@@ -74,6 +74,16 @@ Mars has slopes under 0.6 deg, 99% under 13 deg): logarithmic, otherwise most of
   2 h are filled by interpolating along the daily cycle, spots with longer gaps are left out.
 - HEND ice: hydrogen slows neutrons, so fewer epithermal neutrons escape; shown as % below
   the driest 5% of the planet.
+- Coarse data (iron, ice) is smoothed at about half its cell size, ignoring gaps, so it reads
+  as a map instead of squares; small holes in the Diviner temperatures are filled from
+  neighbours.
+- Orbit-track stripes (TES thermal inertia, Diviner rock abundance) are removed by subtracting
+  the part of the east-west detail that stays consistent over a long north-south stretch, then
+  smoothing a little more across the stripes than along them.
+- Layers that don't cover the whole globe are cut at a clean latitude line in the browser.
+  (A "no data" value in the tiles wouldn't survive lossy compression.)
+- Iron uses a separate colour range per body: Mars only varies between ~15 and 23% FeO,
+  which on the Moon's 0-24% range would be one flat colour.
 
 The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value -> real units in
 `index.json`); the browser colours them. To rebuild (downloads ~3.6 GB into `data/raw/`):

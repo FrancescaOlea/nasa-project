@@ -82,9 +82,16 @@ const DataTiles = L.GridLayer.extend({
       ctx.drawImage(img, (coords.x % n) * size, (coords.y % n) * size, size, size, 0, 0, 256, 256);
       const data = ctx.getImageData(0, 0, 256, 256);
       const px = data.data;
-      for (let i = 0; i < px.length; i += 4) {
-        const v = px[i] * 4;
-        px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2]; px[i + 3] = LUT[v + 3];
+      // Layers covering only part of the globe are cut at a clean latitude line.
+      const { latMin, latMax } = this.options;
+      const degPerRow = 180 / 2 ** coords.z / 256;
+      for (let r = 0; r < 256; r++) {
+        const lat = 90 - (coords.y * 256 + r + 0.5) * degPerRow;
+        const inside = lat >= latMin && lat <= latMax;
+        for (let i = r * 1024, end = i + 1024; i < end; i += 4) {
+          const v = inside ? px[i] * 4 : 0; // LUT entry 0 is fully transparent
+          px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2]; px[i + 3] = LUT[v + 3];
+        }
       }
       ctx.putImageData(data, 0, 0);
       done(null, tile);
@@ -97,6 +104,8 @@ export function createOverlay(body, view, meta, pane) {
   return new DataTiles({
     url: `${BASE}/${body}/${view}`,
     format: meta.format ?? 'png',
+    latMin: meta.lat_min ?? -90,
+    latMax: meta.lat_max ?? 90,
     pane,
     opacity: OVERLAY_OPACITY,
     nativeZoom: meta.max_zoom, // deepest level that has its own data tiles
