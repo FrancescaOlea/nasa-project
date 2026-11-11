@@ -184,14 +184,14 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 }
 
 /* ---- Map settings panel (bottom left) ---- */
-.map-settings { display: flex; flex-direction: column; gap: .55rem; padding: .6rem .7rem; width: 260px;
-  background: rgba(10,10,14,.85); color: #eee; border: 1px solid #555; border-radius: 8px; font-size: .85rem; }
-.map-settings .switch-row { font-size: .88rem; }
-.radius-row .eyebrow { display: block; margin-bottom: .3rem; }
-.map-settings .chips { display: flex; flex-wrap: nowrap; gap: .25rem; margin: 0; }
-.map-settings .chips button { flex: 1; min-width: 0; padding: .3rem 0; font: inherit; font-size: .78rem;
-  border-radius: 999px; border: 1px solid #555; background: #1c1c22; color: #eee; cursor: pointer;
+.map-settings { padding: .55rem .75rem; background: rgba(10,10,14,.85); color: #eee; border: 1px solid #555;
+  border-radius: 8px; font-size: .88rem; }
+
+/* ---- Radius chips (selection panel) ---- */
+.radius-row { margin-top: .75rem; padding-top: .65rem; border-top: 1px solid #333; }
+.radius-row .eyebrow { display: block; margin-bottom: .35rem; }
+.radius-chips { display: flex; gap: .3rem; }
+.panel .radius-chips button { flex: 1; min-width: 0; padding: .35rem 0; font-size: .82rem; border-radius: 999px;
   font-variant-numeric: tabular-nums; }
-.map-settings .chips button:hover { background: #2a2a32; }
-.map-settings .chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; font-weight: 600; }
+.panel .radius-chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; font-weight: 600; }
 .legend, .zoom-readout, .map-settings { box-sizing: border-box; }

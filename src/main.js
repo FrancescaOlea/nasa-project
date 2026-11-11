@@ -202,7 +202,7 @@ function setUpSelection(key, body, params) {
   const legend = L.control({ position: 'bottomleft' });
   legend.onAdd = () => L.DomUtil.create('div', 'legend');
 
-  // ---- Map settings panel (bottom left): landmarks on/off and selection radius
+  // ---- Map settings panel (bottom left): landmarks on/off
   const settings = L.control({ position: 'bottomleft' });
   settings.onAdd = () => {
     const el = L.DomUtil.create('div', 'map-settings');
@@ -211,11 +211,7 @@ function setUpSelection(key, body, params) {
         <input id="landmarks-toggle" type="checkbox" checked>
         <span class="switch" aria-hidden="true"></span>
         <span>Landmarks</span>
-      </label>
-      <div class="radius-row">
-        <span class="eyebrow">Radius, km</span>
-        <div id="radius-options" class="chips" role="radiogroup" aria-label="Selection radius in km"></div>
-      </div>`;
+      </label>`;
     L.DomEvent.disableClickPropagation(el); // clicks here shouldn't select a spot on the map
     L.DomEvent.disableScrollPropagation(el);
     return el;
@@ -300,7 +296,7 @@ function setUpSelection(key, body, params) {
     saveToUrl();
   }
 
-  // Radius buttons (in the settings panel)
+  // Radius buttons (in the selection panel, bottom right)
   const chips = $('radius-options');
   chips.replaceChildren(...RADIUS_OPTIONS_KM.map((km) => {
     const btn = document.createElement('button');

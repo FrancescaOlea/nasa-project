@@ -20,8 +20,9 @@ Or by hand: `npm install`, then `npm run dev`.
   Click elsewhere to move it.
 - **☰ View** (Moon and Mars): show one coloured data layer over the map (blue = low, red = high,
   with a legend). See *Map views* below for what's available on each body.
-- Bottom-left panel: **Landmarks** on/off and the selection **radius** (1, 5, 10, 25, 50, 100 or
-  250 km; default 10). **Find Earth analogs** opens the Earth map for that
+- Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
+  (1, 5, 10, 25, 50, 100 or 250 km; default 10).
+- Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** opens the Earth map for that
   area (the analog search itself is still to be built); **Find similar spots** is a placeholder.
   The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10&view=slope`), so links and the
   back button bring it back.
