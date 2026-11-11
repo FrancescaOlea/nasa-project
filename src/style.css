@@ -14,17 +14,13 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .label { letter-spacing: .15em; text-transform: uppercase; font-size: .9rem; color: #999;
   transition: color .2s; }
 
-.globe { --size: clamp(110px, 22vw, 200px); width: var(--size); height: var(--size);
-  border-radius: 50%; position: relative; overflow: hidden;
-  background: var(--texture, none) center / cover, var(--fallback);
+/* Sizes are true to scale: Moon 27% and Mars 53% of Earth's diameter. */
+.bodies { align-items: center; }
+.globe { --earth: min(34vw, 46vh, 380px); display: block; border-radius: 50%;
   transition: transform .3s, box-shadow .3s; }
-/* shading so the flat image reads as a sphere */
-.globe::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.18), transparent 45%),
-              radial-gradient(circle at 50% 50%, transparent 55%, rgba(0,0,0,.85) 100%); }
-.earth { --fallback: radial-gradient(circle at 40% 40%, #3b7dd8, #123a6b); --glow: rgba(80,150,255,.45); }
-.moon  { --fallback: radial-gradient(circle at 40% 40%, #bbb, #555); --glow: rgba(220,220,220,.35); }
-.mars  { --fallback: radial-gradient(circle at 40% 40%, #d0703c, #6b2a12); --glow: rgba(230,110,60,.45); }
+.earth { width: var(--earth); --glow: rgba(80,150,255,.45); }
+.moon  { width: calc(var(--earth) * 0.273); --glow: rgba(220,220,220,.35); }
+.mars  { width: calc(var(--earth) * 0.532); --glow: rgba(230,110,60,.45); }
 
 .body-btn:hover .globe, .body-btn:focus-visible .globe {
   transform: scale(1.06); box-shadow: 0 0 40px var(--glow); }

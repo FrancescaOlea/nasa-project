@@ -11,7 +11,6 @@ export const BODIES = {
     attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
     radiusKm: 6371.0,
     maxNativeZoom: 18, // deepest zoom the imagery server actually has
-    preview: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/0/0/0',
   },
   moon: {
     name: 'Moon',
@@ -20,7 +19,6 @@ export const BODIES = {
     attribution: 'LRO WAC mosaic &copy; NASA/GSFC/ASU via NASA Moon Trek',
     radiusKm: 1737.4,
     maxNativeZoom: 7, // ~100 m per pixel; deeper zooms enlarge these tiles
-    preview: `${TREK}/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/1.0.0/default/default028mm/0/0/1.jpg`,
   },
   mars: {
     name: 'Mars',
@@ -29,6 +27,5 @@ export const BODIES = {
     attribution: 'Viking MDIM 2.1 &copy; NASA/JPL/USGS via NASA Mars Trek',
     radiusKm: 3389.5,
     maxNativeZoom: 7, // ~232 m per pixel; deeper zooms enlarge these tiles
-    preview: `${TREK}/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/0/0/1.jpg`,
   },
 };

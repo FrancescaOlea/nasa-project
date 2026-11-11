@@ -10,13 +10,7 @@ let map = null;
 // Closest you can zoom: about this many km across the screen.
 const MIN_VIEW_KM = 1;
 
-// Paint each home-page globe with real imagery of that body.
 document.querySelectorAll('.body-btn').forEach((btn) => {
-  const body = BODIES[btn.dataset.body];
-  const globe = btn.querySelector('.globe');
-  const img = new Image();
-  img.onload = () => globe.style.setProperty('--texture', `url("${body.preview}")`);
-  img.src = body.preview; // if it fails, the CSS fallback colour stays
   btn.addEventListener('click', () => { location.hash = `#/${btn.dataset.body}`; });
 });
 
@@ -27,9 +21,23 @@ const basePx = (body) => (body.crs === 'EPSG4326' ? 512 : 256);
 const circumferenceKm = (body) => 2 * Math.PI * body.radiusKm;
 
 // Zoom level at which the screen width spans MIN_VIEW_KM at the equator.
-function maxZoomFor(body, screenPx) {
-  return Math.round(Math.log2((screenPx * circumferenceKm(body)) / (basePx(body) * MIN_VIEW_KM)));
+function maxZoomFor(body, size) {
+  return Math.log2((size.x * circumferenceKm(body)) / (basePx(body) * MIN_VIEW_KM));
 }
+
+// Most zoomed-out level: the map just fills the whole screen, no black edges.
+// (Equirectangular maps are twice as wide as tall; web mercator is square.)
+function minZoomFor(body, size) {
+  const w = basePx(body);
+  const h = body.crs === 'EPSG4326' ? w / 2 : w;
+  return Math.log2(Math.max(size.x / w, size.y / h));
+}
+
+// The edges of the map, so it can't repeat or be dragged off screen.
+const MAP_BOUNDS = {
+  EPSG3857: [[-85.0511, -180], [85.0511, 180]],
+  EPSG4326: [[-90, -180], [90, 180]],
+};
 
 // Real-world width of the current view, measured along the centre latitude.
 function viewWidthKm(body) {
@@ -39,9 +47,10 @@ function viewWidthKm(body) {
 }
 
 function formatKm(km) {
+  const m = Math.round(km * 1000);
+  if (m < 1000) return `${m} m`;
   if (km >= 100) return `${Math.round(km).toLocaleString()} km`;
-  if (km >= 1) return `${km.toFixed(1)} km`;
-  return `${Math.round(km * 1000)} m`;
+  return `${km.toFixed(1)} km`;
 }
 
 function openMap(key) {
@@ -50,14 +59,18 @@ function openMap(key) {
   mapView.hidden = false;
   document.title = `${body.name} · Planet Maps`;
 
-  const minZoom = body.crs === 'EPSG4326' ? 0 : 1;
+  const screen = { x: window.innerWidth, y: window.innerHeight };
   map = L.map('map', {
     crs: L.CRS[body.crs],
     center: [0, 0],
-    zoom: minZoom + 1,
-    minZoom,
-    maxZoom: maxZoomFor(body, window.innerWidth),
-    worldCopyJump: true,
+    zoom: minZoomFor(body, screen),
+    minZoom: minZoomFor(body, screen),
+    maxZoom: maxZoomFor(body, screen),
+    zoomSnap: 0, // smooth zooming; the +/- buttons still step by 2x
+    zoomDelta: 1,
+    wheelPxPerZoomLevel: 120,
+    maxBounds: MAP_BOUNDS[body.crs],
+    maxBoundsViscosity: 1.0, // hard stop at the map edges
     zoomControl: false,
   });
   L.control.zoom({ position: 'topright' }).addTo(map);
@@ -65,26 +78,31 @@ function openMap(key) {
     attribution: body.attribution,
     maxNativeZoom: body.maxNativeZoom,
     maxZoom: 30,
-    noWrap: body.crs === 'EPSG4326',
+    noWrap: true, // show the map once, never repeated side by side
+    bounds: MAP_BOUNDS[body.crs],
   }).addTo(map);
 
-  // Zoom readout in the bottom-left corner.
+  // Zoom readout in the bottom-left corner. ×1 = whole map filling the screen.
   const Readout = L.Control.extend({
     onAdd() {
       const el = L.DomUtil.create('div', 'zoom-readout');
       const update = () => {
-        const factor = 2 ** (map.getZoom() - minZoom);
+        const factor = Math.round(2 ** (map.getZoom() - map.getMinZoom()));
         el.innerHTML = `<strong>×${factor.toLocaleString()}</strong>` +
           `<span>${formatKm(viewWidthKm(body))} across</span>`;
       };
-      map.on('zoomend moveend resize', update);
+      map.on('zoom move resize', update);
       update();
       return el;
     },
   });
   new Readout({ position: 'bottomleft' }).addTo(map);
 
-  map.on('resize', () => map.setMaxZoom(maxZoomFor(body, map.getSize().x)));
+  map.on('resize', () => {
+    const size = map.getSize();
+    map.setMinZoom(minZoomFor(body, size));
+    map.setMaxZoom(maxZoomFor(body, size));
+  });
 }
 
 function showHome() {

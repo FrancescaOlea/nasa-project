@@ -13,7 +13,9 @@ Then open the URL it prints (usually http://localhost:5173).
 ## Using it
 - Click a world on the home page to open its map; **← Home** (or the browser back button) returns.
 - Zoom with the mouse wheel, pinch, or the **+ / −** buttons. The bottom-left box shows the
-  zoom factor and how wide the view is. Maximum zoom is about 1 km across the screen.
+  zoom factor (×1 = whole map filling the screen) and how wide the view is.
+  Maximum zoom is 1 km across the screen. The map doesn't repeat sideways.
+- Home-page globes are drawn to scale: the Moon is 27% and Mars 53% of Earth's diameter.
 
 ## Where the maps come from
 Map images are streamed as tiles from these services while you browse, so nothing is downloaded up front:
