@@ -27,19 +27,23 @@
 
       <!-- Area selection panel (Moon and Mars) -->
       <aside id="select-panel" class="panel" hidden>
-        <p id="select-hint" class="hint">Click anywhere on the map to select a 10&nbsp;km area.</p>
+        <p id="select-hint" class="hint">Click anywhere on the map to select an area.</p>
         <div id="select-info" hidden>
           <div class="panel-head">
             <span class="eyebrow">Selected area</span>
             <button id="clear-selection" class="icon-btn" aria-label="Clear selection">&times;</button>
           </div>
           <p id="select-coords" class="coords"></p>
-          <p class="sub">10 km radius &middot; click elsewhere to move it</p>
+          <p class="sub">Click elsewhere to move it</p>
           <div class="actions">
             <button id="find-analogs" class="primary">Find Earth analogs</button>
             <button id="find-similar">Find similar spots</button>
           </div>
           <p id="toast" class="toast" hidden>Coming soon</p>
+        </div>
+        <div class="radius">
+          <span class="eyebrow">Radius</span>
+          <div id="radius-options" class="chips" role="radiogroup" aria-label="Selection radius"></div>
         </div>
       </aside>
 
@@ -47,6 +51,7 @@
       <aside id="analog-banner" class="panel banner" hidden>
         <span class="eyebrow">Earth analogs for</span>
         <p id="analog-source" class="coords"></p>
+        <p id="analog-radius" class="sub"></p>
         <p class="sub">Analog search coming soon.</p>
         <button id="back-to-site">&larr; Back to this site</button>
       </aside>

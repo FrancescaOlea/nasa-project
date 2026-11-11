@@ -11,10 +11,16 @@ let map = null;
 // Closest you can zoom: about this many km across the screen.
 const MIN_VIEW_KM = 1;
 
-// Radius of the area you select on the Moon or Mars.
-const SELECT_RADIUS_KM = 10;
+// Radius choices (km) for the area you select on the Moon or Mars.
+const RADIUS_OPTIONS_KM = [1, 5, 10, 25, 50, 100, 250];
+const DEFAULT_RADIUS_KM = 10;
 
 const $ = (id) => document.getElementById(id);
+
+// On phones the zoom readout sits just above the selection panel; track its height.
+new ResizeObserver(([entry]) => {
+  mapView.style.setProperty('--panel-h', `${entry.target.offsetHeight}px`);
+}).observe($('select-panel'));
 
 document.querySelectorAll('.body-btn').forEach((btn) => {
   btn.addEventListener('click', () => { location.hash = `#/${btn.dataset.body}`; });
@@ -131,24 +137,39 @@ function openMap(key, params) {
 function setUpSelection(key, body, params) {
   $('select-panel').hidden = false;
   let shapes = null;
+  let current = null; // { lat, lon } of the selected point
+  const r = parseFloat(params.get('r'));
+  let radiusKm = RADIUS_OPTIONS_KM.includes(r) ? r : DEFAULT_RADIUS_KM;
 
-  function select(lat, lon, { fly = false } = {}) {
+  // Keep the selection in the address, without adding a history step,
+  // so coming back to this page (e.g. from Earth) restores it.
+  function saveToUrl() {
+    const q = current ? `?lat=${current.lat.toFixed(4)}&lon=${current.lon.toFixed(4)}&r=${radiusKm}` : '';
+    history.replaceState(null, '', `#/${key}${q}`);
+  }
+
+  // fit: 'always' (restoring a saved selection), 'if-hidden' (radius changed), or none (a click).
+  function draw({ fit } = {}) {
     if (shapes) shapes.remove();
-    const ring = circlePoints(lat, lon, SELECT_RADIUS_KM, body.radiusKm);
+    const ring = circlePoints(current.lat, current.lon, radiusKm, body.radiusKm);
     shapes = L.layerGroup([
       L.polygon(ring, { className: 'selection-area', interactive: false }),
-      L.circleMarker([lat, lon], { className: 'selection-centre', radius: 4, interactive: false }),
+      L.circleMarker([current.lat, current.lon], { className: 'selection-centre', radius: 4, interactive: false }),
     ]).addTo(map);
+    const bounds = L.latLngBounds(ring);
+    if (fit === 'always' || (fit === 'if-hidden' && !map.getBounds().contains(bounds))) {
+      map.fitBounds(bounds, { padding: [80, 80] });
+    }
+  }
 
+  function select(lat, lon, opts) {
+    current = { lat, lon };
     $('select-hint').hidden = true;
     $('select-info').hidden = false;
     $('select-coords').textContent = formatLatLon(lat, lon);
     $('toast').hidden = true;
-    // Remember the selection in the address, without adding a history step,
-    // so coming back to this page (e.g. from Earth) restores it.
-    history.replaceState(null, '', `#/${key}?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
-    if (fly) map.fitBounds(L.latLngBounds(ring), { padding: [80, 80], animate: false });
-    current = { lat, lon };
+    draw(opts);
+    saveToUrl();
   }
 
   function clear() {
@@ -157,22 +178,38 @@ function setUpSelection(key, body, params) {
     current = null;
     $('select-hint').hidden = false;
     $('select-info').hidden = true;
-    history.replaceState(null, '', `#/${key}`);
+    saveToUrl();
   }
 
-  let current = null;
+  // Radius buttons
+  const chips = $('radius-options');
+  chips.replaceChildren(...RADIUS_OPTIONS_KM.map((km) => {
+    const btn = document.createElement('button');
+    btn.textContent = `${km} km`;
+    btn.setAttribute('role', 'radio');
+    btn.onclick = () => {
+      radiusKm = km;
+      markChosen();
+      if (current) { draw({ fit: 'if-hidden' }); saveToUrl(); }
+    };
+    return btn;
+  }));
+  const markChosen = () => [...chips.children].forEach((btn, i) =>
+    btn.setAttribute('aria-checked', RADIUS_OPTIONS_KM[i] === radiusKm));
+  markChosen();
+
   map.on('click', (e) => select(e.latlng.lat, e.latlng.lng));
   $('clear-selection').onclick = clear;
 
   $('find-analogs').onclick = () => {
     const { lat, lon } = current;
-    location.hash = `#/earth?from=${key}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
+    location.hash = `#/earth?from=${key}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&r=${radiusKm}`;
   };
   $('find-similar').onclick = () => { $('toast').hidden = false; }; // not built yet
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
-  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fly: true });
+  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: 'always' });
 }
 
 // ---- Earth page opened from "Find Earth analogs" -----------------------------
@@ -181,9 +218,11 @@ function showAnalogBanner(params) {
   const from = params.get('from');
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
+  const r = parseFloat(params.get('r')) || DEFAULT_RADIUS_KM;
   $('analog-source').textContent = `${BODIES[from].name} · ${formatLatLon(lat, lon)}`;
+  $('analog-radius').textContent = `Area: ${r} km radius`;
   $('back-to-site').onclick = () => {
-    location.hash = `#/${from}?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
+    location.hash = `#/${from}?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&r=${r}`;
   };
   $('analog-banner').hidden = false;
 }
@@ -202,8 +241,8 @@ function showHome() {
 
 // The URL hash decides the page, so the browser's back button works:
 //   #/mars                          Mars map
-//   #/mars?lat=18.44&lon=77.45      Mars map with that area selected
-//   #/earth?from=mars&lat=..&lon=.. Earth map, looking for analogs of that area
+//   #/mars?lat=18.44&lon=77.45&r=10       Mars map with a 10 km-radius area selected
+//   #/earth?from=mars&lat=..&lon=..&r=..  Earth map, looking for analogs of that area
 function route() {
   const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   if (map) { map.remove(); map = null; }

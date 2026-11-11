@@ -16,10 +16,10 @@ Or by hand: `npm install`, then `npm run dev`.
 - Zoom with the mouse wheel, pinch, or the **+ / −** buttons. The bottom-left box shows the
   zoom factor (×1 = whole map filling the screen) and how wide the view is.
   Maximum zoom is 1 km across the screen. The map doesn't repeat sideways.
-- On the Moon and Mars, click anywhere to select a 10 km-radius area; its coordinates show in
-  the panel. Click elsewhere to move it. **Find Earth analogs** opens the Earth map for that
+- On the Moon and Mars, click anywhere to select an area; its coordinates show in the panel.
+  Pick the radius (1, 5, 10, 25, 50, 100 or 250 km; default 10). Click elsewhere to move it. **Find Earth analogs** opens the Earth map for that
   area (the analog search itself is still to be built); **Find similar spots** is a placeholder.
-  The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45`), so links and the
+  The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10`), so links and the
   back button bring it back.
 - Home-page globes are drawn to scale: the Moon is 27% and Mars 53% of Earth's diameter.
 
