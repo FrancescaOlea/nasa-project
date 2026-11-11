@@ -3,12 +3,13 @@
 Pick Earth, the Moon or Mars on the home page and explore its map.
 
 ## Run it
-Requires Node.js 18+ (https://nodejs.org).
+Requires Node.js 18+ (https://nodejs.org) and Git (https://git-scm.com).
 
-    npm install
-    npm run dev
+**Easiest:** double-click `start.bat` (Windows) or `start.command` (Mac).
+It pulls the latest changes, installs dependencies and opens the app in your browser.
+Close that window to stop the app.
 
-Then open the URL it prints (usually http://localhost:5173).
+Or by hand: `npm install`, then `npm run dev`.
 
 ## Using it
 - Click a world on the home page to open its map; **← Home** (or the browser back button) returns.
