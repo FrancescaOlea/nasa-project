@@ -4,6 +4,7 @@ import './style.css';
 import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe } from './globes.js';
+import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml } from './overlays.js';
 import moonTexture from './assets/moon-texture.jpg';
 import marsTexture from './assets/mars-texture.jpg';
@@ -25,6 +26,14 @@ const $ = (id) => document.getElementById(id);
 new ResizeObserver(([entry]) => {
   mapView.style.setProperty('--panel-h', `${entry.target.offsetHeight}px`);
 }).observe($('select-panel'));
+
+// Starry sky behind the home page; repainted when the window size changes.
+const stars = $('stars');
+let starTimer = null;
+new ResizeObserver(() => {
+  clearTimeout(starTimer);
+  starTimer = setTimeout(() => drawStarfield(stars), 150);
+}).observe(stars);
 
 // Spinning globes on the home page. The Moon turns 28x slower than Mars.
 const MARS_SECONDS_PER_TURN = 30;
