@@ -25,6 +25,7 @@ export const BODIES = {
   },
   moon: {
     name: 'Moon',
+    selectable: true, // click to pick a 10 km area
     crs: 'EPSG4326', // NASA Trek tiles are equirectangular
     radiusKm: 1737.4,
     layers: [
@@ -45,6 +46,7 @@ export const BODIES = {
   },
   mars: {
     name: 'Mars',
+    selectable: true,
     crs: 'EPSG4326',
     radiusKm: 3389.5,
     layers: [

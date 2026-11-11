@@ -2,6 +2,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './style.css';
 import { BODIES } from './bodies.js';
+import { circlePoints, formatLatLon } from './geo.js';
 
 const home = document.getElementById('home');
 const mapView = document.getElementById('map-view');
@@ -9,6 +10,11 @@ let map = null;
 
 // Closest you can zoom: about this many km across the screen.
 const MIN_VIEW_KM = 1;
+
+// Radius of the area you select on the Moon or Mars.
+const SELECT_RADIUS_KM = 10;
+
+const $ = (id) => document.getElementById(id);
 
 document.querySelectorAll('.body-btn').forEach((btn) => {
   btn.addEventListener('click', () => { location.hash = `#/${btn.dataset.body}`; });
@@ -53,7 +59,7 @@ function formatKm(km) {
   return `${km.toFixed(1)} km`;
 }
 
-function openMap(key) {
+function openMap(key, params) {
   const body = BODIES[key];
   home.hidden = true;
   mapView.hidden = false;
@@ -115,6 +121,77 @@ function openMap(key) {
     map.setMinZoom(minZoomFor(body, size));
     map.setMaxZoom(maxZoomFor(body, size));
   });
+
+  if (body.selectable) setUpSelection(key, body, params);
+  if (key === 'earth' && BODIES[params.get('from')]) showAnalogBanner(params);
+}
+
+// ---- Area selection (Moon and Mars) ----------------------------------------
+
+function setUpSelection(key, body, params) {
+  $('select-panel').hidden = false;
+  let shapes = null;
+
+  function select(lat, lon, { fly = false } = {}) {
+    if (shapes) shapes.remove();
+    const ring = circlePoints(lat, lon, SELECT_RADIUS_KM, body.radiusKm);
+    shapes = L.layerGroup([
+      L.polygon(ring, { className: 'selection-area', interactive: false }),
+      L.circleMarker([lat, lon], { className: 'selection-centre', radius: 4, interactive: false }),
+    ]).addTo(map);
+
+    $('select-hint').hidden = true;
+    $('select-info').hidden = false;
+    $('select-coords').textContent = formatLatLon(lat, lon);
+    $('toast').hidden = true;
+    // Remember the selection in the address, without adding a history step,
+    // so coming back to this page (e.g. from Earth) restores it.
+    history.replaceState(null, '', `#/${key}?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`);
+    if (fly) map.fitBounds(L.latLngBounds(ring), { padding: [80, 80], animate: false });
+    current = { lat, lon };
+  }
+
+  function clear() {
+    if (shapes) shapes.remove();
+    shapes = null;
+    current = null;
+    $('select-hint').hidden = false;
+    $('select-info').hidden = true;
+    history.replaceState(null, '', `#/${key}`);
+  }
+
+  let current = null;
+  map.on('click', (e) => select(e.latlng.lat, e.latlng.lng));
+  $('clear-selection').onclick = clear;
+
+  $('find-analogs').onclick = () => {
+    const { lat, lon } = current;
+    location.hash = `#/earth?from=${key}&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
+  };
+  $('find-similar').onclick = () => { $('toast').hidden = false; }; // not built yet
+
+  const lat = parseFloat(params.get('lat'));
+  const lon = parseFloat(params.get('lon'));
+  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fly: true });
+}
+
+// ---- Earth page opened from "Find Earth analogs" -----------------------------
+
+function showAnalogBanner(params) {
+  const from = params.get('from');
+  const lat = parseFloat(params.get('lat'));
+  const lon = parseFloat(params.get('lon'));
+  $('analog-source').textContent = `${BODIES[from].name} · ${formatLatLon(lat, lon)}`;
+  $('back-to-site').onclick = () => {
+    location.hash = `#/${from}?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`;
+  };
+  $('analog-banner').hidden = false;
+}
+
+function hidePanels() {
+  for (const id of ['select-panel', 'analog-banner']) $(id).hidden = true;
+  $('select-hint').hidden = false;
+  $('select-info').hidden = true;
 }
 
 function showHome() {
@@ -123,12 +200,15 @@ function showHome() {
   document.title = 'Planet Maps';
 }
 
-// The URL hash decides the page (#/earth, #/moon, #/mars), so the
-// browser's back button also returns to the main page.
+// The URL hash decides the page, so the browser's back button works:
+//   #/mars                          Mars map
+//   #/mars?lat=18.44&lon=77.45      Mars map with that area selected
+//   #/earth?from=mars&lat=..&lon=.. Earth map, looking for analogs of that area
 function route() {
-  const key = location.hash.replace('#/', '');
+  const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   if (map) { map.remove(); map = null; }
-  if (BODIES[key]) openMap(key); else showHome();
+  hidePanels();
+  if (BODIES[path]) openMap(path, new URLSearchParams(query)); else showHome();
 }
 
 window.addEventListener('hashchange', route);

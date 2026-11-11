@@ -40,3 +40,40 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .zoom-readout strong { font-size: 1.05rem; font-weight: 600; }
 .zoom-readout span { color: #bbb; }
 
+
+/* ---- Area selection ---- */
+.selection-area { stroke: #7fd4ff; stroke-width: 2; fill: #7fd4ff; fill-opacity: .15; }
+.selection-centre { stroke: #fff; stroke-width: 2; fill: #7fd4ff; fill-opacity: 1; }
+.leaflet-container { cursor: crosshair; }
+.leaflet-dragging .leaflet-container, .leaflet-container.leaflet-drag-target { cursor: grabbing; }
+
+.panel { position: absolute; z-index: 1000; right: 12px; bottom: 28px; width: min(340px, calc(100% - 24px));
+  padding: .9rem 1rem; background: rgba(10,10,14,.88); color: #eee; border: 1px solid #444;
+  border-radius: 10px; backdrop-filter: blur(6px); font-size: .9rem; }
+.panel p { margin: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; }
+.eyebrow { font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; color: #9ab; }
+.coords { font-size: 1.05rem; font-weight: 600; margin: .25rem 0 .15rem !important;
+  font-variant-numeric: tabular-nums; }
+.sub { color: #999; font-size: .8rem; }
+.hint { color: #ccc; }
+.actions { display: flex; gap: .5rem; margin-top: .8rem; }
+.panel button { font: inherit; font-size: .85rem; cursor: pointer; border-radius: 6px;
+  padding: .5rem .7rem; border: 1px solid #555; background: #1c1c22; color: #eee; }
+.panel button:hover { background: #2a2a32; }
+.actions button { flex: 1; }
+.panel button.primary { background: #2b7bd6; border-color: #2b7bd6; color: #fff; }
+.panel button.primary:hover { background: #3a8be6; }
+.panel .icon-btn { border: 0; background: none; font-size: 1.3rem; line-height: 1; padding: 0 .2rem; color: #999; }
+.panel .icon-btn:hover { background: none; color: #fff; }
+.toast { margin-top: .6rem !important; color: #fc6; font-size: .8rem; }
+
+.banner { top: 12px; bottom: auto; right: auto; left: 50%; transform: translateX(-50%); text-align: center; }
+.banner button { margin-top: .6rem; }
+
+/* Phones: panel spans the bottom, zoom readout sits just above it */
+@media (max-width: 600px) {
+  .panel:not(.banner) { left: 12px; right: 12px; width: auto; bottom: 22px; }
+  .map-view:has(#select-panel:not([hidden])) .leaflet-bottom.leaflet-left { bottom: 175px; }
+  .banner { top: 56px; }
+}
