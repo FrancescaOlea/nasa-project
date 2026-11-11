@@ -222,15 +222,12 @@ function setUpSelection(key, body, params) {
   };
   settings.addTo(map);
 
-  // Landmarks (on/off remembered in this browser)
+  // Landmarks: on whenever a map opens; the switch only hides them on this map
   const showLandmarks = addLandmarks(map, key);
   const toggle = $('landmarks-toggle');
-  try { toggle.checked = localStorage.getItem('planet-maps:landmarks') !== 'off'; } catch { /* storage blocked */ }
-  showLandmarks(toggle.checked);
-  toggle.onchange = () => {
-    showLandmarks(toggle.checked);
-    try { localStorage.setItem('planet-maps:landmarks', toggle.checked ? 'on' : 'off'); } catch { /* ignore */ }
-  };
+  toggle.checked = true;
+  showLandmarks(true);
+  toggle.onchange = () => showLandmarks(toggle.checked);
 
   loadIndex().then((index) => {
     if (!map) return;
