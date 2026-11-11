@@ -2,3 +2,4 @@ node_modules
 dist
 # raw NASA downloads for tools/build_terrain.py (large; re-downloaded on demand)
 data/raw/
+__pycache__/
