@@ -9,16 +9,16 @@ import L from 'leaflet';
 const BASE = `${import.meta.env.BASE_URL}overlays`;
 export const OVERLAY_OPACITY = 0.6;
 
-// What each view is called and how it's explained in the menu.
+// The views, in menu order. Each body's own description (data source,
+// resolution) comes from public/overlays/index.json.
 export const VIEWS = {
-  slope: {
-    name: 'Terrain slope',
-    about: 'How steep the ground is, in degrees, measured between points ~1.9 km apart.',
-  },
-  roughness: {
-    name: 'Terrain roughness',
-    about: 'How bumpy the ground is: height variation (m) left after removing the overall tilt, over ~9 km.',
-  },
+  elevation: { name: 'Elevation' },
+  slope: { name: 'Terrain slope' },
+  surface: { name: 'Dusty or rocky terrain' },
+  iron: { name: 'Minerals: iron content' },
+  ice: { name: 'Underground ice' },
+  temperature: { name: 'Temperature' },
+  temp_range: { name: 'Daily temperature variation' },
 };
 
 let indexPromise = null;
@@ -111,18 +111,19 @@ function ticks(meta) {
   if (meta.log) {
     const out = [];
     for (let e = Math.floor(Math.log10(meta.min)); 10 ** e <= meta.max; e++) {
-      for (const m of [1]) { // powers of ten only, so labels don't crowd
-        const v = Number((m * 10 ** e).toPrecision(2));
-        if (v >= meta.min && v <= meta.max) out.push(v);
-      }
+      const v = Number((10 ** e).toPrecision(2)); // powers of ten only, so labels don't crowd
+      if (v >= meta.min && v <= meta.max) out.push(v);
     }
-    // always label the top of the scale, unless a tick is already close to it
+    // label both ends of the scale too, unless a tick is already close
+    if (position(meta, out[0]) - position(meta, meta.min) > 0.12) out.unshift(meta.min);
     if (position(meta, meta.max) - position(meta, out[out.length - 1]) > 0.12) out.push(meta.max);
     return out;
   }
-  const step = meta.max <= 20 ? 5 : 10;
+  // linear: a "nice" step giving 4-6 labels
+  const span = meta.max - meta.min;
+  const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500].find((s) => span / s <= 5) ?? span;
   const out = [];
-  for (let v = meta.min; v <= meta.max; v += step) out.push(v);
+  for (let v = Math.ceil(meta.min / step) * step; v <= meta.max + 1e-9; v += step) out.push(Number(v.toPrecision(6)));
   return out;
 }
 
@@ -133,12 +134,13 @@ function position(meta, v) {
 
 export function legendHtml(view, meta) {
   const marks = ticks(meta).map((v, i, all) => {
-    const label = `${v}${meta.unit === '°' ? '°' : ` ${meta.unit}`}${i === all.length - 1 && v === meta.max ? '+' : ''}`;
+    const unit = meta.unit === '°' || meta.unit === '%' ? meta.unit : ` ${meta.unit}`;
+    const label = `${v}${unit}${i === all.length - 1 && v === meta.max && meta.log ? '+' : ''}`;
     return `<span style="left:${(position(meta, v) * 100).toFixed(1)}%">${label}</span>`;
   }).join('');
   return `
     <div class="legend-title">${VIEWS[view].name}</div>
     <div class="legend-bar" style="background:${GRADIENT_CSS}"></div>
     <div class="legend-ticks">${marks}</div>
-    <div class="legend-note">${meta.log ? 'Logarithmic' : 'Linear'} scale · ~${meta.pixel_km} km data</div>`;
+    <div class="legend-note">${meta.log ? 'Logarithmic' : 'Linear'} scale · ~${meta.pixel_km >= 10 ? Math.round(meta.pixel_km) : meta.pixel_km} km pixels</div>`;
 }

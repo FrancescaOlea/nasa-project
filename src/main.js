@@ -201,7 +201,8 @@ function setUpSelection(key, body, params) {
     if (!map) return;
     const available = index[key] ?? {};
     const options = [[null, { name: 'None', about: 'Just the imagery.' }],
-      ...Object.entries(VIEWS).filter(([v]) => available[v])];
+      ...Object.entries(VIEWS).filter(([v]) => available[v])
+        .map(([v, info]) => [v, { ...info, about: available[v].about }])];
     $('view-options').replaceChildren(...options.map(([v, info]) => {
       const label = document.createElement('label');
       label.className = 'view-option';

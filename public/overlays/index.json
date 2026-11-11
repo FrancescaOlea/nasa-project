@@ -1,41 +1,115 @@
 {
   "mars": {
     "slope": {
-      "unit": "\u00b0",
+      "unit": "°",
       "log": true,
       "min": 0.1,
       "max": 30,
-      "pixel_km": 1.85,
+      "about": "How steep the ground is, in degrees, between points ~1.9 km apart (MOLA).",
+      "pixel_km": 1.9,
       "max_zoom": 4,
       "format": "webp"
     },
-    "roughness": {
-      "unit": "m",
-      "log": true,
-      "min": 1,
-      "max": 500,
-      "pixel_km": 1.85,
+    "elevation": {
+      "unit": "km",
+      "log": false,
+      "min": -8,
+      "max": 12,
+      "about": "Height above the average surface level (MOLA, MGS).",
+      "pixel_km": 1.9,
       "max_zoom": 4,
+      "format": "webp"
+    },
+    "surface": {
+      "unit": "TIU",
+      "log": true,
+      "min": 30,
+      "max": 1000,
+      "about": "Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS).",
+      "pixel_km": 3.0,
+      "max_zoom": 3,
+      "format": "webp"
+    },
+    "iron": {
+      "unit": "%",
+      "log": false,
+      "min": 0,
+      "max": 25,
+      "about": "Iron in the top few tens of cm, as FeO weight % (gamma-ray spectrometer, Mars Odyssey). ~300 km pixels; none beyond ~60° latitude.",
+      "pixel_km": 296.4,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "ice": {
+      "unit": "%",
+      "log": false,
+      "min": 0,
+      "max": 80,
+      "about": "Hydrogen in the top ~1 m, mostly water ice near the poles: how many fewer neutrons escape than over the driest ground (HEND, Mars Odyssey). ~240 km pixels.",
+      "pixel_km": 237.1,
+      "max_zoom": 2,
       "format": "webp"
     }
   },
   "moon": {
     "slope": {
-      "unit": "\u00b0",
+      "unit": "°",
       "log": true,
       "min": 0.1,
       "max": 30,
+      "about": "How steep the ground is, in degrees, between points ~1.9 km apart (LOLA).",
       "pixel_km": 1.9,
       "max_zoom": 3,
       "format": "webp"
     },
-    "roughness": {
-      "unit": "m",
-      "log": true,
-      "min": 1,
-      "max": 500,
+    "elevation": {
+      "unit": "km",
+      "log": false,
+      "min": -6,
+      "max": 6,
+      "about": "Height above the average surface level (LOLA, LRO).",
       "pixel_km": 1.9,
       "max_zoom": 3,
+      "format": "webp"
+    },
+    "surface": {
+      "unit": "%",
+      "log": true,
+      "min": 0.1,
+      "max": 10,
+      "about": "Share of the ground covered by rocks bigger than ~1 m (Diviner, LRO). 60°S–60°N.",
+      "pixel_km": 0.9,
+      "max_zoom": 4,
+      "format": "webp"
+    },
+    "iron": {
+      "unit": "%",
+      "log": false,
+      "min": 0,
+      "max": 25,
+      "about": "Iron in the soil, as FeO weight % (gamma-ray spectrometer, Lunar Prospector). ~60 km pixels. Dark volcanic plains are iron-rich, bright highlands iron-poor.",
+      "pixel_km": 60.6,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temperature": {
+      "unit": "°C",
+      "log": false,
+      "min": -200,
+      "max": -40,
+      "about": "Average surface temperature over a whole lunar day and night (Diviner, LRO).",
+      "pixel_km": 15.2,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temp_range": {
+      "unit": "°C",
+      "log": false,
+      "min": 0,
+      "max": 300,
+      "about": "Difference between the hottest and coldest time of a lunar day (Diviner, LRO).",
+      "pixel_km": 15.2,
+      "max_zoom": 2,
       "format": "webp"
     }
   }

@@ -20,7 +20,7 @@ Or by hand: `npm install`, then `npm run dev`.
   Click elsewhere to move it.
 - **☰ Menu** (Moon and Mars) holds the map options:
   - **View**: show one coloured data layer over the map (blue = low, red = high, with a legend).
-    Currently *Terrain slope* and *Terrain roughness*.
+    See *Map views* below for what's available on each body.
   - **Selection radius**: 1, 5, 10, 25, 50, 100 or 250 km (default 10). **Find Earth analogs** opens the Earth map for that
   area (the analog search itself is still to be built); **Find similar spots** is a placeholder.
   The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10&view=slope`), so links and the
@@ -41,30 +41,42 @@ Map images are streamed as tiles from these services while you browse, so nothin
 
 Past that detail the images are enlarged, so the very closest zoom levels get soft. Change sources in `src/bodies.js`.
 
-## Terrain views: how they're made
+## Map views: data and method
 
-`tools/build_terrain.py` turns NASA elevation maps into the slope and roughness layers:
+All views come from NASA (and partner) data in the Planetary Data System, built by
+`tools/build_layers.py`. Blue = low, red = high. Where a quantity exists on both bodies,
+both share one colour range, so the same colour means the same value on each.
 
-| | Mars | Moon |
-|---|---|---|
-| Source | MGS **MOLA** MEGDR, 32 px/degree | LRO **LOLA** LDEM, 64 px/degree, averaged to 16 |
-| Pixel size | 1.85 km | 1.90 km |
+| View | Moon | Mars | Scale |
+|---|---|---|---|
+| Elevation | LRO LOLA, ~1.9 km | MGS MOLA, ~1.9 km | linear |
+| Terrain slope | LOLA, ~1.9 km | MOLA, ~1.9 km | log, 0.1-30 deg |
+| Dusty or rocky terrain | LRO Diviner rock abundance (% of ground covered by >1 m rocks), ~0.9 km, 60S-60N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km | log |
+| Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 60S-60N | linear, 0-25% |
+| Underground ice | *no global map product found* | Mars Odyssey HEND epithermal neutrons: % fewer neutrons than the driest ground (hydrogen, mostly ice near the poles), ~240 km | linear |
+| Temperature | Diviner: average over a full lunar day, ~15 km | *no global NASA product found* | linear |
+| Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | *no global NASA product found* | linear |
 
-Both bodies are measured at the same ~1.9 km scale so their numbers can be compared
-(slope and roughness depend on the scale you measure them at).
+Not added: **maximum temperature variation**. On the Moon (1.5 deg axial tilt) it is essentially the
+same as the daily variation, and Diviner's archived global product holds per-time-of-day
+averages, not all-time extremes. For Mars no global surface-temperature product was found.
 
-- **Slope**: steepness between neighbouring points, in degrees.
-- **Roughness**: RMS height (m) left after fitting a tilted plane over a 5 x 5-pixel (~9 km)
-  window. Removing the plane means a smooth, evenly tilted surface isn't counted as rough.
+**Why linear or logarithmic.** Elevation, iron, temperatures and ice are roughly bell-shaped over a
+limited range, and equal steps are what people compare: linear. Slope, rock cover and thermal
+inertia each span 2-3 orders of magnitude with most values bunched at the low end (e.g. half of
+Mars has slopes under 0.6 deg, 99% under 13 deg): logarithmic, otherwise most of the map is one colour.
 
-**Why the colour scales are logarithmic.** At this scale both values span about three orders of
-magnitude and are roughly log-normal: Mars has a median slope of 0.6 deg (99% below 13 deg), the
-Moon 4 deg (99% below 23 deg); median roughness is 12 m on Mars and 80 m on the Moon. On a linear
-scale ~90% of Mars would be one shade of blue. Both bodies share the same ranges
-(slope 0.1-30 deg, roughness 1-500 m) so the same colour means the same value on each.
+**Methods.**
+- Slope: steepness between neighbouring points, both bodies at the same ~1.9 km pixel size
+  (MOLA 32 px/deg; LOLA 64 px/deg averaged to 16).
+- Diviner temperatures: the Global Cumulative Product gives the surface temperature of every
+  0.5 deg spot for 96 times of day. Each spot is seen at ~55-65% of those times; gaps of up to
+  2 h are filled by interpolating along the daily cycle, spots with longer gaps are left out.
+- HEND ice: hydrogen slows neutrons, so fewer epithermal neutrons escape; shown as % below
+  the driest 5% of the planet.
 
-The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value -> real units is
-in `index.json`); the browser colours them. To rebuild (downloads ~660 MB into `data/raw/`):
+The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value -> real units in
+`index.json`); the browser colours them. To rebuild (downloads ~3.6 GB into `data/raw/`):
 
-    pip install numpy scipy pillow
-    python3 tools/build_terrain.py
+    pip install numpy scipy pandas pillow
+    python3 tools/build_layers.py              # or e.g.: python3 tools/build_layers.py mars iron

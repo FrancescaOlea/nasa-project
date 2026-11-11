@@ -1,0 +1,344 @@
+"""
+Build the map "views" (coloured data overlays) for the Moon and Mars from
+NASA / PDS data, as 8-bit data tiles the web app colours in the browser.
+
+  Layer        Moon                                   Mars
+  elevation    LRO LOLA LDEM 64 ppd -> 16 ppd         MGS MOLA MEGDR 32 ppd
+  slope        (from the same elevation grids, both ~1.9 km per pixel)
+  iron         Lunar Prospector GRS FeO, 2 deg        Odyssey GRS Fe (as FeO), 5 deg
+  temperature  LRO Diviner global cumulative Tbol     (no global NASA product found)
+  temp_range   LRO Diviner (daily max - min)          (no global NASA product found)
+  ice          (no global map product found)          Odyssey HEND epithermal neutrons, 4 deg
+  surface      LRO Diviner rock abundance, 32 ppd     MGS TES night thermal inertia, 20 ppd
+
+Output (served from public/overlays/):
+  {body}/{layer}/{z}/{y}/{x}.webp   value 0 = no data, 1..255 = position on the scale
+  index.json                        scale, units and description of every layer
+
+Run:  python3 tools/build_layers.py               all layers (downloads ~3.6 GB into data/raw/)
+      python3 tools/build_layers.py mars iron     only layers matching any of the words
+Needs numpy, scipy, pandas and Pillow.
+"""
+import glob
+import json
+import math
+import os
+import sys
+import urllib.request
+
+import numpy as np
+import pandas as pd
+from PIL import Image
+from scipy import ndimage
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW = os.path.join(ROOT, 'data', 'raw')
+OUT = os.path.join(ROOT, 'public', 'overlays')
+PDS = 'https://pds-geosciences.wustl.edu'
+TILE_FORMAT = 'webp'  # lossy WebP q90: half the size of PNG, error ~0.5% of the scale
+FEO_PER_FE = 71.844 / 55.845  # convert Fe weight % to FeO weight %
+
+RADIUS_KM = {'moon': 1737.4, 'mars': 3396.19}
+
+
+def fetch(url, sub=''):
+    """Path of a downloaded source file, downloading it first if needed."""
+    folder = os.path.join(RAW, sub)
+    path = os.path.join(folder, os.path.basename(url))
+    if not os.path.exists(path):
+        os.makedirs(folder, exist_ok=True)
+        print(f'  downloading {url}')
+        urllib.request.urlretrieve(url, path)
+    return path
+
+
+def pixel_km(body, ppd):
+    return 2 * math.pi * RADIUS_KM[body] / (360 * ppd)
+
+
+# ---- Elevation and slope ----------------------------------------------------
+
+DEMS = {
+    'mars': dict(url=f'{PDS}/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x/meg032/megt90n000fb.img',
+                 shape=(5760, 11520), dtype='>i2', scale=1.0, ppd=32, factor=1),
+    'moon': dict(url=f'{PDS}/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img/ldem_64.img',
+                 shape=(11520, 23040), dtype='<i2', scale=0.5, ppd=64, factor=4),
+}
+
+
+def load_dem(body):
+    """Elevation (m), rows 90N -> 90S, columns 180W -> 180E, ~1.9 km per pixel on both bodies."""
+    d = DEMS[body]
+    dem = np.memmap(fetch(d['url']), dtype=d['dtype'], mode='r', shape=d['shape'])
+    f = d['factor']
+    if f > 1:  # block-average to a coarser grid
+        h, w = d['shape']
+        dem = np.asarray(dem, dtype=np.float32).reshape(h // f, f, w // f, f).mean(axis=(1, 3))
+    dem = np.asarray(dem, dtype=np.float32) * d['scale']
+    return np.roll(dem, dem.shape[1] // 2, axis=1), d['ppd'] // f  # 0..360E -> -180..180
+
+
+def slope_deg(dem, ppd, radius_km):
+    pixel_m = 2 * math.pi * radius_km * 1000 / (360 * ppd)
+    lat = 90 - (np.arange(dem.shape[0]) + 0.5) / ppd
+    dx_m = pixel_m * np.maximum(np.cos(np.radians(lat)), 0.02)[:, None]
+    dzdx = (np.roll(dem, -1, axis=1) - np.roll(dem, 1, axis=1)) / (2 * dx_m)
+    dzdy = np.gradient(dem, pixel_m, axis=0)
+    return np.degrees(np.arctan(np.hypot(dzdx, dzdy)))
+
+
+# ---- Gridding helpers ---------------------------------------------------------
+
+def grid_from_cells(lat_lo, lat_hi, lon_lo, lon_hi, values, res_deg):
+    """Paint lat/lon boxes (any size) onto a global grid of res_deg cells. NaN = no data."""
+    h, w = int(180 / res_deg), int(360 / res_deg)
+    g = np.full((h, w), np.nan, dtype=np.float32)
+    for a, b, c, d, v in zip(lat_lo, lat_hi, lon_lo, lon_hi, values):
+        r0, r1 = int(round((90 - b) / res_deg)), int(round((90 - a) / res_deg))
+        c0, c1 = int(round((c + 180) / res_deg)), int(round((d + 180) / res_deg))
+        g[r0:r1, c0:c1] = v
+    return g
+
+
+# ---- Layers -----------------------------------------------------------------
+
+def moon_iron():
+    path = fetch(f'{PDS}/lunar/lp-l-grs-5-elem-abundance-v1/lp_9001/data/lpgrs_high1_elem_abundance_2deg.tab')
+    t = np.loadtxt(path, usecols=(1, 2, 3, 4, 12))  # min/max lat, min/max lon, W_FEO (g/g)
+    return grid_from_cells(t[:, 0], t[:, 1], t[:, 2], t[:, 3], t[:, 4] * 100, 0.5), 2.0
+
+
+def mars_grs(name):
+    """Odyssey GRS 5x5 deg table -> grid. 9999.999 = no data."""
+    t = np.loadtxt(fetch(f'{PDS}/ody/ody-m-grs-5-elements-v1/odgm_xxxx/data/smoothed/{name}_sr_5x5.tab'))
+    ok = t[:, 2] < 9000
+    lat, lon, v = t[ok, 0], t[ok, 1], t[ok, 2]
+    lon = np.where(lon > 180, lon - 360, lon)
+    return grid_from_cells(lat - 2.5, lat + 2.5, lon - 2.5, lon + 2.5, v, 5.0)
+
+
+def mars_iron():
+    return mars_grs('fe') * FEO_PER_FE, 5.0
+
+
+def mars_ice():
+    """HEND epithermal neutron flux (4x4 deg). Hydrogen (ice) slows neutrons, so fewer
+    epithermal neutrons escape. Shown as % suppression relative to the driest ground."""
+    t = np.loadtxt(fetch(f'{PDS}/ody/urn-nasa-pds-odyssey_grs_special/data/hend_epithermal_020917.tab'),
+                   delimiter=',')
+    lon, lat, flux = t[:, 0], t[:, 1], t[:, 2]
+    dry = np.percentile(flux, 95)
+    suppression = np.clip((1 - flux / dry) * 100, 0, None)
+    return grid_from_cells(lat - 2, lat + 2, lon - 2, lon + 2, suppression, 4.0), 4.0
+
+
+def mars_surface():
+    """TES nightside thermal inertia, 20 ppd. Low = dust, high = rock/bedrock."""
+    base = f'{PDS}/mgs/mgs-m-tes-5-timap-v1/mgst_9001/data/global_ti_night_2007'
+    fetch(base + '.lbl')
+    ti = np.fromfile(fetch(base + '.img'), dtype='>i2').reshape(3600, 7200).astype(np.float32)
+    ti[ti <= 0] = np.nan
+    return ti, 1 / 20
+
+
+def moon_surface():
+    """Diviner rock abundance (fraction of surface covered by rocks > ~1 m), 32 ppd, 60S-60N."""
+    base = f'{PDS}/lro/urn-nasa-pds-lro_diviner_derived1/data_derived_gdr_l3/cylindrical/img/dgdr_ra_avg_cyl_032_img'
+    fetch(base + '.lbl')
+    ra = np.fromfile(fetch(base + '.img'), dtype='<i2').reshape(3840, 11520).astype(np.float32)
+    ra[ra == -32768] = np.nan
+    ra = np.roll(ra * 0.001 * 100, 11520 // 2, axis=1)  # -> %, 0..360E -> -180..180
+    g = np.full((5760, 11520), np.nan, dtype=np.float32)
+    g[960:960 + 3840] = ra  # rows for 60N..60S
+    return g, 1 / 32
+
+
+DIVINER_BANDS = ['90s80s', '80s70s', '70s60s', '60s50s', '50s40s', '40s30s', '30s20s', '20s10s', '10s00s',
+                 '00n10n', '10n20n', '20n30n', '30n40n', '40n50n', '50n60n', '60n70n', '70n80n', '80n90n']
+
+
+def moon_temperatures():
+    """Diviner Global Cumulative Products: bolometric surface temperature for every
+    0.5 deg cell and every 0.25 h of local time. Returns (mean, daily max - min) in C/K."""
+    base = f'{PDS}/lro/urn-nasa-pds-lro_diviner_derived1/data_derived_gcp/global_cumul_avg_cyl_{{}}_002.tab'
+    mean = np.full((360, 720), np.nan, dtype=np.float32)
+    rng = np.full((360, 720), np.nan, dtype=np.float32)
+    for band in DIVINER_BANDS:
+        path = fetch(base.format(band), 'diviner_gcp')
+        df = pd.read_csv(path, skipinitialspace=True, usecols=['clon', 'clat', 'ltim', 'tbol'])
+        t = df['tbol'].to_numpy(np.float32)
+        t[t < 0] = np.nan
+        # rows are ordered longitude, latitude, local time -> (lat, lon, 96 time bins)
+        nlat = df['clat'].nunique()
+        cube = t.reshape(720, nlat, 96).transpose(1, 0, 2).copy()
+        lats = df['clat'].to_numpy()[:nlat * 96:96]
+        assert np.allclose(df['clon'].to_numpy()[::nlat * 96], np.arange(-179.75, 180, 0.5))
+        # Each spot is seen at ~55-65% of the 96 times of day, with short gaps spread
+        # through the day. Fill gaps of up to 2 h by circular interpolation; spots with
+        # a longer gap (could miss the hottest or coldest time) are left out.
+        filled = cube
+        ok = np.zeros(cube.shape[:2], dtype=bool)
+        x = np.arange(96)
+        for i in range(cube.shape[0]):
+            for j in range(720):
+                row = filled[i, j]
+                good = np.isfinite(row)
+                if good.sum() < 24:
+                    continue
+                if not good.all():
+                    gx = x[good]
+                    gaps = np.diff(np.r_[gx, gx[0] + 96]) - 1  # missing bins between readings
+                    if gaps.max() > 8:
+                        continue
+                    row[~good] = np.interp(x[~good], np.r_[gx - 96, gx, gx + 96], np.tile(row[good], 3))
+                ok[i, j] = True
+        rows = np.round((90 - lats - 0.25) / 0.5).astype(int)
+        mean[rows] = np.where(ok, np.nanmean(filled, axis=2) - 273.15, np.nan)
+        rng[rows] = np.where(ok, np.nanmax(filled, axis=2) - np.nanmin(filled, axis=2), np.nan)
+        print(f'  diviner {band}: {ok.mean():.0%} of cells usable')
+    return mean, rng
+
+
+# ---- Encoding and tiles -------------------------------------------------------
+
+def encode(values, lo, hi, log):
+    """Map values to 1..255 (linear or log10 between lo and hi); 0 = no data."""
+    v = values.astype(np.float64)
+    finite = np.isfinite(v)
+    if log:
+        v, lo, hi = np.log10(np.maximum(np.nan_to_num(v, nan=lo), 1e-9)), math.log10(lo), math.log10(hi)
+    t = np.clip((np.nan_to_num(v, nan=lo) - lo) / (hi - lo), 0, 1)
+    out = (1 + np.round(t * 254)).astype(np.uint8)
+    out[~finite] = 0
+    return out
+
+
+def write_tiles(encoded, folder, max_zoom):
+    """Write a tile pyramid. Gaps are filled from the nearest data before resizing (so
+    edges don't smear towards 'no data') and cut out again afterwards. Tiles with no
+    data at all are skipped; the app shows a missing tile as transparent."""
+    valid = encoded > 0
+    if not valid.all():
+        idx = ndimage.distance_transform_edt(~valid, return_distances=False, return_indices=True)
+        filled = encoded[tuple(idx)]
+    else:
+        filled = encoded
+    fimg = Image.fromarray(filled, 'L')
+    mimg = Image.fromarray(valid.astype(np.uint8) * 255, 'L')
+    written = 0
+    for z in range(max_zoom + 1):
+        w, h = 512 * 2 ** z, 256 * 2 ** z
+        level = np.asarray(fimg.resize((w, h), Image.BOX if w <= fimg.width else Image.BILINEAR))
+        mask = np.asarray(mimg.resize((w, h), Image.BOX if w <= mimg.width else Image.NEAREST)) >= 128
+        level = np.where(mask, np.maximum(level, 1), 0).astype(np.uint8)
+        for y in range(h // 256):
+            for x in range(w // 256):
+                tile = level[y * 256:(y + 1) * 256, x * 256:(x + 1) * 256]
+                if not tile.any():
+                    continue
+                d = os.path.join(folder, str(z), str(y))
+                os.makedirs(d, exist_ok=True)
+                Image.fromarray(tile, 'L').save(os.path.join(d, f'{x}.{TILE_FORMAT}'), quality=90, method=6)
+                written += 1
+    return written
+
+
+# ---- Layer catalogue ----------------------------------------------------------
+# Colour-scale choices:
+#  * elevation, iron, temperatures, ice: linear - roughly bell-shaped values over a
+#    limited range, and equal steps (km, %, degrees) are what people compare.
+#  * slope, rock cover, thermal inertia: logarithmic - each spans 2-3 orders of
+#    magnitude with most values bunched at the low end.
+# Where the same quantity exists on both bodies, the range is shared so the same
+# colour means the same value on the Moon and on Mars.
+
+SLOPE = dict(unit='°', log=True, min=0.1, max=30)
+IRON = dict(unit='%', log=False, min=0, max=25)
+
+
+def catalogue():
+    """(body, layer) -> (function returning (grid, degrees per pixel), scale, max_zoom, description)."""
+    dem_cache = {}
+
+    def dem(body):
+        if body not in dem_cache:
+            dem_cache[body] = load_dem(body)
+        return dem_cache[body]
+
+    def elevation(body):
+        d, ppd = dem(body)
+        return d / 1000, 1 / ppd
+
+    def slope(body):
+        d, ppd = dem(body)
+        return slope_deg(d, ppd, RADIUS_KM[body]), 1 / ppd
+
+    temps = {}
+
+    def moon_temp(which):
+        if not temps:
+            temps['mean'], temps['range'] = moon_temperatures()
+        return temps[which], 0.5
+
+    return {
+        ('mars', 'elevation'): (lambda: elevation('mars'), dict(unit='km', log=False, min=-8, max=12), 4,
+                                'Height above the average surface level (MOLA, MGS).'),
+        ('moon', 'elevation'): (lambda: elevation('moon'), dict(unit='km', log=False, min=-6, max=6), 3,
+                                'Height above the average surface level (LOLA, LRO).'),
+        ('mars', 'slope'): (lambda: slope('mars'), SLOPE, 4,
+                            'How steep the ground is, in degrees, between points ~1.9 km apart (MOLA).'),
+        ('moon', 'slope'): (lambda: slope('moon'), SLOPE, 3,
+                            'How steep the ground is, in degrees, between points ~1.9 km apart (LOLA).'),
+        ('mars', 'surface'): (mars_surface, dict(unit='TIU', log=True, min=30, max=1000), 3,
+                              'Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS).'),
+        ('moon', 'surface'): (moon_surface, dict(unit='%', log=True, min=0.1, max=10), 4,
+                              'Share of the ground covered by rocks bigger than ~1 m (Diviner, LRO). 60°S–60°N.'),
+        ('mars', 'iron'): (mars_iron, IRON, 2,
+                           'Iron in the top few tens of cm, as FeO weight % (gamma-ray spectrometer, Mars Odyssey). '
+                           '~300 km pixels; none beyond ~60° latitude.'),
+        ('moon', 'iron'): (moon_iron, IRON, 2,
+                           'Iron in the soil, as FeO weight % (gamma-ray spectrometer, Lunar Prospector). '
+                           '~60 km pixels. Dark volcanic plains are iron-rich, bright highlands iron-poor.'),
+        ('mars', 'ice'): (mars_ice, dict(unit='%', log=False, min=0, max=80), 2,
+                          'Hydrogen in the top ~1 m, mostly water ice near the poles: how many fewer neutrons '
+                          'escape than over the driest ground (HEND, Mars Odyssey). ~240 km pixels.'),
+        ('moon', 'temperature'): (lambda: moon_temp('mean'), dict(unit='°C', log=False, min=-200, max=-40), 2,
+                                  'Average surface temperature over a whole lunar day and night (Diviner, LRO).'),
+        ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=0, max=300), 2,
+                                 'Difference between the hottest and coldest time of a lunar day (Diviner, LRO).'),
+    }
+
+
+def main():
+    index_path = os.path.join(OUT, 'index.json')
+    index = {}
+    if os.path.exists(index_path):  # keep layers that aren't rebuilt this time
+        with open(index_path) as f:
+            index = json.load(f)
+    wanted = sys.argv[1:]
+    for (body, layer), (make, scale, max_zoom, about) in catalogue().items():
+        if wanted and not ({body, layer} & set(wanted)):
+            continue
+        print(f'{body} {layer}')
+        grid, deg = make()
+        vals = grid[np.isfinite(grid)]
+        print('  percentiles 1/5/50/95/99:', np.round(np.percentile(vals, [1, 5, 50, 95, 99]), 2),
+              f'| {np.isfinite(grid).mean():.0%} of map has data')
+        folder = os.path.join(OUT, body, layer)
+        if os.path.isdir(folder):
+            for f in glob.glob(os.path.join(folder, '**', '*.*'), recursive=True):
+                os.remove(f)
+        n = write_tiles(encode(grid, scale['min'], scale['max'], scale['log']), folder, max_zoom)
+        print(f'  {n} tiles')
+        index.setdefault(body, {})[layer] = {
+            **scale, 'about': about, 'pixel_km': round(pixel_km(body, 1 / deg), 1),
+            'max_zoom': max_zoom, 'format': TILE_FORMAT}
+    # drop layers that no longer exist in the catalogue (e.g. the old roughness view)
+    known = set(catalogue())
+    index = {b: {l: m for l, m in layers.items() if (b, l) in known} for b, layers in index.items()}
+    with open(index_path, 'w') as f:
+        json.dump(index, f, indent=2, ensure_ascii=False)
+
+
+if __name__ == '__main__':
+    main()
