@@ -73,14 +73,26 @@ function openMap(key) {
     maxBoundsViscosity: 1.0, // hard stop at the map edges
     zoomControl: false,
   });
+  if (import.meta.env.DEV) window.map = map; // handy for debugging in the browser console
   L.control.zoom({ position: 'topright' }).addTo(map);
-  L.tileLayer(body.url, {
-    attribution: body.attribution,
-    maxNativeZoom: body.maxNativeZoom,
-    maxZoom: 30,
-    noWrap: true, // show the map once, never repeated side by side
-    bounds: MAP_BOUNDS[body.crs],
-  }).addTo(map);
+  body.layers.forEach((layer, i) => {
+    // Each layer gets its own pane so it can have its own blend/filter.
+    const pane = `layer${i}`;
+    const el = map.createPane(pane);
+    el.style.zIndex = 200 + i;
+    if (layer.filter) el.style.filter = layer.filter;
+    L.tileLayer(layer.url, {
+      pane,
+      attribution: layer.attribution,
+      tileSize: layer.tileSize ?? 256,
+      zoomOffset: layer.zoomOffset ?? 0,
+      maxNativeZoom: layer.maxNativeZoom,
+      minZoom: layer.minZoom ?? 0,
+      maxZoom: 30,
+      noWrap: true, // show the map once, never repeated side by side
+      bounds: layer.bounds ?? MAP_BOUNDS[body.crs],
+    }).addTo(map);
+  });
 
   // Zoom readout in the bottom-left corner. ×1 = whole map filling the screen.
   const Readout = L.Control.extend({

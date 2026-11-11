@@ -21,10 +21,10 @@ Or by hand: `npm install`, then `npm run dev`.
 ## Where the maps come from
 Map images are streamed as tiles from these services while you browse, so nothing is downloaded up front:
 
-| World | Imagery | Sharpest detail |
-|-------|---------|-----------------|
+| World | Zoomed out | Zoomed in (sharpest detail) |
+|-------|------------|-----------------------------|
 | Earth | Esri World Imagery (satellite) | under 1 m per pixel in many places |
-| Moon  | LRO WAC global mosaic, via NASA Moon Trek | ~100 m per pixel |
-| Mars  | Viking MDIM 2.1 colour mosaic, via NASA Mars Trek | ~232 m per pixel |
+| Moon  | LRO WAC mosaic (NASA), ~100 m/pixel | Kaguya TC mosaic (JAXA, via NASA Moon Trek), ~21 m/pixel |
+| Mars  | Viking colour mosaic (NASA), ~232 m/pixel | CTX mosaic (NASA/Caltech, via Esri), ~5 m/pixel, tinted Mars-coloured |
 
-Past that detail the Moon and Mars images are enlarged and look blurry. Change sources in `src/bodies.js`.
+Past that detail the images are enlarged, so the very closest zoom levels get soft. Change sources in `src/bodies.js`.
