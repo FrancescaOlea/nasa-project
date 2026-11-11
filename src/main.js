@@ -3,6 +3,9 @@ import 'leaflet/dist/leaflet.css';
 import './style.css';
 import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
+import { createGlobe } from './globes.js';
+import moonTexture from './assets/moon-texture.jpg';
+import marsTexture from './assets/mars-texture.jpg';
 
 const home = document.getElementById('home');
 const mapView = document.getElementById('map-view');
@@ -21,6 +24,17 @@ const $ = (id) => document.getElementById(id);
 new ResizeObserver(([entry]) => {
   mapView.style.setProperty('--panel-h', `${entry.target.offsetHeight}px`);
 }).observe($('select-panel'));
+
+// Spinning globes on the home page. The Moon turns 28x slower than Mars.
+const MARS_SECONDS_PER_TURN = 30;
+const GLOBES = {
+  mars: { texture: marsTexture, secondsPerTurn: MARS_SECONDS_PER_TURN, tiltDeg: 25.2, startLon: -70 },
+  moon: { texture: moonTexture, secondsPerTurn: MARS_SECONDS_PER_TURN * 28, tiltDeg: 1.5, startLon: 0 },
+};
+for (const [key, opts] of Object.entries(GLOBES)) {
+  const globe = document.querySelector(`.globe.${key}`);
+  if (createGlobe(globe.querySelector('canvas'), opts)) globe.classList.add('is-3d');
+}
 
 document.querySelectorAll('.body-btn').forEach((btn) => {
   btn.addEventListener('click', () => { location.hash = `#/${btn.dataset.body}`; });

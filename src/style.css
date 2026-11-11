@@ -14,13 +14,16 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .label { letter-spacing: .15em; text-transform: uppercase; font-size: .9rem; color: #999;
   transition: color .2s; }
 
-/* Sizes are true to scale: Moon 27% and Mars 53% of Earth's diameter. */
+/* Sizes are true to scale: the Moon is 51% of Mars's diameter. */
 .bodies { align-items: center; }
-.globe { --earth: min(34vw, 46vh, 380px); display: block; border-radius: 50%;
-  transition: transform .3s, box-shadow .3s; }
-.earth { width: var(--earth); --glow: rgba(80,150,255,.45); }
-.moon  { width: calc(var(--earth) * 0.273); --glow: rgba(220,220,220,.35); }
-.mars  { width: calc(var(--earth) * 0.532); --glow: rgba(230,110,60,.45); }
+.globe { --mars: min(46vw, 58vh, 520px); display: block; position: relative; aspect-ratio: 1;
+  border-radius: 50%; transition: transform .3s, box-shadow .3s; }
+.mars { width: var(--mars); --glow: rgba(230,110,60,.45); }
+.moon { width: calc(var(--mars) * 0.513); --glow: rgba(220,220,220,.35); }
+.globe canvas, .globe img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* The photo is only a fallback for browsers without WebGL. */
+.globe.is-3d img { display: none; }
+.globe:not(.is-3d) canvas { display: none; }
 
 .body-btn:hover .globe, .body-btn:focus-visible .globe {
   transform: scale(1.06); box-shadow: 0 0 40px var(--glow); }

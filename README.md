@@ -1,6 +1,6 @@
 # Planet Maps
 
-Pick Earth, the Moon or Mars on the home page and explore its map.
+Pick the Moon or Mars on the home page, explore its map, select an area and look for Earth analogs.
 
 ## Run it
 Requires Node.js 18+ (https://nodejs.org) and Git (https://git-scm.com).
@@ -21,7 +21,10 @@ Or by hand: `npm install`, then `npm run dev`.
   area (the analog search itself is still to be built); **Find similar spots** is a placeholder.
   The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10`), so links and the
   back button bring it back.
-- Home-page globes are drawn to scale: the Moon is 27% and Mars 53% of Earth's diameter.
+- The home page shows spinning 3D globes of the Moon and Mars (three.js, textures made from the
+  NASA Trek maps), drawn to scale. Mars turns once every 30 s; the Moon 28x slower.
+  Change the speed with `MARS_SECONDS_PER_TURN` in `src/main.js`. The Earth map is reached via
+  **Find Earth analogs**.
 
 ## Where the maps come from
 Map images are streamed as tiles from these services while you browse, so nothing is downloaded up front:

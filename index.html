@@ -9,14 +9,19 @@
     <main id="home" class="home">
       <h1>Choose a world</h1>
       <div class="bodies">
-        <button class="body-btn" data-body="earth" aria-label="Open Earth map">
-          <img class="globe earth" src="/src/assets/earth.png" alt="" /><span class="label">Earth</span>
-        </button>
         <button class="body-btn" data-body="moon" aria-label="Open Moon map">
-          <img class="globe moon" src="/src/assets/moon.png" alt="" /><span class="label">Moon</span>
+          <span class="globe moon">
+            <canvas></canvas>
+            <img src="/src/assets/moon.png" alt="" />
+          </span>
+          <span class="label">Moon</span>
         </button>
         <button class="body-btn" data-body="mars" aria-label="Open Mars map">
-          <img class="globe mars" src="/src/assets/mars.png" alt="" /><span class="label">Mars</span>
+          <span class="globe mars">
+            <canvas></canvas>
+            <img src="/src/assets/mars.png" alt="" />
+          </span>
+          <span class="label">Mars</span>
         </button>
       </div>
     </main>
