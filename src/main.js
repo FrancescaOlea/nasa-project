@@ -28,7 +28,7 @@ new ResizeObserver(([entry]) => {
 // Spinning globes on the home page. The Moon turns 28x slower than Mars.
 const MARS_SECONDS_PER_TURN = 30;
 const GLOBES = {
-  mars: { texture: marsTexture, secondsPerTurn: MARS_SECONDS_PER_TURN, tiltDeg: 25.2, startLon: -70 },
+  mars: { texture: marsTexture, secondsPerTurn: MARS_SECONDS_PER_TURN, tiltDeg: 25.2, startLon: -70, viewFromDeg: 20 },
   moon: { texture: moonTexture, secondsPerTurn: MARS_SECONDS_PER_TURN * 28, tiltDeg: 1.5, startLon: 0 },
 };
 for (const [key, opts] of Object.entries(GLOBES)) {

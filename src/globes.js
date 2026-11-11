@@ -12,9 +12,10 @@ const globes = [];
  *   secondsPerTurn - time for one full rotation
  *   tiltDeg        - axial tilt, leaning the north pole to the right
  *   startLon       - longitude facing the viewer at the start
+ *   viewFromDeg    - look from this many degrees above the equator, so a tilted pole shows
  * Returns false if the browser can't do WebGL (the caller keeps a fallback image).
  */
-export function createGlobe(canvas, { texture, secondsPerTurn, tiltDeg = 0, startLon = 0 }) {
+export function createGlobe(canvas, { texture, secondsPerTurn, tiltDeg = 0, startLon = 0, viewFromDeg = 0 }) {
   let renderer;
   try {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -26,7 +27,10 @@ export function createGlobe(canvas, { texture, secondsPerTurn, tiltDeg = 0, star
   const scene = new THREE.Scene();
   // Camera distance at which a sphere of radius 1 exactly fills the view.
   const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 100);
-  camera.position.z = 1.005 / Math.sin(THREE.MathUtils.degToRad(FOV / 2));
+  const distance = 1.005 / Math.sin(THREE.MathUtils.degToRad(FOV / 2));
+  const elevation = THREE.MathUtils.degToRad(viewFromDeg);
+  camera.position.set(0, distance * Math.sin(elevation), distance * Math.cos(elevation));
+  camera.lookAt(0, 0, 0);
 
   // Sunlight from the upper left, plus a little fill so the night side isn't pitch black.
   const sun = new THREE.DirectionalLight(0xffffff, 3.2);
@@ -56,6 +60,7 @@ export function createGlobe(canvas, { texture, secondsPerTurn, tiltDeg = 0, star
   resize();
 
   globes.push({ renderer, scene, camera, sphere, startAngle, secondsPerTurn, canvas });
+  if (import.meta.env.DEV) window.globes = globes; // for debugging in the browser console
   if (globes.length === 1) requestAnimationFrame(tick);
   return true;
 }
