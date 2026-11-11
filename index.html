@@ -30,35 +30,22 @@
     <section id="map-view" class="map-view" hidden>
       <div class="top-buttons">
         <button id="back" class="map-btn">&larr; Home</button>
-        <button id="menu-btn" class="map-btn" aria-expanded="false" aria-controls="menu" hidden>&#9776; Menu</button>
+        <button id="menu-btn" class="map-btn" aria-expanded="false" aria-controls="menu" hidden>&#9776; View</button>
       </div>
       <div id="map"></div>
 
-      <!-- Options menu (Moon and Mars) -->
-      <aside id="menu" class="panel drawer" hidden aria-label="Map options">
+      <!-- View panel (Moon and Mars) -->
+      <aside id="menu" class="panel drawer" hidden aria-label="Map view">
         <div class="panel-head">
-          <span class="drawer-title">Options</span>
-          <button id="menu-close" class="icon-btn" aria-label="Close menu">&times;</button>
+          <span class="drawer-title">View</span>
+          <button id="menu-close" class="icon-btn" aria-label="Close view panel">&times;</button>
         </div>
 
         <section class="menu-section">
-          <span class="eyebrow">View</span>
           <div id="view-options" class="view-grid" role="radiogroup" aria-label="Map view"></div>
           <p id="view-about" class="view-about"></p>
         </section>
 
-        <section class="menu-section">
-          <label class="switch-row">
-            <input id="landmarks-toggle" type="checkbox" checked>
-            <span class="switch" aria-hidden="true"></span>
-            <span>Show landmarks</span>
-          </label>
-        </section>
-
-        <section class="menu-section">
-          <span class="eyebrow">Selection radius</span>
-          <div id="radius-options" class="chips" role="radiogroup" aria-label="Selection radius"></div>
-        </section>
       </aside>
 
       <!-- Area selection panel (Moon and Mars) -->

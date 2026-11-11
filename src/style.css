@@ -54,7 +54,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .leaflet-container { cursor: crosshair; }
 .leaflet-dragging .leaflet-container, .leaflet-container.leaflet-drag-target { cursor: grabbing; }
 
-.panel { position: absolute; z-index: 1000; right: 12px; bottom: 28px; width: min(340px, calc(100% - 24px));
+.panel { position: absolute; z-index: 1000; right: 12px; bottom: 28px; width: min(370px, calc(100% - 24px));
   padding: .9rem 1rem; background: rgba(10,10,14,.88); color: #eee; border: 1px solid #444;
   border-radius: 10px; backdrop-filter: blur(6px); font-size: .9rem; }
 .panel p { margin: 0; }
@@ -123,7 +123,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .leaflet-touch .leaflet-control-zoom-in, .leaflet-touch .leaflet-control-zoom-out { font-size: 24px; }
 
 /* Bigger buttons in the selection panel */
-.actions button { min-height: 42px; font-size: .92rem !important; }
+.actions button { min-height: 42px; font-size: .92rem !important; white-space: nowrap; }
 
 /* ---- Landmarks ---- */
 /* Leaflet positions the marker element with a transform, so the offset goes on .lm */
@@ -182,3 +182,16 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   .weights header, .w-list { padding-left: 1rem; padding-right: 1rem; }
   .weights footer { padding: .8rem 1rem 1rem; }
 }
+
+/* ---- Map settings panel (bottom left) ---- */
+.map-settings { display: flex; flex-direction: column; gap: .55rem; padding: .6rem .7rem; width: 260px;
+  background: rgba(10,10,14,.85); color: #eee; border: 1px solid #555; border-radius: 8px; font-size: .85rem; }
+.map-settings .switch-row { font-size: .88rem; }
+.radius-row .eyebrow { display: block; margin-bottom: .3rem; }
+.map-settings .chips { display: flex; flex-wrap: nowrap; gap: .25rem; margin: 0; }
+.map-settings .chips button { flex: 1; min-width: 0; padding: .3rem 0; font: inherit; font-size: .78rem;
+  border-radius: 999px; border: 1px solid #555; background: #1c1c22; color: #eee; cursor: pointer;
+  font-variant-numeric: tabular-nums; }
+.map-settings .chips button:hover { background: #2a2a32; }
+.map-settings .chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; font-weight: 600; }
+.legend, .zoom-readout, .map-settings { box-sizing: border-box; }
