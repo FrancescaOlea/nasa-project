@@ -126,15 +126,18 @@ function ticks(meta) {
       if (v >= meta.min && v <= meta.max) out.push(v);
     }
     // label both ends of the scale too, unless a tick is already close
-    if (position(meta, out[0]) - position(meta, meta.min) > 0.12) out.unshift(meta.min);
+    if (position(meta, out[0]) - position(meta, meta.min) > 0.1) out.unshift(meta.min);
     if (position(meta, meta.max) - position(meta, out[out.length - 1]) > 0.12) out.push(meta.max);
     return out;
   }
   // linear: a "nice" step giving 4-6 labels
   const span = meta.max - meta.min;
-  const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500].find((s) => span / s <= 5) ?? span;
+  const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500].find((s) => span / s <= 4) ?? span;
   const out = [];
   for (let v = Math.ceil(meta.min / step) * step; v <= meta.max + 1e-9; v += step) out.push(Number(v.toPrecision(6)));
+  // label both ends of the scale too, unless a tick is already close
+  if (position(meta, out[0]) - position(meta, meta.min) > 0.18) out.unshift(meta.min);
+  if (position(meta, meta.max) - position(meta, out[out.length - 1]) > 0.18) out.push(meta.max);
   return out;
 }
 
@@ -144,13 +147,23 @@ function position(meta, v) {
 }
 
 export function legendHtml(view, meta) {
-  const marks = ticks(meta).map((v, i, all) => {
-    const unit = meta.unit === '°' || meta.unit === '%' ? meta.unit : ` ${meta.unit}`;
-    const label = `${v}${unit}${i === all.length - 1 && v === meta.max && meta.log ? '+' : ''}`;
-    return `<span style="left:${(position(meta, v) * 100).toFixed(1)}%">${label}</span>`;
+  // Short symbols (°, %) stay on the numbers; longer units go once in the title.
+  const inline = meta.unit === '°' || meta.unit === '%';
+  const all = ticks(meta);
+  const marks = all.map((v, i) => {
+    // mark the ends of the scale when values beyond them are drawn in the end colour
+    const above = meta.above_max ?? meta.log;
+    const prefix = i === 0 && v === meta.min && meta.below_min ? '≤' : '';
+    const suffix = i === all.length - 1 && v === meta.max && above ? '+' : '';
+    const label = `${prefix}${v}${inline ? meta.unit : ''}${suffix}`;
+    const pos = position(meta, v);
+    // keep the end labels inside the bar instead of centred on its edge
+    const align = pos < 0.06 ? 'start' : pos > 0.94 ? 'end' : '';
+    return `<span class="${align}" style="left:${(pos * 100).toFixed(1)}%">${label}</span>`;
   }).join('');
+  const unit = inline ? '' : ` <span class="legend-unit">(${meta.unit})</span>`;
   return `
-    <div class="legend-title">${VIEWS[view].name}</div>
+    <div class="legend-title">${VIEWS[view].name}${unit}</div>
     <div class="legend-bar" style="background:${GRADIENT_CSS}"></div>
     <div class="legend-ticks">${marks}</div>
     <div class="legend-note">${meta.log ? 'Logarithmic' : 'Linear'} scale · ~${meta.pixel_km >= 10 ? Math.round(meta.pixel_km) : meta.pixel_km} km pixels</div>`;

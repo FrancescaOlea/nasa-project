@@ -6,6 +6,8 @@
       "min": 0.1,
       "max": 30,
       "about": "How steep the ground is, in degrees, between points ~1.9 km apart (MOLA).",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 1.9,
       "max_zoom": 4,
       "format": "webp"
@@ -16,6 +18,8 @@
       "min": -8,
       "max": 12,
       "about": "Height above the average surface level (MOLA, MGS).",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 1.9,
       "max_zoom": 4,
       "format": "webp"
@@ -28,6 +32,8 @@
       "lat_min": -70,
       "lat_max": 70,
       "about": "Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS). 70°S–70°N; nearer the poles seasonal frost spoils the readings.",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 3.0,
       "max_zoom": 3,
       "format": "webp"
@@ -40,6 +46,8 @@
       "lat_min": -57.5,
       "lat_max": 57.5,
       "about": "Iron in the top few tens of cm, as FeO weight % (gamma-ray spectrometer, Mars Odyssey). ~300 km pixels; none beyond ~60° latitude.",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 296.4,
       "max_zoom": 2,
       "format": "webp"
@@ -50,6 +58,8 @@
       "min": 0,
       "max": 80,
       "about": "Hydrogen in the top ~1 m, mostly water ice near the poles: how many fewer neutrons escape than over the driest ground (HEND, Mars Odyssey). ~240 km pixels.",
+      "below_min": false,
+      "above_max": true,
       "pixel_km": 237.1,
       "max_zoom": 2,
       "format": "webp"
@@ -58,8 +68,10 @@
       "unit": "°C",
       "log": false,
       "min": -120,
-      "max": -40,
+      "max": -45,
       "about": "Average surface temperature over a Mars year. Calculated with a thermal model from TES albedo and thermal inertia and MOLA elevation; matches lander measurements within ~10 °C.",
+      "below_min": true,
+      "above_max": false,
       "pixel_km": 59.3,
       "max_zoom": 2,
       "format": "webp"
@@ -68,8 +80,10 @@
       "unit": "°C",
       "log": false,
       "min": 0,
-      "max": 130,
+      "max": 125,
       "about": "Typical day-night swing (daily max - min, averaged over the year). Calculated with a thermal model from TES and MOLA data.",
+      "below_min": false,
+      "above_max": true,
       "pixel_km": 59.3,
       "max_zoom": 2,
       "format": "webp"
@@ -77,9 +91,11 @@
     "temp_yearly": {
       "unit": "°C",
       "log": false,
-      "min": 0,
-      "max": 170,
+      "min": 85,
+      "max": 155,
       "about": "Hottest minus coldest moment of the whole Mars year: daily swing plus seasons. Calculated with a thermal model from TES and MOLA data.",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 59.3,
       "max_zoom": 2,
       "format": "webp"
@@ -92,6 +108,8 @@
       "min": 0.1,
       "max": 30,
       "about": "How steep the ground is, in degrees, between points ~1.9 km apart (LOLA).",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 1.9,
       "max_zoom": 3,
       "format": "webp"
@@ -102,6 +120,8 @@
       "min": -6,
       "max": 6,
       "about": "Height above the average surface level (LOLA, LRO).",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 1.9,
       "max_zoom": 3,
       "format": "webp"
@@ -114,6 +134,8 @@
       "lat_min": -60,
       "lat_max": 60,
       "about": "Share of the ground covered by rocks bigger than ~1 m (Diviner, LRO). 60°S–60°N.",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 3.0,
       "max_zoom": 3,
       "format": "webp"
@@ -124,6 +146,8 @@
       "min": 0,
       "max": 24,
       "about": "Iron in the soil, as FeO weight % (gamma-ray spectrometer, Lunar Prospector). ~60 km pixels. Dark volcanic plains are iron-rich, bright highlands iron-poor.",
+      "below_min": false,
+      "above_max": true,
       "pixel_km": 60.6,
       "max_zoom": 2,
       "format": "webp"
@@ -131,9 +155,11 @@
     "temperature": {
       "unit": "°C",
       "log": false,
-      "min": -200,
-      "max": -40,
+      "min": -130,
+      "max": -50,
       "about": "Average surface temperature over a whole lunar day and night (Diviner, LRO).",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 15.2,
       "max_zoom": 2,
       "format": "webp"
@@ -141,9 +167,11 @@
     "temp_range": {
       "unit": "°C",
       "log": false,
-      "min": 0,
+      "min": 190,
       "max": 300,
       "about": "Difference between the hottest and coldest time of a lunar day (Diviner, LRO).",
+      "below_min": true,
+      "above_max": true,
       "pixel_km": 15.2,
       "max_zoom": 2,
       "format": "webp"

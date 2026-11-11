@@ -99,12 +99,15 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .view-about { margin: .55rem 0 0 !important; min-height: 2.6em; color: #9a9aa2; font-size: .76rem; line-height: 1.4; }
 
 /* ---- Legend for the active view ---- */
-.legend { width: 230px; padding: .55rem .7rem .5rem; background: rgba(0,0,0,.78); color: #fff;
+.legend { width: 260px; padding: .55rem .7rem .5rem; background: rgba(0,0,0,.78); color: #fff;
   border: 1px solid #555; border-radius: 6px; font-size: .78rem; }
 .legend-title { font-weight: 600; margin-bottom: .35rem; }
 .legend-bar { height: 10px; border-radius: 3px; opacity: .9; }
-.legend-ticks { position: relative; height: 1.1rem; margin: 0 .2rem; color: #ccc; font-variant-numeric: tabular-nums; }
+.legend-ticks { position: relative; height: 1.1rem; margin: 0; color: #ccc; font-variant-numeric: tabular-nums; }
 .legend-ticks span { position: absolute; top: 2px; transform: translateX(-50%); white-space: nowrap; font-size: .7rem; }
+.legend-ticks span.start { transform: none; }
+.legend-ticks span.end { transform: translateX(-100%); }
+.legend-unit { font-weight: 400; color: #aaa; }
 .legend-note { color: #999; font-size: .7rem; margin-top: .1rem; }
 
 /* Phones: panel spans the bottom, zoom readout sits just above it */

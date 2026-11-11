@@ -286,8 +286,11 @@ def write_tiles(encoded, folder, max_zoom, lat_range=(-90, 90)):
 #    limited range, and equal steps (km, %, degrees) are what people compare.
 #  * slope, rock cover, thermal inertia: logarithmic - each spans 2-3 orders of
 #    magnitude with most values bunched at the low end.
-# Where the same quantity exists on both bodies, the range is shared so the same
-# colour means the same value on the Moon and on Mars - except iron (see below).
+# Temperature ranges span roughly the 2nd-98th percentile of the surface *by area*
+# (the flat map exaggerates the poles), so the colours spread over real variation;
+# values beyond get the end colour, marked "≤" / "+" in the legend.
+# Elevation and slope share a range between the bodies so the same colour means the
+# same value on the Moon and on Mars.
 
 SLOPE = dict(unit='°', log=True, min=0.1, max=30)
 
@@ -351,20 +354,20 @@ def catalogue():
         ('mars', 'ice'): (mars_ice, dict(unit='%', log=False, min=0, max=80), 2,
                           'Hydrogen in the top ~1 m, mostly water ice near the poles: how many fewer neutrons '
                           'escape than over the driest ground (HEND, Mars Odyssey). ~240 km pixels.'),
-        ('moon', 'temperature'): (lambda: moon_temp('mean'), dict(unit='°C', log=False, min=-200, max=-40), 2,
+        ('moon', 'temperature'): (lambda: moon_temp('mean'), dict(unit='°C', log=False, min=-130, max=-50), 2,
                                   'Average surface temperature over a whole lunar day and night (Diviner, LRO).'),
-        ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=0, max=300), 2,
+        ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=190, max=300), 2,
                                  'Difference between the hottest and coldest time of a lunar day (Diviner, LRO).'),
         # Mars temperatures are calculated (no global measured product exists), with
         # their own ranges: Mars is far milder than the Moon.
-        ('mars', 'temperature'): (lambda: mars_temp('mean'), dict(unit='°C', log=False, min=-120, max=-40), 2,
+        ('mars', 'temperature'): (lambda: mars_temp('mean'), dict(unit='°C', log=False, min=-120, max=-45), 2,
                                   'Average surface temperature over a Mars year. Calculated with a thermal model '
                                   'from TES albedo and thermal inertia and MOLA elevation; matches lander '
                                   'measurements within ~10 °C.'),
-        ('mars', 'temp_range'): (lambda: mars_temp('daily'), dict(unit='°C', log=False, min=0, max=130), 2,
+        ('mars', 'temp_range'): (lambda: mars_temp('daily'), dict(unit='°C', log=False, min=0, max=125), 2,
                                  'Typical day-night swing (daily max - min, averaged over the year). Calculated '
                                  'with a thermal model from TES and MOLA data.'),
-        ('mars', 'temp_yearly'): (lambda: mars_temp('yearly'), dict(unit='°C', log=False, min=0, max=170), 2,
+        ('mars', 'temp_yearly'): (lambda: mars_temp('yearly'), dict(unit='°C', log=False, min=85, max=155), 2,
                                   'Hottest minus coldest moment of the whole Mars year: daily swing plus seasons. '
                                   'Calculated with a thermal model from TES and MOLA data.'),
     }
@@ -393,7 +396,8 @@ def main():
         n = write_tiles(encode(grid, scale['min'], scale['max'], scale['log']), folder, max_zoom, lat_range)
         print(f'  {n} tiles')
         index.setdefault(body, {})[layer] = {
-            **scale, 'about': about, 'pixel_km': round(pixel_km(body, 1 / deg), 1),
+            **scale, 'about': about,
+            'below_min': bool((vals < scale['min']).any()), 'above_max': bool((vals > scale['max']).any()), 'pixel_km': round(pixel_km(body, 1 / deg), 1),
             'max_zoom': max_zoom, 'format': TILE_FORMAT}
     # drop layers that no longer exist in the catalogue (e.g. the old roughness view)
     known = set(catalogue())
