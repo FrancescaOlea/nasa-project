@@ -18,6 +18,11 @@ Or by hand: `npm install`, then `npm run dev`.
   Maximum zoom is 1 km across the screen. The map doesn't repeat sideways.
 - On the Moon and Mars, click anywhere to select an area; its coordinates show in the panel.
   Click elsewhere to move it.
+- **Area summary** (top right, appears with a selection): every characteristic's typical value
+  over the whole circle - the area-weighted median - plus its 10th-90th percentile range. Rows
+  marked "regional value" use data coarser than the circle. Click a row to show that view.
+  The tiles store each layer's full value range, so these are real values, not clipped to the
+  colour scale.
 - **☰ View** (Moon and Mars): show one coloured data layer over the map (blue = low, red = high,
   with a legend). See *Map views* below for what's available on each body.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**

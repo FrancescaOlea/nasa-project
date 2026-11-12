@@ -17,7 +17,7 @@ export const VIEWS = {
   slope: { name: 'Terrain slope', short: 'Slope' },
   surface: { name: 'Dusty or rocky terrain', short: 'Dust / rock' },
   iron: { name: 'Minerals: iron content', short: 'Iron' },
-  ice: { name: 'Underground ice', short: 'Ice' },
+  ice: { name: 'Underground ice', short: 'Underground ice' },
   temperature: { name: 'Temperature', short: 'Temperature' },
   temp_range: { name: 'Daily temperature variation', short: 'Daily temp. swing' },
   temp_yearly: { name: 'Maximum temperature variation', short: 'Yearly temp. range' },
@@ -45,16 +45,35 @@ function colourAt(t) {
   }
   return STOPS[STOPS.length - 1][1];
 }
-// Lookup table: tile value (0..255) -> RGBA
-const LUT = new Uint8ClampedArray(256 * 4);
-for (let v = 1; v < 256; v++) {
-  LUT.set([...colourAt((v - 1) / 254), 255], v * 4);
+// Tile values 1..255 cover the layer's full data range (enc_min..enc_max, linear or
+// log); 0 never occurs. decode() turns a tile value back into real units.
+export function decode(meta, code) {
+  const lo = meta.enc_min ?? meta.min;
+  const hi = meta.enc_max ?? meta.max;
+  const t = (code - 1) / 254;
+  if (meta.log) return 10 ** (Math.log10(lo) + t * (Math.log10(hi) - Math.log10(lo)));
+  return lo + t * (hi - lo);
+}
+
+// Lookup table per layer: tile value -> RGBA, using the layer's colour range (min..max).
+// Entry 0 stays fully transparent (used to cut layers at their latitude limits).
+const luts = new WeakMap();
+function lutFor(meta) {
+  if (!luts.has(meta)) {
+    const lut = new Uint8ClampedArray(256 * 4);
+    for (let v = 1; v < 256; v++) {
+      const t = Math.min(1, Math.max(0, position(meta, decode(meta, v))));
+      lut.set([...colourAt(t), 255], v * 4);
+    }
+    luts.set(meta, lut);
+  }
+  return luts.get(meta);
 }
 export const GRADIENT_CSS = `linear-gradient(to right, ${STOPS.map(([t, c]) => `rgb(${c}) ${t * 100}%`).join(', ')})`;
 
 // Decoded data tiles, shared between zoom levels (small cache).
 const images = new Map();
-function loadImage(url) {
+export function loadImage(url) {
   if (!images.has(url)) {
     if (images.size > 400) images.delete(images.keys().next().value);
     images.set(url, new Promise((resolve, reject) => {
@@ -85,7 +104,7 @@ const DataTiles = L.GridLayer.extend({
       const data = ctx.getImageData(0, 0, 256, 256);
       const px = data.data;
       // Layers covering only part of the globe are cut at a clean latitude line.
-      const { latMin, latMax } = this.options;
+      const { latMin, latMax, lut: LUT } = this.options;
       const degPerRow = 180 / 2 ** coords.z / 256;
       for (let r = 0; r < 256; r++) {
         const lat = 90 - (coords.y * 256 + r + 0.5) * degPerRow;
@@ -111,6 +130,7 @@ export function createOverlay(body, view, meta, pane) {
     pane,
     opacity: OVERLAY_OPACITY,
     nativeZoom: meta.max_zoom, // deepest level that has its own data tiles
+    lut: lutFor(meta),
     maxZoom: 30,
     noWrap: true,
     bounds: [[-90, -180], [90, 180]],
@@ -141,7 +161,7 @@ function ticks(meta) {
   return out;
 }
 
-function position(meta, v) {
+export function position(meta, v) {
   if (meta.log) return (Math.log10(v) - Math.log10(meta.min)) / (Math.log10(meta.max) - Math.log10(meta.min));
   return (v - meta.min) / (meta.max - meta.min);
 }

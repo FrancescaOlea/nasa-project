@@ -70,6 +70,18 @@
         </div>
       </aside>
 
+      <!-- Typical values of every characteristic over the selected area -->
+      <aside id="area-panel" class="panel area-panel" hidden aria-live="polite">
+        <div class="panel-head">
+          <span class="eyebrow">Area summary</span>
+          <button id="area-collapse" class="icon-btn" aria-expanded="true" aria-label="Collapse area summary">&minus;</button>
+        </div>
+        <p id="area-sub" class="sub"></p>
+        <div id="area-rows" class="area-rows"></div>
+        <p class="area-note">Typical value = median over the whole area (half is above, half below);
+          range = 10th–90th percentile. Click a row to show it on the map.</p>
+      </aside>
+
       <!-- Shown on the Earth map when it was opened from "Find Earth analogs" -->
       <aside id="analog-banner" class="panel banner" hidden>
         <span class="eyebrow">Earth analogs for</span>

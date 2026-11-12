@@ -5,7 +5,8 @@ import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe } from './globes.js';
 import { drawStarfield } from './starfield.js';
-import { VIEWS, loadIndex, createOverlay, legendHtml } from './overlays.js';
+import { VIEWS, loadIndex, createOverlay, legendHtml, position, GRADIENT_CSS } from './overlays.js';
+import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { addLandmarks } from './landmarks.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -82,6 +83,19 @@ function viewWidthKm(body) {
   const b = map.getBounds();
   const degrees = Math.min(b.getEast() - b.getWest(), 360);
   return (degrees / 360) * circumferenceKm(body) * Math.cos((map.getCenter().lat * Math.PI) / 180);
+}
+
+// A characteristic's value with sensible precision for its unit.
+function formatValue(meta, v, withUnit = true) {
+  const u = meta.unit;
+  let text;
+  if (u === 'km') text = v.toFixed(Math.abs(v) < 10 ? 2 : 1);
+  else if (u === '°C' || u === 'TIU') text = String(Math.round(v));
+  else if (u === '°' || u === '%') text = v < 1 ? v.toFixed(2) : v < 10 ? v.toFixed(1) : String(Math.round(v));
+  else text = v.toPrecision(3);
+  text = text.replace('-', '−');
+  if (!withUnit) return text;
+  return u === '°' || u === '%' ? `${text}${u}` : `${text} ${u}`;
 }
 
 function formatKm(km) {
@@ -170,6 +184,16 @@ function setUpSelection(key, body, params) {
   let view = VIEWS[params.get('view')] ? params.get('view') : null;
   let weights = parseWeights(params.get('w')); // last weights chosen for this site
   let available = {};                          // data layers for this body (from index.json)
+  let describe = () => {};
+  function selectView(v) {
+    view = v;
+    showView();
+    describe();
+    saveToUrl();
+    document.querySelectorAll('#view-options input').forEach((input, i) => {
+      input.checked = (i === 0 && !v) || input.dataset.view === v;
+    });
+  }
 
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
@@ -231,7 +255,7 @@ function setUpSelection(key, body, params) {
     const options = [[null, { name: 'None', short: 'None', about: 'Just the imagery, no data layer.' }],
       ...Object.entries(VIEWS).filter(([v]) => available[v])
         .map(([v, info]) => [v, { ...info, about: available[v].about }])];
-    const describe = () => {
+    describe = () => {
       const info = options.find(([v]) => v === view)?.[1] ?? options[0][1];
       $('view-about').textContent = info.about;
     };
@@ -242,16 +266,21 @@ function setUpSelection(key, body, params) {
       label.innerHTML = '<input type="radio" name="view"><span></span>';
       label.querySelector('span').textContent = info.short;
       const input = label.querySelector('input');
+      input.dataset.view = v ?? '';
       input.checked = v === view;
-      input.onchange = () => { view = v; showView(); describe(); saveToUrl(); };
+      input.onchange = () => selectView(v);
       return label;
     }));
     describe();
     if (view && !available[view]) view = null;
     showView();
+    updateSummary();
   });
 
   function showView() {
+    document.querySelectorAll('.area-row').forEach((row, i) => {
+      row.classList.toggle('active', Object.keys(VIEWS).filter((v) => available[v])[i] === view);
+    });
     if (overlay) { overlay.remove(); overlay = null; }
     legend.remove();
     if (!view) return;
@@ -260,6 +289,59 @@ function setUpSelection(key, body, params) {
     legend.addTo(map);
     legend.getContainer().innerHTML = legendHtml(view, meta);
   }
+
+  // ---- Area summary: typical value of every characteristic over the circle
+  let summaryToken = 0;
+  async function updateSummary() {
+    const panel = $('area-panel');
+    if (!current || !Object.keys(available).length) { panel.hidden = true; return; }
+    panel.hidden = false;
+    $('area-sub').textContent = `${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius`;
+    const token = ++summaryToken;
+    const layers = Object.keys(VIEWS).filter((v) => available[v]);
+    const rows = layers.map((v) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'area-row';
+      row.innerHTML = '<span class="swatch"></span><span class="a-name"></span><span class="a-val">…</span><span class="a-range"></span>';
+      row.querySelector('.a-name').textContent = VIEWS[v].name;
+      row.title = `Show ${VIEWS[v].name} on the map`;
+      row.onclick = () => selectView(v);
+      row.classList.toggle('active', v === view);
+      return row;
+    });
+    $('area-rows').replaceChildren(...rows);
+    const { lat, lon } = current;
+    await Promise.all(layers.map(async (v, i) => {
+      const meta = available[v];
+      const res = await summarize(key, v, meta, lat, lon, radiusKm, body.radiusKm);
+      if (token !== summaryToken) return; // a newer selection has started
+      const row = rows[i];
+      if (res.none) {
+        row.querySelector('.a-val').textContent = 'no data here';
+        row.classList.add('none');
+        return;
+      }
+      row.querySelector('.a-val').textContent = formatValue(meta, res.median);
+      const lo = formatValue(meta, res.p10, false);
+      const hi = formatValue(meta, res.p90, false);
+      const spread = lo === hi ? 'uniform' : `${lo} – ${formatValue(meta, res.p90)}`;
+      const regional = meta.pixel_km > 2 * radiusKm ? ` · regional value (~${Math.round(meta.pixel_km)} km data)` : '';
+      row.querySelector('.a-range').textContent = `range ${spread}${regional}`;
+      const t = Math.min(1, Math.max(0, position(meta, res.median)));
+      row.querySelector('.swatch').style.background = GRADIENT_CSS;
+      row.querySelector('.swatch').style.backgroundSize = '2000% 100%';
+      row.querySelector('.swatch').style.backgroundPosition = `${t * 100}% 0`;
+    }));
+  }
+  const setCollapsed = (collapsed) => {
+    $('area-panel').classList.toggle('collapsed', collapsed);
+    $('area-collapse').setAttribute('aria-expanded', !collapsed);
+    $('area-collapse').setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} area summary`);
+    $('area-collapse').innerHTML = collapsed ? '&plus;' : '&minus;';
+  };
+  setCollapsed(window.innerWidth < 600); // phones: start as a single bar, tap to open
+  $('area-collapse').onclick = () => setCollapsed(!$('area-panel').classList.contains('collapsed'));
 
   // ---- Selection
   // fit: 'always' (restoring a saved selection), 'if-hidden' (radius changed), or none (a click).
@@ -285,6 +367,7 @@ function setUpSelection(key, body, params) {
     $('toast').hidden = true;
     draw(opts);
     saveToUrl();
+    updateSummary();
   }
 
   function clear() {
@@ -294,6 +377,7 @@ function setUpSelection(key, body, params) {
     $('select-hint').hidden = false;
     $('select-info').hidden = true;
     saveToUrl();
+    updateSummary();
   }
 
   // Radius buttons (in the selection panel, bottom right)
@@ -308,6 +392,7 @@ function setUpSelection(key, body, params) {
       markChosen();
       if (current) draw({ fit: 'if-hidden' });
       saveToUrl();
+      updateSummary();
     };
     return btn;
   }));
@@ -368,7 +453,7 @@ function showAnalogBanner(params) {
 }
 
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn']) $(id).hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel']) $(id).hidden = true;
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
   $('select-info').hidden = true;

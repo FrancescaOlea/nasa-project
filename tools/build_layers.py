@@ -13,7 +13,7 @@ NASA / PDS data, as 8-bit data tiles the web app colours in the browser.
   surface      LRO Diviner rock abundance, 32 ppd     MGS TES night thermal inertia, 20 ppd
 
 Output (served from public/overlays/):
-  {body}/{layer}/{z}/{y}/{x}.webp   value 0 = no data, 1..255 = position on the scale
+  {body}/{layer}/{z}/{y}/{x}.webp   1..255 = position between enc_min and enc_max (linear or log)
   index.json                        scale, units and description of every layer
 
 Run:  python3 tools/build_layers.py               all layers (downloads ~3.6 GB into data/raw/)
@@ -392,12 +392,17 @@ def main():
         if os.path.isdir(folder):
             for f in glob.glob(os.path.join(folder, '**', '*.*'), recursive=True):
                 os.remove(f)
+        # Tiles store the layer's *full* value range (enc_min..enc_max), so the area
+        # summary can read real values; the browser applies the colour range (min..max).
+        enc_min = float(np.nanmin(vals[vals > 0])) if scale['log'] else float(np.nanmin(vals))
+        enc_max = float(np.nanmax(vals))
         lat_range = (scale.get('lat_min', -90), scale.get('lat_max', 90))
-        n = write_tiles(encode(grid, scale['min'], scale['max'], scale['log']), folder, max_zoom, lat_range)
+        n = write_tiles(encode(grid, enc_min, enc_max, scale['log']), folder, max_zoom, lat_range)
         print(f'  {n} tiles')
         index.setdefault(body, {})[layer] = {
             **scale, 'about': about,
-            'below_min': bool((vals < scale['min']).any()), 'above_max': bool((vals > scale['max']).any()), 'pixel_km': round(pixel_km(body, 1 / deg), 1),
+            'below_min': bool((vals < scale['min']).any()), 'above_max': bool((vals > scale['max']).any()),
+            'enc_min': round(enc_min, 6), 'enc_max': round(enc_max, 6), 'pixel_km': round(pixel_km(body, 1 / deg), 1),
             'max_zoom': max_zoom, 'format': TILE_FORMAT}
     # drop layers that no longer exist in the catalogue (e.g. the old roughness view)
     known = set(catalogue())

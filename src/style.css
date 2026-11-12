@@ -83,7 +83,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .panel .chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; }
 
 /* ---- Options menu ---- */
-.drawer { top: 70px; left: 12px; right: auto; bottom: auto; width: min(320px, calc(100% - 24px));
+.drawer { z-index: 1002; top: 70px; left: 12px; right: auto; bottom: auto; width: min(320px, calc(100% - 24px));
   max-height: calc(100% - 80px); overflow-y: auto; }
 .drawer-title { font-weight: 600; font-size: 1rem; }
 .menu-section { margin-top: .75rem; padding-top: .7rem; border-top: 1px solid #333; }
@@ -195,3 +195,24 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   font-variant-numeric: tabular-nums; }
 .panel .radius-chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; font-weight: 600; }
 .legend, .zoom-readout, .map-settings { box-sizing: border-box; }
+
+/* ---- Area summary ---- */
+.area-panel { top: 70px; right: 70px; bottom: auto; width: min(360px, calc(100% - 24px));
+  max-height: calc(100% - 90px - var(--panel-h, 0px)); overflow-y: auto; }
+.area-panel .sub { margin-top: .15rem !important; }
+.area-rows { display: flex; flex-direction: column; margin-top: .55rem; }
+.area-panel.collapsed .area-rows, .area-panel.collapsed .area-note, .area-panel.collapsed .sub { display: none; }
+.panel .area-row { display: grid; grid-template-columns: 10px 1fr auto; grid-template-rows: auto auto; gap: 0 .55rem;
+  align-items: center; width: 100%; padding: .42rem .45rem; border: 0; border-radius: 6px; background: none;
+  text-align: left; font-size: .86rem; color: #ddd; }
+.panel .area-row:hover { background: #22222a; }
+.panel .area-row.active { background: rgba(127,212,255,.12); }
+.area-row .swatch { grid-row: 1 / span 2; width: 10px; height: 28px; border-radius: 3px; background: #333; }
+.area-row .a-name { font-weight: 500; }
+.area-row .a-val { font-weight: 700; font-variant-numeric: tabular-nums; color: #fff; text-align: right; white-space: nowrap; }
+.area-row .a-range { grid-column: 2 / span 2; color: #8d8d96; font-size: .74rem; font-variant-numeric: tabular-nums; }
+.area-row.none .a-val { font-weight: 400; color: #888; }
+.area-note { margin-top: .5rem !important; color: #7d7d86; font-size: .72rem; line-height: 1.4; }
+@media (max-width: 600px) {
+  .area-panel { top: 118px; left: 12px; right: 12px; width: auto; max-height: 30vh; }
+}
