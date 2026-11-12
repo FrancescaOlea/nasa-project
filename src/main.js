@@ -5,11 +5,14 @@ import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe, globesReady } from './globes.js';
 import { drawStarfield } from './starfield.js';
-import { VIEWS, loadIndex, createOverlay, legendHtml, position, GRADIENT_CSS } from './overlays.js';
+import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, GRADIENT_CSS } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { addLandmarks } from './landmarks.js';
 import moonTexture from './assets/moon-texture.jpg';
+import iconEarth from './assets/icon-earth.png';
+import iconMoon from './assets/icon-moon.png';
+import iconMars from './assets/icon-mars.png';
 import marsTexture from './assets/mars-texture.jpg';
 
 const home = document.getElementById('home');
@@ -169,7 +172,8 @@ function openMap(key, params) {
   });
 
   if (body.selectable) setUpSelection(key, body, params);
-  if (key === 'earth' && BODIES[params.get('from')]) showAnalogBanner(params);
+  if (key === 'earth' && params.has('site')) showAnalogBanner(params);
+  setUpWorldSwitch(key, params);
 }
 
 // ---- Menu, views and area selection (Moon and Mars) -------------------------
@@ -197,18 +201,25 @@ function setUpSelection(key, body, params) {
 
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
+  // Earth keeps where it was opened from (and an analog search's site) in its address
+  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w'].filter((k) => params.has(k)) : [];
   function query() {
     const q = new URLSearchParams();
+    for (const k of keep) q.set(k, params.get(k));
     if (current) { q.set('lat', current.lat.toFixed(4)); q.set('lon', current.lon.toFixed(4)); }
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
-    if (Object.keys(weights).length) q.set('w', formatWeights(weights));
+    if (key !== 'earth' && Object.keys(weights).length) q.set('w', formatWeights(weights));
     return q.toString();
   }
   const saveToUrl = () => {
     const q = query();
     history.replaceState(null, '', `#/${key}${q ? `?${q}` : ''}`);
+    if (key !== 'earth') lastPage[key] = location.hash; // so 'Back to Mars view' restores it
   };
+  saveToUrl();
+  // No analog search from Earth itself
+  document.querySelector('#select-info .actions').hidden = key === 'earth';
 
   // ---- Menu drawer
   const menu = $('menu');
@@ -328,7 +339,7 @@ function setUpSelection(key, body, params) {
       const spread = lo === hi ? 'uniform' : `${lo} – ${formatValue(meta, res.p90)}`;
       const regional = meta.pixel_km > 2 * radiusKm ? ` · regional value (~${Math.round(meta.pixel_km)} km data)` : '';
       row.querySelector('.a-range').textContent = `range ${spread}${regional}`;
-      const t = Math.min(1, Math.max(0, position(meta, res.median)));
+      const t = colourPos(meta, res.median);
       row.querySelector('.swatch').style.background = GRADIENT_CSS;
       row.querySelector('.swatch').style.backgroundSize = '2000% 100%';
       row.querySelector('.swatch').style.backgroundPosition = `${t * 100}% 0`;
@@ -419,7 +430,10 @@ function setUpSelection(key, body, params) {
     return true;
   }
   $('find-analogs').onclick = async () => {
-    if (await chooseWeights('analogs')) location.hash = `#/earth?from=${key}&${query()}`;
+    if (!(await chooseWeights('analogs'))) return;
+    const site = new URLSearchParams({ from: key, site: `${current.lat.toFixed(4)},${current.lon.toFixed(4)}`,
+      sr: radiusKm, w: formatWeights(weights) });
+    location.hash = `#/earth?${site}`;
   };
   $('find-similar').onclick = async () => {
     if (await chooseWeights('similar')) $('toast').hidden = false; // search not built yet
@@ -433,10 +447,10 @@ function setUpSelection(key, body, params) {
 // ---- Earth page opened from "Find Earth analogs" -----------------------------
 
 function showAnalogBanner(params) {
-  const from = params.get('from');
-  const lat = parseFloat(params.get('lat'));
-  const lon = parseFloat(params.get('lon'));
-  const r = parseFloat(params.get('r')) || DEFAULT_RADIUS_KM;
+  const from = BODIES[params.get('from')] ? params.get('from') : 'mars';
+  const [lat, lon] = (params.get('site') ?? '').split(',').map(Number);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  const r = parseFloat(params.get('sr')) || DEFAULT_RADIUS_KM;
   $('analog-source').textContent = `${BODIES[from].name} · ${formatLatLon(lat, lon)}`;
   $('analog-radius').textContent = `Area: ${r} km radius`;
   const w = Object.entries(parseWeights(params.get('w'))).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
@@ -445,15 +459,35 @@ function showAnalogBanner(params) {
     ? `Weights: ${w.map(([k, v]) => `${VIEWS[k].name} ${Math.round((v / total) * 100)}%`).join(' · ')}`
     : '';
   $('back-to-site').onclick = () => {
-    const back = new URLSearchParams(params);
-    back.delete('from');
-    location.hash = `#/${from}?${back}`;
+    location.hash = lastPage[from] ?? `#/${from}?lat=${lat}&lon=${lon}&r=${r}&w=${params.get('w') ?? ''}`;
   };
   $('analog-banner').hidden = false;
 }
 
+// ---- Earth <-> Moon/Mars switch (top right) ---------------------------------
+
+// The last address of each Moon/Mars map, so switching back restores its view and selection.
+const lastPage = {};
+const ICONS = { earth: iconEarth, moon: iconMoon, mars: iconMars };
+
+function setUpWorldSwitch(key, params) {
+  const btn = $('switch-world');
+  // From the Moon/Mars: go to Earth. From Earth: back to where it was opened from.
+  const target = key === 'earth' ? (BODIES[params.get('from')] ? params.get('from') : 'mars') : 'earth';
+  btn.querySelector('img').src = ICONS[target];
+  const name = BODIES[target].name;
+  btn.querySelector('.sw-text').innerHTML = key === 'earth'
+    ? `<span class="sw-long">Back to </span>${name}<span class="sw-long"> view</span>`
+    : `${name}<span class="sw-long"> view</span>`;
+  btn.setAttribute('aria-label', key === 'earth' ? `Back to ${name} view` : `${name} view`);
+  btn.onclick = () => {
+    location.hash = key === 'earth' ? (lastPage[target] ?? `#/${target}`) : `#/earth?from=${key}`;
+  };
+  btn.hidden = false;
+}
+
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel']) $(id).hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world']) $(id).hidden = true;
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
   $('select-info').hidden = true;
@@ -469,7 +503,9 @@ function showHome() {
 //   #/mars                          Mars map
 //   #/mars?lat=18.44&lon=77.45&r=10       Mars map with a 10 km-radius area selected
 //   #/mars?view=slope                     Mars map showing the slope overlay
-//   #/earth?from=mars&lat=..&lon=..&r=..  Earth map, looking for analogs of that area
+//   #/earth?from=mars                     Earth map, opened from Mars (switch button goes back)
+//   #/earth?from=mars&site=lat,lon&sr=10&w=..  Earth map, looking for analogs of a Mars area
+//   (Earth's own selection and view use lat/lon/r/view like the other maps)
 function route() {
   const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   if (map) { map.remove(); map = null; }

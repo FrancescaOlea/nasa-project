@@ -15,6 +15,7 @@ const trek = (path, ext) => `${TREK}/${path}/1.0.0/default/default028mm/{z}/{y}/
 export const BODIES = {
   earth: {
     name: 'Earth',
+    selectable: true, // select an area (no analog search from Earth)
     crs: 'EPSG3857', // standard web map projection
     radiusKm: 6371.0,
     layers: [{

@@ -23,6 +23,11 @@ Or by hand: `npm install`, then `npm run dev`.
   marked "regional value" use data coarser than the circle. Click a row to show that view.
   The tiles store each layer's full value range, so these are real values, not clipped to the
   colour scale.
+- **Earth view / Back to Mars (Moon) view** (top right): switch between Earth and the Moon or
+  Mars. Going back restores the Moon/Mars map exactly as you left it.
+- **Earth** has its own views, area selection and area summary (no analog search from Earth):
+  elevation, slope, daily temperature swing, maximum and minimum temperature, dryness (yearly
+  rainfall; red = driest) and UV radiation. Oceans are transparent.
 - **☰ View** (Moon and Mars): show one coloured data layer over the map (blue = low, red = high,
   with a legend). See *Map views* below for what's available on each body.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
@@ -66,6 +71,22 @@ both share one colour range, so the same colour means the same value on each.
 
 On the Moon (1.5 deg axial tilt) the maximum variation is essentially the daily variation, and
 Diviner's archived product holds per-time-of-day averages, not all-time extremes, so it isn't added.
+
+### Earth data
+
+| View | Source | Detail |
+|---|---|---|
+| Elevation, slope | NOAA ETOPO 2022, 60 arc-seconds (from NASA SRTM and other data); slope at the same ~1.9 km scale as the Moon and Mars | ~2-4 km |
+| Max. / min. temperature, daily swing | NASA POWER `TS_MAX`, `TS_MIN`, `TS_RANGE`: **ground-surface** ("skin") temperature, long-term monthly averages. Max = hottest month's average daily maximum, min = coldest month's average daily minimum, swing = yearly mean | ~50 km |
+| Dryness | NASA POWER `PRECTOTCORR` (MERRA-2 / GPM), yearly total; colour scale reversed so red = driest | ~50 km |
+| UV radiation | NASA POWER `ALLSKY_SFC_UV_INDEX` (CERES), UV index averaged over day and night incl. clouds | ~100 km |
+
+Surface (not air) temperatures are used so Earth compares with the Moon and Mars surface maps.
+The land mask comes from ETOPO: below-sea-level areas count as water only if bigger than
+50,000 km2, so Death Valley, the Dead Sea shore and the Qattara Depression stay land. Earth tiles
+are Web Mercator (to match the satellite basemap) with the ocean in a lossless alpha channel.
+Download the climate data with `python3 tools/fetch_power.py` (cached, resumable), then build
+with `python3 tools/build_layers.py earth`.
 
 ### Mars temperatures: a thermal model
 
@@ -118,5 +139,6 @@ Mars has slopes under 0.6 deg, 99% under 13 deg): logarithmic, otherwise most of
 The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value -> real units in
 `index.json`); the browser colours them. To rebuild (downloads ~3.6 GB into `data/raw/`):
 
-    pip install numpy scipy pandas pillow numba
+    pip install numpy scipy pandas pillow numba tifffile imagecodecs
+    python3 tools/fetch_power.py               # Earth climate (NASA POWER), ~10 min
     python3 tools/build_layers.py              # or e.g.: python3 tools/build_layers.py mars iron

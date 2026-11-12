@@ -1,9 +1,9 @@
-// Coloured data overlays (terrain slope, roughness, ...) drawn over a map.
+// Coloured data overlays (elevation, slope, temperature, ...) drawn over a map.
 //
-// The data comes as 8-bit grayscale tiles made by tools/build_terrain.py:
-// value 0 = no data, 1..255 = position between `min` and `max` on a linear
-// or logarithmic scale (described in public/overlays/index.json). The browser
-// turns those values into colours, low = blue, high = red.
+// The data comes as 8-bit tiles made by tools/build_layers.py: grey value 1..255 =
+// position between enc_min and enc_max (linear or log, see public/overlays/index.json);
+// alpha = where there is data (Earth's oceans are transparent). The browser turns the
+// values into colours: low = blue, high = red (or the reverse, e.g. for dryness).
 import L from 'leaflet';
 
 const BASE = `${import.meta.env.BASE_URL}overlays`;
@@ -21,6 +21,10 @@ export const VIEWS = {
   temperature: { name: 'Temperature', short: 'Temperature' },
   temp_range: { name: 'Daily temperature variation', short: 'Daily temp. swing' },
   temp_yearly: { name: 'Maximum temperature variation', short: 'Yearly temp. range' },
+  temp_max: { name: 'Maximum temperature', short: 'Max. temperature' },
+  temp_min: { name: 'Minimum temperature', short: 'Min. temperature' },
+  dryness: { name: 'Dryness (yearly rainfall)', short: 'Dryness' },
+  uv: { name: 'UV radiation', short: 'UV radiation' },
 };
 
 let indexPromise = null;
@@ -62,7 +66,7 @@ function lutFor(meta) {
   if (!luts.has(meta)) {
     const lut = new Uint8ClampedArray(256 * 4);
     for (let v = 1; v < 256; v++) {
-      const t = Math.min(1, Math.max(0, position(meta, decode(meta, v))));
+      const t = colourPos(meta, decode(meta, v));
       lut.set([...colourAt(t), 255], v * 4);
     }
     luts.set(meta, lut);
@@ -103,15 +107,19 @@ const DataTiles = L.GridLayer.extend({
       ctx.drawImage(img, (coords.x % n) * size, (coords.y % n) * size, size, size, 0, 0, 256, 256);
       const data = ctx.getImageData(0, 0, 256, 256);
       const px = data.data;
-      // Layers covering only part of the globe are cut at a clean latitude line.
-      const { latMin, latMax, lut: LUT } = this.options;
-      const degPerRow = 180 / 2 ** coords.z / 256;
+      // Layers covering only part of the globe are cut at a clean latitude line;
+      // the tile's own alpha marks where there's no data at all (Earth's oceans).
+      const { latMin, latMax, lut: LUT, mercator } = this.options;
+      const rows = 256 * 2 ** coords.z;
       for (let r = 0; r < 256; r++) {
-        const lat = 90 - (coords.y * 256 + r + 0.5) * degPerRow;
+        const y = (coords.y * 256 + r + 0.5) / rows; // 0 = top of the map, 1 = bottom
+        const lat = mercator ? (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI : 90 - y * 180;
         const inside = lat >= latMin && lat <= latMax;
         for (let i = r * 1024, end = i + 1024; i < end; i += 4) {
-          const v = inside ? px[i] * 4 : 0; // LUT entry 0 is fully transparent
-          px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2]; px[i + 3] = LUT[v + 3];
+          const a = px[i + 3];
+          const v = inside && a > 0 ? px[i] * 4 : 0; // LUT entry 0 is fully transparent
+          px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2];
+          px[i + 3] = (LUT[v + 3] * a) / 255;
         }
       }
       ctx.putImageData(data, 0, 0);
@@ -131,6 +139,7 @@ export function createOverlay(body, view, meta, pane) {
     opacity: OVERLAY_OPACITY,
     nativeZoom: meta.max_zoom, // deepest level that has its own data tiles
     lut: lutFor(meta),
+    mercator: meta.crs === 'EPSG3857',
     maxZoom: 30,
     noWrap: true,
     bounds: [[-90, -180], [90, 180]],
@@ -139,26 +148,27 @@ export function createOverlay(body, view, meta, pane) {
 
 // Tick values for the legend.
 function ticks(meta) {
+  const inner = [];
   if (meta.log) {
-    const out = [];
     for (let e = Math.floor(Math.log10(meta.min)); 10 ** e <= meta.max; e++) {
-      const v = Number((10 ** e).toPrecision(2)); // powers of ten only, so labels don't crowd
-      if (v >= meta.min && v <= meta.max) out.push(v);
+      inner.push(Number((10 ** e).toPrecision(2))); // powers of ten only, so labels don't crowd
     }
-    // label both ends of the scale too, unless a tick is already close
-    if (position(meta, out[0]) - position(meta, meta.min) > 0.1) out.unshift(meta.min);
-    if (position(meta, meta.max) - position(meta, out[out.length - 1]) > 0.12) out.push(meta.max);
-    return out;
+  } else {
+    // linear: a "nice" step giving about 4 labels
+    const span = meta.max - meta.min;
+    const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500].find((st) => span / st <= 4) ?? span;
+    for (let v = Math.ceil(meta.min / step) * step; v <= meta.max + 1e-9; v += step) inner.push(Number(v.toPrecision(6)));
   }
-  // linear: a "nice" step giving 4-6 labels
-  const span = meta.max - meta.min;
-  const step = [1, 2, 2.5, 5, 10, 20, 25, 50, 100, 200, 250, 500].find((s) => span / s <= 4) ?? span;
-  const out = [];
-  for (let v = Math.ceil(meta.min / step) * step; v <= meta.max + 1e-9; v += step) out.push(Number(v.toPrecision(6)));
-  // label both ends of the scale too, unless a tick is already close
-  if (position(meta, out[0]) - position(meta, meta.min) > 0.18) out.unshift(meta.min);
-  if (position(meta, meta.max) - position(meta, out[out.length - 1]) > 0.18) out.push(meta.max);
-  return out;
+  // Always label both ends (they carry the ≤ / + markers); drop in-between labels too close to them.
+  const gap = 0.22;
+  const middle = inner.filter((v) => position(meta, v) > gap && position(meta, v) < 1 - gap);
+  return [meta.min, ...middle, meta.max];
+}
+
+// Where a value sits on the colour bar (0 = blue end, 1 = red end).
+export function colourPos(meta, v) {
+  const t = Math.min(1, Math.max(0, position(meta, v)));
+  return meta.reverse ? 1 - t : t;
 }
 
 export function position(meta, v) {
@@ -176,7 +186,7 @@ export function legendHtml(view, meta) {
     const prefix = i === 0 && v === meta.min && meta.below_min ? '≤' : '';
     const suffix = i === all.length - 1 && v === meta.max && above ? '+' : '';
     const label = `${prefix}${v}${inline ? meta.unit : ''}${suffix}`;
-    const pos = position(meta, v);
+    const pos = meta.reverse ? 1 - position(meta, v) : position(meta, v);
     // keep the end labels inside the bar instead of centred on its edge
     const align = pos < 0.06 ? 'start' : pos > 0.94 ? 'end' : '';
     return `<span class="${align}" style="left:${(pos * 100).toFixed(1)}%">${label}</span>`;

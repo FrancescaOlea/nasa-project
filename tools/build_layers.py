@@ -18,6 +18,7 @@ Output (served from public/overlays/):
 
 Run:  python3 tools/build_layers.py               all layers (downloads ~3.6 GB into data/raw/)
       python3 tools/build_layers.py mars iron     only layers matching any of the words
+      python3 tools/build_layers.py earth/slope   one body/layer pair
 Needs numpy, scipy, pandas and Pillow.
 """
 import glob
@@ -40,7 +41,7 @@ PDS = 'https://pds-geosciences.wustl.edu'
 TILE_FORMAT = 'webp'  # lossy WebP q90: half the size of PNG, error ~0.5% of the scale
 FEO_PER_FE = 71.844 / 55.845  # convert Fe weight % to FeO weight %
 
-RADIUS_KM = {'moon': 1737.4, 'mars': 3396.19}
+RADIUS_KM = {'moon': 1737.4, 'mars': 3396.19, 'earth': 6371.0}
 
 
 def fetch(url, sub=''):
@@ -264,6 +265,148 @@ def moon_temperatures():
     return fill_holes(mean), fill_holes(rng)
 
 
+
+# ---- Earth ------------------------------------------------------------------
+# Elevation/slope: NOAA ETOPO 2022, 60 arc-seconds (~1.9 km, the same scale as the
+# Moon/Mars slope maps). Climate: NASA POWER long-term monthly averages (0.5 x 0.625 deg),
+# ground-surface ("skin") temperatures so they compare with the Moon/Mars surface maps.
+# Earth's map uses Web Mercator, so its tiles are built in that projection, with the
+# ocean as a transparent alpha channel (alpha survives WebP compression exactly).
+
+EARTH_RAW = os.path.join(RAW, 'earth')
+ETOPO_URL = ('https://www.ngdc.noaa.gov/mgg/global/relief/ETOPO2022/data/60s/60s_surface_elev_gtif/'
+             'ETOPO_2022_v1_60s_N90W180_surface.tif')
+_earth = {}
+
+
+def earth_dem_full():
+    """ETOPO elevation (m), 1 arc-minute, rows 90N -> 90S, columns 180W -> 180E."""
+    if 'full' not in _earth:
+        cache = os.path.join(EARTH_RAW, 'etopo.npy')
+        if not os.path.exists(cache):
+            import tifffile
+            path = fetch(ETOPO_URL, 'earth')
+            np.save(cache, tifffile.imread(path).astype(np.float32))
+        _earth['full'] = np.load(cache, mmap_mode='r')
+    return _earth['full']
+
+
+def block_mean(a, f):
+    h, w = a.shape
+    return np.asarray(a, dtype=np.float32).reshape(h // f, f, w // f, f).mean(axis=(1, 3))
+
+
+def earth_land():
+    """Land mask on a 2 arc-minute grid. Below-sea-level areas count as water only if they
+    are big (> 50,000 km2: oceans, Caspian, Black Sea...); small dry depressions such as
+    Death Valley, the Dead Sea shore or the Qattara Depression stay land."""
+    if 'land' not in _earth:
+        dem = block_mean(earth_dem_full(), 2)
+        below = dem < 0
+        labels, n = ndimage.label(below)
+        lat = 90 - (np.arange(dem.shape[0]) + 0.5) / 30
+        cell_km2 = (pixel_km('earth', 30) ** 2) * np.cos(np.radians(lat))
+        area = ndimage.sum(np.broadcast_to(cell_km2[:, None], dem.shape), labels, index=np.arange(1, n + 1))
+        water_ids = np.nonzero(area > 50_000)[0] + 1
+        _earth['land'] = ~np.isin(labels, water_ids)
+        _earth['dem2'] = dem
+    return _earth['land']
+
+
+def earth_elevation():
+    land = earth_land()
+    return np.where(land, _earth['dem2'] / 1000, np.nan), 1 / 30
+
+
+def earth_slope():
+    land = earth_land()
+    s = slope_deg(np.asarray(earth_dem_full(), dtype=np.float32), 60, RADIUS_KM['earth'])
+    return np.where(land, block_mean(s, 2), np.nan), 1 / 30
+
+
+POWER_DIR = os.path.join(RAW, 'power')
+
+
+def power_grid(param, how):
+    """NASA POWER monthly climatology -> one value per point (how: 'max', 'min' or 'mean'
+    of the 12 months), on its own grid (0.5 x 0.625 deg, or 1 deg for UV), then smoothly
+    onto the 2 arc-minute land-mask grid."""
+    files = glob.glob(os.path.join(POWER_DIR, param, '*.json'))
+    if len(files) < 648:
+        raise SystemExit(f'{param}: only {len(files)}/648 boxes downloaded - run tools/fetch_power.py')
+    months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+    points = {}
+    for f in files:
+        with open(f) as fh:
+            for feat in json.load(fh)['features']:
+                lon, lat = feat['geometry']['coordinates'][:2]
+                vals = np.array([feat['properties']['parameter'][param][m] for m in months], dtype=float)
+                vals[vals < -900] = np.nan  # POWER's fill value
+                points[(round(lat, 4), round(lon, 4))] = {'max': np.nanmax, 'min': np.nanmin, 'mean': np.nanmean}[how](vals)
+    # each parameter comes on its own grid (e.g. 0.5 x 0.625 deg, or 1 deg for UV): use it as is
+    lat_axis = np.array(sorted({k[0] for k in points}))
+    lon_axis = np.array(sorted({k[1] for k in points}))
+    li = {v: i for i, v in enumerate(lat_axis)}
+    lo = {v: i for i, v in enumerate(lon_axis)}
+    g = np.full((lat_axis.size, lon_axis.size), np.nan)
+    for (la, ln), v in points.items():
+        g[li[la], lo[ln]] = v
+    from scipy.interpolate import RegularGridInterpolator
+    interp = RegularGridInterpolator((lat_axis, lon_axis), g, bounds_error=False, fill_value=None)
+    # interpolate onto the 2 arc-minute land-mask grid so coastlines stay crisp
+    # (the values themselves are ~50 km data and stay smooth)
+    land = earth_land()
+    h, w = land.shape
+    lat_t = 90 - (np.arange(h) + 0.5) * 180 / h
+    lon_t = -180 + (np.arange(w) + 0.5) * 360 / w
+    out = np.empty((h, w), dtype=np.float32)
+    for r0 in range(0, h, 600):  # in strips, to keep memory modest
+        LA, LO = np.meshgrid(lat_t[r0:r0 + 600], lon_t, indexing='ij')
+        out[r0:r0 + 600] = interp(np.stack([LA, LO], axis=-1))
+    if param in ('TS_RANGE', 'PRECTOTCORR', 'ALLSKY_SFC_UV_INDEX'):
+        out = np.maximum(out, 0)  # can't be negative (interpolation can undershoot slightly)
+    return np.where(land, out, np.nan), 0.5
+
+
+def write_tiles_mercator(encoded, valid, folder, max_zoom):
+    """Tile pyramid in Web Mercator (EPSG:3857) from an equirectangular grid. RGBA WebP:
+    grey = value (gaps filled from the nearest data), alpha = land (exact, lossless)."""
+    if not valid.all():
+        idx = ndimage.distance_transform_edt(~valid, return_distances=False, return_indices=True)
+        encoded = encoded[tuple(idx)]
+    h, w = encoded.shape
+    vimg = Image.fromarray(encoded, 'L')
+    mimg = Image.fromarray(valid.astype(np.uint8) * 255, 'L')
+    written = 0
+    for z in range(max_zoom + 1):
+        n = 256 * 2 ** z
+        rows = min(h, 2 * n)  # pre-shrink rows when far bigger than needed (avoids aliasing)
+        rs = Image.BOX if n <= w else Image.BILINEAR
+        v = np.asarray(vimg.resize((n, rows), rs), dtype=np.float32)
+        m = np.asarray(mimg.resize((n, rows), rs), dtype=np.float32)
+        y = (np.arange(n) + 0.5) / n
+        lat = np.degrees(np.arctan(np.sinh(np.pi * (1 - 2 * y))))
+        src = np.clip((90 - lat) / 180 * rows - 0.5, 0, rows - 1)
+        i0 = np.floor(src).astype(int)
+        i1 = np.minimum(i0 + 1, rows - 1)
+        f = (src - i0)[:, None]
+        val = np.clip(np.round((1 - f) * v[i0] + f * v[i1]), 1, 255).astype(np.uint8)
+        alpha = (((1 - f) * m[i0] + f * m[i1]) >= 128).astype(np.uint8) * 255
+        for ty in range(n // 256):
+            for tx in range(n // 256):
+                sl = (slice(ty * 256, ty * 256 + 256), slice(tx * 256, tx * 256 + 256))
+                a = alpha[sl]
+                if not a.any():
+                    continue  # all ocean
+                d = os.path.join(folder, str(z), str(ty))
+                os.makedirs(d, exist_ok=True)
+                t = val[sl]
+                Image.fromarray(np.dstack([t, t, t, a]), 'RGBA').save(
+                    os.path.join(d, f'{tx}.{TILE_FORMAT}'), quality=90, method=6)
+                written += 1
+    return written
+
+
 # ---- Encoding and tiles -------------------------------------------------------
 
 def encode(values, lo, hi, log):
@@ -385,6 +528,28 @@ def catalogue():
                                   'Average surface temperature over a whole lunar day and night (Diviner, LRO).'),
         ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=190, max=300), 2,
                                  'Difference between the hottest and coldest time of a lunar day (Diviner, LRO).'),
+        # ---- Earth (Web Mercator tiles; ocean transparent)
+        ('earth', 'elevation'): (earth_elevation, dict(unit='km', log=False, min=0, max=4), 5,
+                                 'Height above sea level (NOAA ETOPO 2022, from NASA SRTM and other data).'),
+        ('earth', 'slope'): (earth_slope, SLOPE, 5,
+                             'How steep the ground is, in degrees, between points ~1.9 km apart - the same '
+                             'scale as the Moon and Mars slope maps (ETOPO 2022).'),
+        ('earth', 'temp_max'): (lambda: power_grid('TS_MAX', 'max'), dict(unit='°C', log=False, min=-10, max=60), 5,
+                                'Ground-surface temperature of the hottest month: its average daily maximum '
+                                '(NASA POWER, long-term average).'),
+        ('earth', 'temp_min'): (lambda: power_grid('TS_MIN', 'min'), dict(unit='°C', log=False, min=-80, max=20), 5,
+                                'Ground-surface temperature of the coldest month: its average daily minimum '
+                                '(NASA POWER, long-term average).'),
+        ('earth', 'temp_range'): (lambda: power_grid('TS_RANGE', 'mean'), dict(unit='°C', log=False, min=0, max=27), 5,
+                                  'Typical day-night swing of the ground-surface temperature, averaged over the '
+                                  'year (NASA POWER).'),
+        ('earth', 'dryness'): (lambda: (power_grid('PRECTOTCORR', 'mean')[0] * 365.25, 0.5),
+                               dict(unit='mm/yr', log=True, min=15, max=2500, reverse=True), 5,
+                               'Yearly rainfall: red = driest (least rain), blue = wettest (NASA POWER, '
+                               'from MERRA-2 and GPM).'),
+        ('earth', 'uv'): (lambda: power_grid('ALLSKY_SFC_UV_INDEX', 'mean'), dict(unit='UV index', log=False, min=0, max=2.5), 5,
+                          'Ultraviolet at the ground: UV index averaged over day and night, including clouds '
+                          '(NASA POWER, from CERES). Midday peaks are several times higher.'),
         # Mars temperatures are calculated (no global measured product exists), with
         # their own ranges: Mars is far milder than the Moon.
         ('mars', 'temperature'): (lambda: mars_temp('mean'), dict(unit='°C', log=False, min=-120, max=-45), 2,
@@ -408,7 +573,7 @@ def main():
             index = json.load(f)
     wanted = sys.argv[1:]
     for (body, layer), (make, scale, max_zoom, about) in catalogue().items():
-        if wanted and not ({body, layer} & set(wanted)):
+        if wanted and not ({body, layer, f'{body}/{layer}'} & set(wanted)):
             continue
         print(f'{body} {layer}')
         grid, deg = make()
@@ -421,16 +586,23 @@ def main():
                 os.remove(f)
         # Tiles store the layer's *full* value range (enc_min..enc_max), so the area
         # summary can read real values; the browser applies the colour range (min..max).
-        enc_min = float(np.nanmin(vals[vals > 0])) if scale['log'] else float(np.nanmin(vals))
+        # (log scales need a positive start: floor it at 1/1000 of the colour scale's minimum)
+        enc_min = (max(float(np.nanmin(vals[vals > 0])), scale['min'] / 1000) if scale['log']
+                   else float(np.nanmin(vals)))
         enc_max = float(np.nanmax(vals))
         lat_range = (scale.get('lat_min', -90), scale.get('lat_max', 90))
-        n = write_tiles(encode(grid, enc_min, enc_max, scale['log']), folder, max_zoom, lat_range)
+        encoded = encode(grid, enc_min, enc_max, scale['log'])
+        if body == 'earth':
+            n = write_tiles_mercator(encoded, np.isfinite(grid), folder, max_zoom)
+        else:
+            n = write_tiles(encoded, folder, max_zoom, lat_range)
         print(f'  {n} tiles')
         index.setdefault(body, {})[layer] = {
             **scale, 'about': about,
             'below_min': bool((vals < scale['min']).any()), 'above_max': bool((vals > scale['max']).any()),
-            'enc_min': round(enc_min, 6), 'enc_max': round(enc_max, 6), 'pixel_km': round(pixel_km(body, 1 / deg), 1),
-            'max_zoom': max_zoom, 'format': TILE_FORMAT}
+            'enc_min': float(f'{enc_min:.6g}'), 'enc_max': float(f'{enc_max:.6g}'), 'pixel_km': round(pixel_km(body, 1 / deg), 1),
+            'max_zoom': max_zoom, 'format': TILE_FORMAT,
+            **({'crs': 'EPSG3857'} if body == 'earth' else {})}
     # drop layers that no longer exist in the catalogue (e.g. the old roughness view)
     known = set(catalogue())
     index = {b: {l: m for l, m in layers.items() if (b, l) in known} for b, layers in index.items()}
