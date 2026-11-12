@@ -59,7 +59,7 @@ both share one colour range, so the same colour means the same value on each.
 | Terrain slope | LOLA, ~1.9 km | MOLA, ~1.9 km | log, 0.1-30 deg |
 | Dusty or rocky terrain | LRO Diviner rock abundance (% of ground covered by >1 m rocks), ~3 km, 60S-60N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km, 70S-70N | log |
 | Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 57.5S-57.5N | linear; own range per body |
-| Underground ice | *no global map product found* | Mars Odyssey HEND epithermal neutrons: % fewer neutrons than the driest ground (hydrogen, mostly ice near the poles), ~240 km | linear |
+| Underground ice | *no global map product found* | Mars Odyssey averaged neutron data (~12 Mars years): % fewer epithermal neutrons than the driest ground (hydrogen, mostly ice near the poles), ~300 km | linear |
 | Temperature | Diviner: average over a full lunar day, ~15 km | **Calculated** (see below): average over a Mars year, ~60 km | linear |
 | Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | **Calculated**: typical day-night swing | linear |
 | Maximum temperature variation | *not added* | **Calculated**: hottest minus coldest moment of the year | linear |
@@ -99,8 +99,11 @@ Mars has slopes under 0.6 deg, 99% under 13 deg): logarithmic, otherwise most of
 - Diviner temperatures: the Global Cumulative Product gives the surface temperature of every
   0.5 deg spot for 96 times of day. Each spot is seen at ~55-65% of those times; gaps of up to
   2 h are filled by interpolating along the daily cycle, spots with longer gaps are left out.
-- HEND ice: hydrogen slows neutrons, so fewer epithermal neutrons escape; shown as % below
-  the driest 5% of the planet.
+- Mars ice: hydrogen slows neutrons, so fewer epithermal neutrons escape; shown as % below the
+  driest 5% of the planet. Seasonal CO2 frost (up to ~1 m in winter) hides the ice beneath it, so
+  poleward of 45 deg only that hemisphere's frost-free summer is averaged (north Ls 105-165, south
+  Ls 285-345); elsewhere all seasons. (An earlier version used HEND's first months of 2002, during
+  northern winter, which made the north pole look dry.)
 - Coarse data (iron, ice) is smoothed at about half its cell size, ignoring gaps, so it reads
   as a map instead of squares; small holes in the Diviner temperatures are filled from
   neighbours.

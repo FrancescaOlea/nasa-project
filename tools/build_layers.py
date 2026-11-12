@@ -9,7 +9,7 @@ NASA / PDS data, as 8-bit data tiles the web app colours in the browser.
   temperature  LRO Diviner global cumulative Tbol     thermal model from TES albedo + TI + MOLA
   temp_range   LRO Diviner (daily max - min)          thermal model (tools/mars_thermal.py)
   temp_yearly  (Moon: same as daily, 1.5 deg tilt)    thermal model: hottest - coldest of the year
-  ice          (no global map product found)          Odyssey HEND epithermal neutrons, 4 deg
+  ice          (no global map product found)          Odyssey averaged neutron data, frost-free seasons, 5 deg
   surface      LRO Diviner rock abundance, 32 ppd     MGS TES night thermal inertia, 20 ppd
 
 Output (served from public/overlays/):
@@ -24,6 +24,7 @@ import glob
 import json
 import math
 import os
+import re
 import sys
 import urllib.request
 
@@ -156,15 +157,40 @@ def mars_iron():
 
 
 def mars_ice():
-    """HEND epithermal neutron flux (4x4 deg). Hydrogen (ice) slows neutrons, so fewer
-    epithermal neutrons escape. Shown as % suppression relative to the driest ground."""
-    t = np.loadtxt(fetch(f'{PDS}/ody/urn-nasa-pds-odyssey_grs_special/data/hend_epithermal_020917.tab'),
-                   delimiter=',')
-    lon, lat, flux = t[:, 0], t[:, 1], t[:, 2]
-    dry = np.percentile(flux, 95)
-    suppression = np.clip((1 - flux / dry) * 100, 0, None)
-    cells = grid_from_cells(lat - 2, lat + 2, lon - 2, lon + 2, suppression, 0.5)
-    return smooth_fill(cells, 4), 4.0  # smooth the 4-degree cells at ~2 degrees
+    """Water-equivalent hydrogen in the top ~1 m, from Mars Odyssey's averaged neutron data
+    (5 x 5 deg maps for every 15 deg of season, ~12 Mars years). Hydrogen slows neutrons,
+    so fewer epithermal neutrons escape where there is ice.
+
+    Seasonal CO2 frost (up to ~1 m in winter) hides the ice beneath it, so poleward of 45 deg
+    only that hemisphere's frost-free summer is used (north Ls 105-165, south Ls 285-345);
+    nearer the equator all seasons are averaged. Shown as % fewer neutrons than over the
+    driest 5% of Mars."""
+    base = f'{PDS}/ody/ody-m-grs-5-and-v2/odgn2_xxxx'
+    inv = urllib.request.urlopen(f'{base}/collection_data_science_averaged_inventory.csv').read().decode()
+    names = sorted(set(re.findall(r'and_\d{2}_\d{3}_\d{3}', inv)))
+    dt = np.dtype([(n, '>f4') for n in ('lat', 'lon', 'ctherm', 'ntherm', 'stherm',
+                                        'cepi', 'nepi', 'sepi', 'cfast', 'nfast', 'sfast')])
+    total = np.zeros(2592)
+    weight = np.zeros(2592)
+    lat = lon = None
+    for name in names:
+        yr, ls0, ls1 = name.split('_')[1:]
+        path = fetch(f'{base}/yr{yr}/yr{yr}_ls{ls0}_{ls1}/{name}.dat', 'ody_and')
+        t = np.fromfile(path, dtype=dt)
+        lat, lon = t['lat'].astype(float), t['lon'].astype(float)
+        ls = (int(ls0) + int(ls1)) / 2
+        use = np.where(lat >= 45, (ls >= 105) & (ls <= 165),
+                       np.where(lat <= -45, (ls >= 285) & (ls <= 345), True))
+        good = use & np.isfinite(t['cepi']) & (t['cepi'] > 0) & (t['nepi'] > 0)
+        total += np.where(good, t['nepi'] * t['cepi'], 0)  # (0 * NaN would still be NaN)
+        weight += np.where(good, t['nepi'], 0)
+    cepi = np.where(weight > 0, total / np.maximum(weight, 1e-9), np.nan)
+    dry = np.nanpercentile(cepi, 95)
+    suppression = np.clip((1 - cepi / dry) * 100, 0, None)
+    lon = np.where(lon > 180, lon - 360, lon)
+    ok = np.isfinite(suppression)
+    cells = grid_from_cells(lat[ok] - 2.5, lat[ok] + 2.5, lon[ok] - 2.5, lon[ok] + 2.5, suppression[ok], 0.5)
+    return smooth_fill(cells, 5), 5.0  # smooth the 5-degree cells at ~2.5 degrees
 
 
 def mars_surface():
@@ -353,7 +379,8 @@ def catalogue():
                            '~60 km pixels. Dark volcanic plains are iron-rich, bright highlands iron-poor.'),
         ('mars', 'ice'): (mars_ice, dict(unit='%', log=False, min=0, max=80), 2,
                           'Hydrogen in the top ~1 m, mostly water ice near the poles: how many fewer neutrons '
-                          'escape than over the driest ground (HEND, Mars Odyssey). ~240 km pixels.'),
+                          'escape than over the driest ground (Mars Odyssey, ~12 Mars years; polar regions from '
+                          'their frost-free summers only). ~300 km pixels.'),
         ('moon', 'temperature'): (lambda: moon_temp('mean'), dict(unit='°C', log=False, min=-130, max=-50), 2,
                                   'Average surface temperature over a whole lunar day and night (Diviner, LRO).'),
         ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=190, max=300), 2,
