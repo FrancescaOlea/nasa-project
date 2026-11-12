@@ -3,7 +3,7 @@ import 'leaflet/dist/leaflet.css';
 import './style.css';
 import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
-import { createGlobe } from './globes.js';
+import { createGlobe, globesReady } from './globes.js';
 import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml, position, GRADIENT_CSS } from './overlays.js';
 import { summarize } from './areastats.js';
@@ -479,3 +479,9 @@ function route() {
 
 window.addEventListener('hashchange', route);
 route();
+
+// Reveal the page only when it's ready: styles applied, globe images loaded and the
+// first frame drawn. Never wait more than 4 s, so a slow image can't leave it blank.
+Promise.race([globesReady(), new Promise((r) => setTimeout(r, 4000))]).then(() => {
+  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add('ready')));
+});

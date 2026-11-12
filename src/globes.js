@@ -5,6 +5,9 @@ import * as THREE from 'three';
 const FOV = 30; // camera field of view, degrees
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const globes = [];
+const textureLoads = [];
+/** Resolves once every globe's map image has loaded (or failed). */
+export const globesReady = () => Promise.allSettled(textureLoads);
 
 /**
  * Turn `canvas` into a spinning globe.
@@ -37,7 +40,9 @@ export function createGlobe(canvas, { texture, secondsPerTurn, tiltDeg = 0, star
   sun.position.set(-3, 1.5, 2.5);
   scene.add(sun, new THREE.AmbientLight(0xffffff, 0.25));
 
-  const map = new THREE.TextureLoader().load(texture);
+  let loaded;
+  textureLoads.push(new Promise((resolve) => { loaded = resolve; }));
+  const map = new THREE.TextureLoader().load(texture, loaded, undefined, loaded);
   map.colorSpace = THREE.SRGBColorSpace;
   map.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const sphere = new THREE.Mesh(

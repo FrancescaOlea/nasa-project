@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Planet Maps</title>
+    <!-- Show nothing but black until the app has loaded (see reveal in src/main.js) -->
+    <style>
+      html, body { margin: 0; background: #000; }
+      body { opacity: 0; }
+      body.ready { opacity: 1; transition: opacity .45s ease; }
+    </style>
+    <noscript><style>body { opacity: 1; }</style></noscript>
   </head>
   <body>
     <main id="home" class="home">
