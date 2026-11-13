@@ -219,7 +219,8 @@
       "pixel_km": 3.7,
       "max_zoom": 5,
       "format": "webp",
-      "crs": "EPSG3857"
+      "crs": "EPSG3857",
+      "palette": "terrain"
     },
     "slope": {
       "unit": "°",

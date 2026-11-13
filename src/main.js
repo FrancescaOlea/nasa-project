@@ -5,7 +5,7 @@ import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe, globesReady } from './globes.js';
 import { drawStarfield } from './starfield.js';
-import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, GRADIENT_CSS } from './overlays.js';
+import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { addLandmarks } from './landmarks.js';
@@ -96,11 +96,9 @@ function viewWidthKm(body) {
     const degrees = Math.min(b.getEast() - b.getWest(), 360);
     return (degrees / 360) * circumferenceKm(body) * Math.cos((map.getCenter().lat * Math.PI) / 180);
   }
-  // polar: distance between the middle of the left and right screen edges
-  const size = map.getSize();
-  const left = map.containerPointToLatLng([0, size.y / 2]);
-  const right = map.containerPointToLatLng([size.x, size.y / 2]);
-  return haversineKm(body.radiusKm, left, right);
+  // polar (azimuthal equidistant): true scale along lines from the pole, so the
+  // screen's width in km is simply its width in map pixels
+  return (map.getSize().x * proj.kmPerPxAtZoom0(body.radiusKm)) / 2 ** map.getZoom();
 }
 
 // A characteristic's value with sensible precision for its unit.
@@ -415,7 +413,7 @@ function setUpSelection(key, body, params) {
       const regional = meta.pixel_km > 2 * radiusKm ? ` · regional value (~${Math.round(meta.pixel_km)} km data)` : '';
       row.querySelector('.a-range').textContent = `range ${spread}${regional}`;
       const t = colourPos(meta, res.median);
-      row.querySelector('.swatch').style.background = GRADIENT_CSS;
+      row.querySelector('.swatch').style.background = gradientCss(meta);
       row.querySelector('.swatch').style.backgroundSize = '2000% 100%';
       row.querySelector('.swatch').style.backgroundPosition = `${t * 100}% 0`;
     }));
@@ -486,7 +484,15 @@ function setUpSelection(key, body, params) {
     btn.setAttribute('aria-checked', RADIUS_OPTIONS_KM[i] === radiusKm));
   markChosen();
 
-  map.on('click', (e) => select(e.latlng.lat, e.latlng.lng));
+  map.on('click', (e) => {
+    // polar maps: ignore clicks in the empty corners outside the world disc
+    if (proj.inside) {
+      const n = 256 * 2 ** map.getZoom();
+      const raw = map.containerPointToLayerPoint(e.containerPoint).add(map.getPixelOrigin());
+      if (!proj.inside(raw.x / n, raw.y / n)) return;
+    }
+    select(e.latlng.lat, e.latlng.lng);
+  });
   $('clear-selection').onclick = clear;
 
   // Both searches first ask how much each characteristic should count.

@@ -529,7 +529,7 @@ def catalogue():
         ('moon', 'temp_range'): (lambda: moon_temp('range'), dict(unit='°C', log=False, min=190, max=300), 2,
                                  'Difference between the hottest and coldest time of a lunar day (Diviner, LRO).'),
         # ---- Earth (Web Mercator tiles; ocean transparent)
-        ('earth', 'elevation'): (earth_elevation, dict(unit='km', log=False, min=0, max=4), 5,
+        ('earth', 'elevation'): (earth_elevation, dict(unit='km', log=False, min=0, max=4, palette='terrain'), 5,
                                  'Height above sea level (NOAA ETOPO 2022, from NASA SRTM and other data).'),
         ('earth', 'slope'): (earth_slope, SLOPE, 5,
                              'How steep the ground is, in degrees, between points ~1.9 km apart - the same '

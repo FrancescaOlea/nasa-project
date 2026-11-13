@@ -29,7 +29,8 @@ Or by hand: `npm install`, then `npm run dev`.
   elevation, slope, daily temperature swing, maximum and minimum temperature, dryness (yearly
   rainfall; red = driest) and UV radiation. Oceans are transparent.
 - **Projection** (top of the ☰ View panel, all three worlds): Equirectangular, Mercator, North
-  pole or South pole (polar stereographic, reaching 60 deg latitude at the edges). The map sources
+  pole or South pole (azimuthal equidistant: the whole world as a disc centred on the pole, like
+  the UN emblem; distances from the pole are true). The map sources
   stay the same; other projections are drawn by warping the source tiles in the browser
   (`src/reproject.js`). Selection, views, radius and the area summary carry over; the projection
   is kept in the address (`proj=`).
@@ -85,15 +86,16 @@ Diviner's archived product holds per-time-of-day averages, not all-time extremes
 | Earth | warped | its own (Esri) | warped |
 
 `src/projections.js` defines each projection (lat/lon <-> map position, scale, zoom limits);
-the polar ones are stereographic on the pole, conformal, 60 deg at the middle of each edge.
+the polar ones are azimuthal equidistant: distance from the centre = angle from the pole, so
+the opposite pole is the disc's rim.
 `src/reproject.js` draws tiles of one projection in another: a 17 x 17 grid of points per tile
 is converted to lat/lon and to source-tile pixels, each 16 px cell is drawn as two affine
 triangles straight from the source tiles (subdivided where the mapping bends, e.g. at a pole,
 or at the edge of a source's coverage). Drawing, rather than reading pixels, also works for
 imagery from other sites. Data layers are warped first and coloured afterwards.
 
-Limits: Mercator can't show the poles (stops at 85 deg), so Earth's polar views have a round gap
-within 5 deg of the pole (its sources are Mercator). Equirectangular sources store little detail
+Limits: Mercator can't show the poles (stops at 85 deg), so Earth's polar views have a small round
+gap within 5 deg of the pole (its sources are Mercator). Equirectangular sources store little detail
 right at a pole (every pixel row wraps around a tiny circle): the source detail used there is
 capped so a view never needs thousands of tiles, which makes close-ups within a few degrees of
 a pole soft. The Moon's LRO WAC mosaic also has no data in the last ~1-2 deg around the poles.
@@ -102,7 +104,7 @@ a pole soft. The Moon's LRO WAC mosaic also has no data in the last ~1-2 deg aro
 
 | View | Source | Detail |
 |---|---|---|
-| Elevation, slope | NOAA ETOPO 2022, 60 arc-seconds (from NASA SRTM and other data); slope at the same ~1.9 km scale as the Moon and Mars | ~2-4 km |
+| Elevation, slope | (elevation uses a relief palette - green lowlands to white peaks - so low land doesn't look like water) NOAA ETOPO 2022, 60 arc-seconds (from NASA SRTM and other data); slope at the same ~1.9 km scale as the Moon and Mars | ~2-4 km |
 | Max. / min. temperature, daily swing | NASA POWER `TS_MAX`, `TS_MIN`, `TS_RANGE`: **ground-surface** ("skin") temperature, long-term monthly averages. Max = hottest month's average daily maximum, min = coldest month's average daily minimum, swing = yearly mean | ~50 km |
 | Dryness | NASA POWER `PRECTOTCORR` (MERRA-2 / GPM), yearly total; colour scale reversed so red = driest | ~50 km |
 | UV radiation | NASA POWER `ALLSKY_SFC_UV_INDEX` (CERES), UV index averaged over day and night incl. clouds | ~100 km |

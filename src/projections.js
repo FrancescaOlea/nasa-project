@@ -20,14 +20,15 @@ const rad = (d) => (d * Math.PI) / 180;
 const deg = (r) => (r * 180) / Math.PI;
 
 export const MERCATOR_MAX_LAT = 85.0511; // Mercator can't reach the poles
-export const POLAR_EDGE_LAT = 60;        // polar maps reach this latitude at the middle of each edge
-const RHO_MAX = 2 * Math.tan(rad(90 - POLAR_EDGE_LAT) / 2);
+// Polar maps show the whole world as a disc (like the UN emblem): the pole in the middle,
+// the opposite pole as the outer rim. In units of the planet's radius the rim is at pi.
+const RHO_MAX = Math.PI;
 
 export const PROJECTIONS = {
   equirect: { name: 'Equirectangular', short: 'Equirectangular' },
   mercator: { name: 'Mercator', short: 'Mercator' },
-  north: { name: 'North polar (stereographic)', short: 'North pole' },
-  south: { name: 'South polar (stereographic)', short: 'South pole' },
+  north: { name: 'North polar (azimuthal equidistant, whole world)', short: 'North pole' },
+  south: { name: 'South polar (azimuthal equidistant, whole world)', short: 'South pole' },
 };
 
 const mercV = (lat) => {
@@ -60,27 +61,34 @@ const mercator = {
   center: [0, 0],
 };
 
-// Polar stereographic on a unit sphere: distance from the pole on the map
-// rho = 2 tan(c / 2), c = angle from the pole. Shapes are kept (conformal) and the
-// pole is undistorted. North: 0 deg longitude points down; south: 0 deg points up
-// (the usual orientation of polar maps); 90 deg E is to the right on both.
+// Polar azimuthal equidistant on a unit sphere (the UN emblem's projection): distance
+// from the pole on the map rho = c, the angle from the pole, so every distance measured
+// from the pole is true and the whole world fits in a disc of radius pi. North: 0 deg
+// longitude points down; south: 0 deg points up (the usual orientation of polar maps);
+// 90 deg E is to the right on both.
 function polarXY(north, lat, lon) {
-  const c = rad(north ? 90 - lat : 90 + lat);
-  const rho = 2 * Math.tan(c / 2);
+  const rho = rad(north ? 90 - lat : 90 + lat);
   const l = rad(lon);
   return [rho * Math.sin(l), north ? rho * Math.cos(l) : -rho * Math.cos(l)];
 }
+// Points outside the disc (the square's corners) have no latitude: NaN.
 function polarLatLon(north, x, y) {
   const rho = Math.hypot(x, y);
-  const c = 2 * Math.atan(rho / 2);
+  if (rho > Math.PI) return [NaN, NaN];
   const lon = deg(Math.atan2(x, north ? y : -y));
-  return [north ? 90 - deg(c) : deg(c) - 90, lon];
+  return [north ? 90 - deg(rho) : deg(rho) - 90, lon];
 }
 
 function polar(north) {
   const projection = {
     project: (ll) => { const [x, y] = polarXY(north, ll.lat, ll.lng); return L.point(x, y); },
-    unproject: (p) => { const [lat, lon] = polarLatLon(north, p.x, p.y); return L.latLng(lat, lon); },
+    unproject: (p) => {
+      // outside the disc: use the nearest point on its rim, so Leaflet always gets a valid position
+      const r = Math.hypot(p.x, p.y);
+      const k = r > Math.PI ? (Math.PI - 1e-9) / r : 1;
+      const [lat, lon] = polarLatLon(north, p.x * k, p.y * k);
+      return L.latLng(lat, lon);
+    },
     bounds: L.bounds([-RHO_MAX, -RHO_MAX], [RHO_MAX, RHO_MAX]),
   };
   const crs = L.extend({}, L.CRS, {
@@ -101,8 +109,9 @@ function polar(north) {
       return [x / (2 * RHO_MAX) + 0.5, y / (2 * RHO_MAX) + 0.5];
     },
     fromWorld: (u, v) => polarLatLon(north, (u - 0.5) * 2 * RHO_MAX, (v - 0.5) * 2 * RHO_MAX),
-    // near the pole one unit of rho is one planet radius
+    // one unit of rho is one planet radius (true scale along every line from the pole)
     kmPerPxAtZoom0: (R) => (2 * RHO_MAX * R) / 256,
+    inside: (u, v) => Math.hypot(u - 0.5, v - 0.5) <= 0.5,
     minZoom: (size) => Math.log2(Math.min(size.x, size.y) / 256),
     bounds: null,
     center: [north ? 90 : -90, 0],

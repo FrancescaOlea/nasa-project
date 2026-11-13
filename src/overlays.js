@@ -34,22 +34,36 @@ export function loadIndex() {
   return indexPromise;
 }
 
-// Blue -> light grey -> red ("cool-warm"), easy to read over imagery.
-const STOPS = [
-  [0.0, [49, 54, 149]], [0.15, [69, 117, 180]], [0.3, [116, 173, 209]], [0.45, [224, 243, 248]],
-  [0.55, [254, 224, 144]], [0.7, [253, 174, 97]], [0.85, [244, 109, 67]], [1.0, [165, 0, 38]],
-];
-function colourAt(t) {
-  for (let i = 1; i < STOPS.length; i++) {
-    const [t1, c1] = STOPS[i];
-    const [t0, c0] = STOPS[i - 1];
+// Colour palettes. Default: blue -> light grey -> red ("cool-warm"), easy to read over
+// imagery. 'terrain': a relief-map palette for Earth's land elevation, so low land
+// doesn't look like water: green lowlands -> yellow -> tan -> brown -> white peaks.
+const PALETTES = {
+  coolwarm: [
+    [0.0, [49, 54, 149]], [0.15, [69, 117, 180]], [0.3, [116, 173, 209]], [0.45, [224, 243, 248]],
+    [0.55, [254, 224, 144]], [0.7, [253, 174, 97]], [0.85, [244, 109, 67]], [1.0, [165, 0, 38]],
+  ],
+  terrain: [
+    [0.0, [52, 128, 70]], [0.1, [104, 160, 82]], [0.25, [186, 196, 116]], [0.4, [226, 205, 140]],
+    [0.55, [204, 158, 98]], [0.7, [163, 105, 64]], [0.85, [128, 86, 70]], [1.0, [245, 245, 245]],
+  ],
+};
+const stopsFor = (meta) => PALETTES[meta?.palette] ?? PALETTES.coolwarm;
+function colourAt(t, stops = PALETTES.coolwarm) {
+  for (let i = 1; i < stops.length; i++) {
+    const [t1, c1] = stops[i];
+    const [t0, c0] = stops[i - 1];
     if (t <= t1) {
       const f = (t - t0) / (t1 - t0);
       return c0.map((c, k) => Math.round(c + (c1[k] - c) * f));
     }
   }
-  return STOPS[STOPS.length - 1][1];
+  return stops[stops.length - 1][1];
 }
+/** CSS gradient of a layer's colour palette (for legends and swatches). */
+export const gradientCss = (meta) =>
+  `linear-gradient(to right, ${stopsFor(meta).map(([t, c]) => `rgb(${c}) ${t * 100}%`).join(', ')})`;
+export const GRADIENT_CSS = gradientCss(null);
+
 // Tile values 1..255 cover the layer's full data range (enc_min..enc_max, linear or
 // log); 0 never occurs. decode() turns a tile value back into real units.
 export function decode(meta, code) {
@@ -68,13 +82,12 @@ function lutFor(meta) {
     const lut = new Uint8ClampedArray(256 * 4);
     for (let v = 1; v < 256; v++) {
       const t = colourPos(meta, decode(meta, v));
-      lut.set([...colourAt(t), 255], v * 4);
+      lut.set([...colourAt(t, stopsFor(meta)), 255], v * 4);
     }
     luts.set(meta, lut);
   }
   return luts.get(meta);
 }
-export const GRADIENT_CSS = `linear-gradient(to right, ${STOPS.map(([t, c]) => `rgb(${c}) ${t * 100}%`).join(', ')})`;
 
 // Decoded data tiles, shared between zoom levels (small cache).
 const images = new Map();
@@ -242,7 +255,7 @@ export function legendHtml(view, meta) {
   const unit = inline ? '' : ` <span class="legend-unit">(${meta.unit})</span>`;
   return `
     <div class="legend-title">${VIEWS[view].name}${unit}</div>
-    <div class="legend-bar" style="background:${GRADIENT_CSS}"></div>
+    <div class="legend-bar" style="background:${gradientCss(meta)}"></div>
     <div class="legend-ticks">${marks}</div>
     <div class="legend-note">${meta.log ? 'Logarithmic' : 'Linear'} scale · ~${meta.pixel_km >= 10 ? Math.round(meta.pixel_km) : meta.pixel_km} km pixels</div>`;
 }
