@@ -16,7 +16,8 @@ import L from 'leaflet';
 import { loadImage } from './overlays.js';
 
 const rad = (d) => (d * Math.PI) / 180;
-const CELL = 16;
+const CELL = 32;      // triangle cells, px (subdivided automatically where the mapping bends)
+const MAX_DEPTH = 5;  // down to 1 px
 // Near a pole, equirectangular source rows wrap around a tiny circle, so full detail
 // would need every longitude's tiles (thousands). Cap how many source pixels may be
 // squeezed across one screen pixel; beyond that, use a coarser source level there.
@@ -112,8 +113,20 @@ export async function warpTile(ctx, coords, proj, src, opts) {
   const C = 2 * Math.PI * opts.radiusKm;
   const T = src.tileSize;
   const cosMid = src.kind === 'mercator' ? Math.max(0.02, Math.cos(rad(mid[0]))) : 1;
-  const level = Math.max(0, Math.min(src.maxLevel,
-    Math.ceil(Math.log2((C * cosMid) / (src.across0 * T * kmPerPx)))));
+  // nearest level, leaning towards the lighter one (like Leaflet's own maps): rounding
+  // up every time quadrupled the tiles to download and decode for little visible gain
+  let level = Math.max(0, Math.min(src.maxLevel,
+    Math.round(Math.log2((C * cosMid) / (src.across0 * T * kmPerPx)) - 0.2)));
+  // Mercator magnifies high latitudes (4x at 75 deg): don't fetch more than twice the
+  // detail the map has at its reference latitude, or one view needs hundreds of tiles
+  const refKm = proj.kmPerPxAtZoom0(opts.radiusKm) / 2 ** coords.z;
+  const cap = Math.round(Math.log2(C / (src.across0 * T * refKm)) - 0.2) + 1;
+  level = Math.max(0, Math.min(level, cap));
+
+  // Fast path: between the two cylindrical projections (equirectangular <-> Mercator)
+  // longitude stays linear and only latitude is stretched, so each tile can be copied in
+  // thin horizontal strips - a few dozen plain image copies instead of many triangles.
+  if (proj.cylindrical) return drawStrips(ctx, coords, proj, src, level, at);
 
   // source pixel position at a level, longitude unwrapped next to refX
   const S = (lvl, [lat, lon], refX) => {
@@ -170,12 +183,31 @@ export async function warpTile(ctx, coords, proj, src, opts) {
     if (bad) {
       // at the edge of the source's coverage (e.g. Mercator stops at 85 deg): refine so
       // the edge is a smooth curve, not a staircase of whole cells
-      if (bad < 4 && depth < 4) split(px, py, size, depth);
+      if (bad < 4 && depth < MAX_DEPTH) split(px, py, size, depth);
       return;
     }
     const spread = Math.max(...s.map((q) => q[0])) - Math.min(...s.map((q) => q[0]));
     // the mapping bends strongly here (e.g. the pole is inside): split into four
-    if (depth < 4 && spread > Math.max(64, size * 8)) { split(px, py, size, depth); return; }
+    if (depth < MAX_DEPTH && spread > Math.max(64, size * 8)) { split(px, py, size, depth); return; }
+    // Adaptive refinement: compare the true source position at the cell's centre and edge
+    // midpoints with what the two flat triangles would give; split if off by > 0.5 screen px.
+    if (depth < MAX_DEPTH && size > 2) {
+      const h = size / 2;
+      const scale = Math.max(1e-9, Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]) / size,
+        Math.hypot(s[2][0] - s[0][0], s[2][1] - s[0][1]) / size); // source px per screen px
+      const checks = [[h, h, (s[1][0] + s[2][0]) / 2, (s[1][1] + s[2][1]) / 2],
+        [h, 0, (s[0][0] + s[1][0]) / 2, (s[0][1] + s[1][1]) / 2],
+        [0, h, (s[0][0] + s[2][0]) / 2, (s[0][1] + s[2][1]) / 2],
+        [size, h, (s[1][0] + s[3][0]) / 2, (s[1][1] + s[3][1]) / 2],
+        [h, size, (s[2][0] + s[3][0]) / 2, (s[2][1] + s[3][1]) / 2]];
+      for (const [dx, dy, ex, ey] of checks) {
+        const [qx, qy] = S(level, at(px + dx, py + dy), ref);
+        if (!Number.isFinite(qx) || !Number.isFinite(qy) || Math.hypot(qx - ex, qy - ey) / scale > 0.5) {
+          split(px, py, size, depth);
+          return;
+        }
+      }
+    }
     const d = [[px, py], [px + size, py], [px, py + size], [px + size, py + size]];
     addTriangle([corners[0], corners[1], corners[2]], [d[0], d[1], d[2]], size);
     addTriangle([corners[1], corners[3], corners[2]], [d[1], d[3], d[2]], size);
@@ -193,6 +225,59 @@ export async function warpTile(ctx, coords, proj, src, opts) {
   for (const t of triangles) {
     const list = t.tiles.filter((q) => images.has(q.key)).map((q) => ({ img: images.get(q.key), ox: q.ox, oy: q.oy }));
     if (list.length) { drawTriangle(ctx, t.m, t.d, list); drawn++; }
+  }
+  return drawn;
+}
+
+const STRIP = 4; // px per strip
+
+async function drawStrips(ctx, coords, proj, src, level, at) {
+  const T = src.tileSize;
+  const across = src.across0 * 2 ** level;
+  const down = src.kind === 'equirect' ? across / 2 : across;
+  const lon0 = at(0, 0)[1];
+  const lon1 = at(256, 0)[1];
+  const [x0] = srcXY(src, level, 0, lon0);
+  let [x1] = srcXY(src, level, 0, lon1);
+  if (x1 <= x0) x1 += src.across0 * T * 2 ** level; // tile ends exactly at +180
+  const pxPerSrc = 256 / (x1 - x0);
+  // strips: destination rows -> source rows
+  const strips = [];
+  const needed = new Map();
+  for (let y = 0; y < 256; y += STRIP) {
+    const sy0 = srcXY(src, level, at(128, y)[0], 0)[1];
+    const sy1 = srcXY(src, level, at(128, y + STRIP)[0], 0)[1];
+    if (!Number.isFinite(sy0) || !Number.isFinite(sy1)) continue;
+    const top = Math.min(sy0, sy1); const bottom = Math.max(sy0, sy1);
+    const parts = [];
+    for (let ty = Math.max(0, Math.floor(top / T)); ty <= Math.min(down - 1, Math.floor((bottom - 1e-9) / T)); ty++) {
+      for (let tx = Math.floor(x0 / T); tx <= Math.floor((x1 - 1e-9) / T); tx++) {
+        const wx = ((tx % across) + across) % across;
+        if (src.bounds && !tileInBounds(src, level, wx, ty, across)) continue;
+        const key = `${ty}/${wx}`;
+        if (!needed.has(key)) needed.set(key, src.url.replace('{z}', level).replace('{y}', ty).replace('{x}', wx));
+        // the part of this source tile inside the strip, in source px and destination px
+        const sxa = Math.max(x0, tx * T); const sxb = Math.min(x1, (tx + 1) * T);
+        const sya = Math.max(top, ty * T); const syb = Math.min(bottom, (ty + 1) * T);
+        const dya = y + ((sya - top) / (bottom - top)) * STRIP;
+        const dyb = y + ((syb - top) / (bottom - top)) * STRIP;
+        parts.push({ key, sx: sxa - tx * T, sy: sya - ty * T, sw: sxb - sxa, sh: syb - sya,
+          dx: (sxa - x0) * pxPerSrc, dy: dya, dw: (sxb - sxa) * pxPerSrc, dh: dyb - dya });
+      }
+    }
+    strips.push(...parts);
+  }
+  const images = new Map();
+  await Promise.all([...needed].map(([key, url]) => loadImage(url).then((img) => images.set(key, img), () => {})));
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  let drawn = 0;
+  for (const q of strips) {
+    const img = images.get(q.key);
+    if (!img || q.sw <= 0 || q.sh <= 0) continue;
+    // overlap by a fraction of a pixel so strips never leave hairline gaps
+    ctx.drawImage(img, q.sx, q.sy, q.sw, q.sh, q.dx, q.dy, q.dw + 0.5, q.dh + 0.5);
+    drawn++;
   }
   return drawn;
 }
