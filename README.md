@@ -28,6 +28,11 @@ Or by hand: `npm install`, then `npm run dev`.
 - **Earth** has its own views, area selection and area summary (no analog search from Earth):
   elevation, slope, daily temperature swing, maximum and minimum temperature, dryness (yearly
   rainfall; red = driest) and UV radiation. Oceans are transparent.
+- **Projection** (top of the ☰ View panel, all three worlds): Equirectangular, Mercator, North
+  pole or South pole (polar stereographic, reaching 60 deg latitude at the edges). The map sources
+  stay the same; other projections are drawn by warping the source tiles in the browser
+  (`src/reproject.js`). Selection, views, radius and the area summary carry over; the projection
+  is kept in the address (`proj=`).
 - **☰ View** (Moon and Mars): show one coloured data layer over the map (blue = low, red = high,
   with a legend). See *Map views* below for what's available on each body.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
@@ -71,6 +76,27 @@ both share one colour range, so the same colour means the same value on each.
 
 On the Moon (1.5 deg axial tilt) the maximum variation is essentially the daily variation, and
 Diviner's archived product holds per-time-of-day averages, not all-time extremes, so it isn't added.
+
+### Projections
+
+| | Equirectangular | Mercator | North / South pole |
+|---|---|---|---|
+| Moon, Mars | their own (NASA Trek) | warped | warped |
+| Earth | warped | its own (Esri) | warped |
+
+`src/projections.js` defines each projection (lat/lon <-> map position, scale, zoom limits);
+the polar ones are stereographic on the pole, conformal, 60 deg at the middle of each edge.
+`src/reproject.js` draws tiles of one projection in another: a 17 x 17 grid of points per tile
+is converted to lat/lon and to source-tile pixels, each 16 px cell is drawn as two affine
+triangles straight from the source tiles (subdivided where the mapping bends, e.g. at a pole,
+or at the edge of a source's coverage). Drawing, rather than reading pixels, also works for
+imagery from other sites. Data layers are warped first and coloured afterwards.
+
+Limits: Mercator can't show the poles (stops at 85 deg), so Earth's polar views have a round gap
+within 5 deg of the pole (its sources are Mercator). Equirectangular sources store little detail
+right at a pole (every pixel row wraps around a tiny circle): the source detail used there is
+capped so a view never needs thousands of tiles, which makes close-ups within a few degrees of
+a pole soft. The Moon's LRO WAC mosaic also has no data in the last ~1-2 deg around the poles.
 
 ### Earth data
 

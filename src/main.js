@@ -9,6 +9,8 @@ import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, GRADIENT_CSS } 
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { addLandmarks } from './landmarks.js';
+import { projection, PROJECTIONS } from './projections.js';
+import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
 import iconEarth from './assets/icon-earth.png';
 import iconMoon from './assets/icon-moon.png';
@@ -58,34 +60,42 @@ document.querySelectorAll('.body-btn').forEach((btn) => {
 
 document.getElementById('back').addEventListener('click', () => { location.hash = ''; });
 
-// Leaflet's EPSG4326 maps 360° to 512 px at zoom 0; web mercator to 256 px.
-const basePx = (body) => (body.crs === 'EPSG4326' ? 512 : 256);
 const circumferenceKm = (body) => 2 * Math.PI * body.radiusKm;
+// Each body's own projection: the one its map tiles are made in.
+const nativeProjection = (body) => (body.crs === 'EPSG3857' ? 'mercator' : 'equirect');
+let proj = projection('equirect'); // projection of the map currently shown
+let keepViewPanelOpen = false;     // reopen the View panel after switching projection
 
-// Zoom level at which the screen width spans MIN_VIEW_KM at the equator.
+// Zoom level at which the screen width spans MIN_VIEW_KM.
 function maxZoomFor(body, size) {
-  return Math.log2((size.x * circumferenceKm(body)) / (basePx(body) * MIN_VIEW_KM));
+  return Math.log2((size.x * proj.kmPerPxAtZoom0(body.radiusKm)) / MIN_VIEW_KM);
 }
 
-// Most zoomed-out level: the map just fills the whole screen, no black edges.
-// (Equirectangular maps are twice as wide as tall; web mercator is square.)
-function minZoomFor(body, size) {
-  const w = basePx(body);
-  const h = body.crs === 'EPSG4326' ? w / 2 : w;
-  return Math.log2(Math.max(size.x / w, size.y / h));
-}
-
-// The edges of the map, so it can't repeat or be dragged off screen.
+// The edges of the map, so it can't repeat or be dragged off screen (native layers).
 const MAP_BOUNDS = {
   EPSG3857: [[-85.0511, -180], [85.0511, 180]],
   EPSG4326: [[-90, -180], [90, 180]],
 };
 
-// Real-world width of the current view, measured along the centre latitude.
+function haversineKm(R, a, b) {
+  const r = (d) => (d * Math.PI) / 180;
+  const h = Math.sin(r(b.lat - a.lat) / 2) ** 2
+    + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// Real-world width of the current view.
 function viewWidthKm(body) {
-  const b = map.getBounds();
-  const degrees = Math.min(b.getEast() - b.getWest(), 360);
-  return (degrees / 360) * circumferenceKm(body) * Math.cos((map.getCenter().lat * Math.PI) / 180);
+  if (proj.cylindrical) { // measured along the centre latitude
+    const b = map.getBounds();
+    const degrees = Math.min(b.getEast() - b.getWest(), 360);
+    return (degrees / 360) * circumferenceKm(body) * Math.cos((map.getCenter().lat * Math.PI) / 180);
+  }
+  // polar: distance between the middle of the left and right screen edges
+  const size = map.getSize();
+  const left = map.containerPointToLatLng([0, size.y / 2]);
+  const right = map.containerPointToLatLng([size.x, size.y / 2]);
+  return haversineKm(body.radiusKm, left, right);
 }
 
 // A characteristic's value with sensible precision for its unit.
@@ -114,17 +124,21 @@ function openMap(key, params) {
   mapView.hidden = false;
   document.title = `${body.name} · Planet Maps`;
 
+  // Projection: the body's own unless another one is chosen (?proj=...)
+  const native = nativeProjection(body);
+  proj = projection(PROJECTIONS[params.get('proj')] ? params.get('proj') : native);
+
   const screen = { x: window.innerWidth, y: window.innerHeight };
   map = L.map('map', {
-    crs: L.CRS[body.crs],
-    center: [0, 0],
-    zoom: minZoomFor(body, screen),
-    minZoom: minZoomFor(body, screen),
+    crs: proj.crs,
+    center: proj.center,
+    zoom: proj.minZoom(screen),
+    minZoom: proj.minZoom(screen),
     maxZoom: maxZoomFor(body, screen),
     zoomSnap: 0, // smooth zooming; the +/- buttons still step by 2x
     zoomDelta: 1,
     wheelPxPerZoomLevel: 120,
-    maxBounds: MAP_BOUNDS[body.crs],
+    maxBounds: proj.bounds ?? undefined,
     maxBoundsViscosity: 1.0, // hard stop at the map edges
     zoomControl: false,
   });
@@ -136,18 +150,54 @@ function openMap(key, params) {
     const el = map.createPane(pane);
     el.style.zIndex = 200 + i;
     if (layer.filter) el.style.filter = layer.filter;
-    L.tileLayer(layer.url, {
+    if (proj.id === native) {
+      L.tileLayer(layer.url, {
+        pane,
+        attribution: layer.attribution,
+        tileSize: layer.tileSize ?? 256,
+        zoomOffset: layer.zoomOffset ?? 0,
+        maxNativeZoom: layer.maxNativeZoom,
+        minZoom: layer.minZoom ?? 0,
+        maxZoom: 30,
+        noWrap: true, // show the map once, never repeated side by side
+        bounds: layer.bounds ?? MAP_BOUNDS[body.crs],
+      }).addTo(map);
+      return;
+    }
+    // Another projection: same source tiles, warped in the browser.
+    const nativePx = native === 'equirect' ? 512 : 256; // world width at zoom 0
+    new WarpedImagery({
       pane,
       attribution: layer.attribution,
-      tileSize: layer.tileSize ?? 256,
-      zoomOffset: layer.zoomOffset ?? 0,
-      maxNativeZoom: layer.maxNativeZoom,
-      minZoom: layer.minZoom ?? 0,
+      proj,
+      radiusKm: body.radiusKm,
+      // layers that only appear when zoomed in (e.g. Mars CTX): same level of detail
+      maxKmPerPx: layer.minZoom ? circumferenceKm(body) / (nativePx * 2 ** layer.minZoom) : undefined,
+      src: sourceGrid({
+        kind: native,
+        url: layer.url,
+        tileSize: layer.tileSize ?? 256,
+        maxLevel: layer.maxNativeZoom + (layer.zoomOffset ?? 0),
+        bounds: layer.bounds,
+      }),
       maxZoom: 30,
-      noWrap: true, // show the map once, never repeated side by side
-      bounds: layer.bounds ?? MAP_BOUNDS[body.crs],
+      noWrap: true,
     }).addTo(map);
   });
+
+  // Polar maps: keep the square map on screen (Leaflet's maxBounds works in lat/lon)
+  if (!proj.bounds) {
+    map.on('moveend', () => {
+      const z = map.getZoom();
+      const world = 256 * 2 ** z;
+      const half = map.getSize().divideBy(2);
+      const c = map.project(map.getCenter(), z);
+      const clamp = (v, h) => (world <= 2 * h ? world / 2 : Math.min(Math.max(v, h), world - h));
+      const x = clamp(c.x, half.x);
+      const y = clamp(c.y, half.y);
+      if (Math.abs(x - c.x) > 0.5 || Math.abs(y - c.y) > 0.5) map.panTo(map.unproject([x, y], z), { animate: false });
+    });
+  }
 
   // Zoom readout in the bottom-left corner. ×1 = whole map filling the screen.
   const Readout = L.Control.extend({
@@ -167,7 +217,7 @@ function openMap(key, params) {
 
   map.on('resize', () => {
     const size = map.getSize();
-    map.setMinZoom(minZoomFor(body, size));
+    map.setMinZoom(proj.minZoom(size));
     map.setMaxZoom(maxZoomFor(body, size));
   });
 
@@ -209,6 +259,7 @@ function setUpSelection(key, body, params) {
     if (current) { q.set('lat', current.lat.toFixed(4)); q.set('lon', current.lon.toFixed(4)); }
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
+    if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
     if (key !== 'earth' && Object.keys(weights).length) q.set('w', formatWeights(weights));
     return q.toString();
   }
@@ -228,8 +279,27 @@ function setUpSelection(key, body, params) {
     $('menu-btn').setAttribute('aria-expanded', open);
   };
   $('menu-btn').onclick = () => openMenu(menu.hidden);
+  if (keepViewPanelOpen) { openMenu(true); keepViewPanelOpen = false; }
   $('menu-close').onclick = () => openMenu(false);
   map.on('keydown', (e) => { if (e.originalEvent.key === 'Escape') openMenu(false); });
+
+  // ---- Projection buttons (top of the View panel): rebuild the map in another projection
+  $('proj-options').replaceChildren(...Object.entries(PROJECTIONS).map(([id, info]) => {
+    const label = document.createElement('label');
+    label.className = 'view-chip';
+    label.title = info.name;
+    label.innerHTML = '<input type="radio" name="proj"><span></span>';
+    label.querySelector('span').textContent = info.short;
+    const input = label.querySelector('input');
+    input.checked = id === proj.id;
+    input.onchange = () => {
+      proj = projection(id);
+      saveToUrl();
+      keepViewPanelOpen = true; // so projections can be tried one after another
+      route(); // same body, selection and view - new projection
+    };
+    return label;
+  }));
 
   // ---- Views (coloured overlays)
   map.createPane('overlay').style.zIndex = 350; // above the imagery, below the selection
@@ -296,7 +366,7 @@ function setUpSelection(key, body, params) {
     legend.remove();
     if (!view) return;
     const meta = available[view];
-    overlay = createOverlay(key, view, meta, 'overlay').addTo(map);
+    overlay = createOverlay(key, view, meta, 'overlay', proj).addTo(map);
     legend.addTo(map);
     legend.getContainer().innerHTML = legendHtml(view, meta);
   }

@@ -5,6 +5,7 @@
 // alpha = where there is data (Earth's oceans are transparent). The browser turns the
 // values into colours: low = blue, high = red (or the reverse, e.g. for dryness).
 import L from 'leaflet';
+import { warpTile, sourceGrid } from './reproject.js';
 
 const BASE = `${import.meta.env.BASE_URL}overlays`;
 export const OVERLAY_OPACITY = 0.6;
@@ -129,19 +130,66 @@ const DataTiles = L.GridLayer.extend({
   },
 });
 
-export function createOverlay(body, view, meta, pane) {
-  return new DataTiles({
-    url: `${BASE}/${body}/${view}`,
-    format: meta.format ?? 'png',
-    latMin: meta.lat_min ?? -90,
-    latMax: meta.lat_max ?? 90,
+// Data tiles in a projection other than their own: warp the grey value tiles first,
+// then colour them (our tiles are same-site, so their pixels can be read).
+const WarpedData = L.GridLayer.extend({
+  createTile(coords, done) {
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 256;
+    const ctx = tile.getContext('2d', { willReadFrequently: true });
+    const { proj, src, latMin, latMax, lut: LUT } = this.options;
+    warpTile(ctx, coords, proj, src, this.options).then((drawn) => {
+      if (!drawn) { done(null, tile); return; }
+      const data = ctx.getImageData(0, 0, 256, 256);
+      const px = data.data;
+      const n = 256 * 2 ** coords.z;
+      const clip = latMin > -90 || latMax < 90;
+      for (let r = 0; r < 256; r++) {
+        for (let c = 0; c < 256; c++) {
+          const i = (r * 256 + c) * 4;
+          const a = px[i + 3];
+          let v = a > 0 ? px[i] * 4 : 0;
+          if (v && clip) {
+            const lat = proj.fromWorld((coords.x * 256 + c + 0.5) / n, (coords.y * 256 + r + 0.5) / n)[0];
+            if (lat < latMin || lat > latMax) v = 0;
+          }
+          px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2];
+          px[i + 3] = (LUT[v + 3] * a) / 255;
+        }
+      }
+      ctx.putImageData(data, 0, 0);
+      done(null, tile);
+    }, () => done(null, tile));
+    return tile;
+  },
+});
+
+/** A coloured data layer, shown in projection `proj` (see projections.js). */
+export function createOverlay(body, view, meta, pane, proj) {
+  const own = meta.crs === 'EPSG3857' ? 'mercator' : 'equirect';
+  const common = {
     pane,
     opacity: OVERLAY_OPACITY,
-    nativeZoom: meta.max_zoom, // deepest level that has its own data tiles
+    latMin: meta.lat_min ?? -90,
+    latMax: meta.lat_max ?? 90,
     lut: lutFor(meta),
-    mercator: meta.crs === 'EPSG3857',
     maxZoom: 30,
     noWrap: true,
+  };
+  if (proj && proj.id !== own) {
+    return new WarpedData({
+      ...common,
+      proj,
+      radiusKm: { moon: 1737.4, mars: 3389.5, earth: 6371 }[body],
+      src: sourceGrid({ kind: own, url: `${BASE}/${body}/${view}/{z}/{y}/{x}.${meta.format ?? 'png'}`, maxLevel: meta.max_zoom }),
+    });
+  }
+  return new DataTiles({
+    ...common,
+    url: `${BASE}/${body}/${view}`,
+    format: meta.format ?? 'png',
+    nativeZoom: meta.max_zoom, // deepest level that has its own data tiles
+    mercator: own === 'mercator',
     bounds: [[-90, -180], [90, 180]],
   });
 }
