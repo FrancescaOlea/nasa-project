@@ -13,6 +13,8 @@ import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
 import iconEarth from './assets/icon-earth.png';
+import moonPhoto from './assets/moon.png';
+import marsPhoto from './assets/mars.png';
 import iconMoon from './assets/icon-moon.png';
 import iconMars from './assets/icon-mars.png';
 import marsTexture from './assets/mars-texture.jpg';
@@ -52,6 +54,7 @@ const GLOBES = {
 for (const [key, opts] of Object.entries(GLOBES)) {
   const globe = document.querySelector(`.globe.${key}`);
   if (createGlobe(globe.querySelector('canvas'), opts)) globe.classList.add('is-3d');
+  else globe.querySelector('img').src = { moon: moonPhoto, mars: marsPhoto }[key]; // no 3D: photo instead
 }
 
 document.querySelectorAll('.body-btn').forEach((btn) => {
