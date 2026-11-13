@@ -60,8 +60,9 @@ export function drawStarfield(canvas) {
   const width = 0.11 * diag;                                  // band half-width
   const coreAt = -0.18 * diag;                                // brightest part, left of centre
 
-  // 1) Diffuse glow, computed at 1/3 resolution and smoothly enlarged.
-  const s = 3;
+  // 1) Diffuse glow, computed at about 1/4 of the screen's CSS resolution and smoothly
+  //    enlarged (it's a soft blur, so more detail would be wasted work).
+  const s = Math.max(3, Math.round(4 * dpr));
   const gw = Math.ceil(W / s); const gh = Math.ceil(H / s);
   const glow = new ImageData(gw, gh);
   for (let y = 0; y < gh; y++) {
@@ -73,9 +74,9 @@ export function drawStarfield(canvas) {
       if (band < 0.01) continue;
       const nx = px / diag * 6; const ny = py / diag * 6;
       const core = Math.exp(-(((along - coreAt) / (0.3 * diag)) ** 2));
-      let v = band * (0.25 + 0.75 * cloud(nx, ny)) * (0.55 + 0.9 * core);
+      let v = band * (0.25 + 0.75 * cloud(nx, ny, 4)) * (0.55 + 0.9 * core);
       // dark dust lanes along the middle of the band
-      const lane = smoothstep(0.5, 0.72, dust(nx * 2.2 + 11, ny * 2.2 + 5, 4));
+      const lane = smoothstep(0.5, 0.72, dust(nx * 2.2 + 11, ny * 2.2 + 5, 3));
       v *= 1 - 0.75 * lane * Math.exp(-((across / (0.45 * width)) ** 2));
       const i = (y * gw + x) * 4;
       // bluish-white outskirts, warmer towards the core

@@ -40,9 +40,11 @@ new ResizeObserver(([entry]) => {
 // Starry sky behind the home page; repainted when the window size changes.
 const stars = $('stars');
 let starTimer = null;
+let starsPainted = false;
 new ResizeObserver(() => {
   clearTimeout(starTimer);
-  starTimer = setTimeout(() => drawStarfield(stars), 150);
+  if (!starsPainted) { starsPainted = true; drawStarfield(stars); return; } // first paint: right away
+  starTimer = setTimeout(() => drawStarfield(stars), 150);              // resizes: wait until settled
 }).observe(stars);
 
 // Spinning globes on the home page. The Moon turns 28x slower than Mars.

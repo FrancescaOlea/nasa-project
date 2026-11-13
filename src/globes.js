@@ -47,7 +47,9 @@ export function createGlobe(canvas, { texture, secondsPerTurn, tiltDeg = 0, star
   map.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const sphere = new THREE.Mesh(
     new THREE.SphereGeometry(1, 128, 64),
-    new THREE.MeshStandardMaterial({ map, roughness: 1, metalness: 0 }),
+    // Lambert (plain matte) lighting: looks the same for a dusty planet as a rough
+    // physically based material, but its shader compiles much faster at start-up.
+    new THREE.MeshLambertMaterial({ map }),
   );
   const tilt = new THREE.Group();
   tilt.rotation.z = -THREE.MathUtils.degToRad(tiltDeg);
