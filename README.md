@@ -2,6 +2,11 @@
 
 Pick the Moon or Mars on the home page, explore its map, select an area and look for Earth analogs.
 
+**Open the app online:** https://gumenion594-ai.github.io/nasa-project/ (no install needed)
+
+It's published with GitHub Pages: `.github/workflows/pages.yml` builds the site (`npm run build`)
+and publishes it every time `main` changes. To run it on your own computer instead, see *Run it* below.
+
 ## Run it
 Requires Node.js 18+ (https://nodejs.org) and Git (https://git-scm.com).
 
