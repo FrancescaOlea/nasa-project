@@ -130,11 +130,16 @@
         <div class="w-mode-buttons" role="radiogroup" aria-label="What counts as a good analog"></div>
         <p class="w-mode-help"></p>
       </div>
+      <div class="w-count" hidden>
+        <label for="w-count-input">Number of places to find</label>
+        <input id="w-count-input" type="number" step="1" inputmode="numeric">
+        <span class="w-count-help"></span>
+      </div>
       <div class="w-list"></div>
       <p class="w-warning" role="alert" hidden>Turn on at least one characteristic to continue.</p>
       <footer>
         <div class="w-presets">
-          <button type="button" class="w-all-1">All ×1</button>
+          <button type="button" class="w-all-1">Defaults</button>
           <button type="button" class="w-all-0">All off</button>
         </div>
         <div class="w-actions">

@@ -131,8 +131,13 @@ with `python3 tools/build_layers.py earth`.
 ### Earth analog search
 
 **Find Earth analogs** (Moon or Mars, with an area selected) first asks how much each characteristic
-should count (off, ×0.5, ×1, ×2, ×3; at least one on; dryness, UV and altitude start at ×0.5
-because they favour the same places for every site) and what a good analog is:
+should count (off, ×0.5, ×1, ×2, ×3; at least one on), how many places to find (1-10, default 3) and
+what a good analog is. **Defaults** restores the default weights, mode and number:
+max. temperature ×2, min. temperature ×1, daily swing ×1, slope ×2, relief ×2, dryness ×2, UV and
+altitude off. These were chosen by running 18 Moon and Mars sites and checking that different sites
+get different places: only 9% of results are shared between sites (it was 41% with every weight at
+×1, when most searches ended in the Atacama or Tibet). UV and altitude have no Mars/Moon value, so
+they pull every search towards the same highlands.
 
 - **Match my site**: places whose values are closest to the site's. Where the site is beyond anything
   on Earth (Mars nights are always colder, its day-night swing always bigger), it is matched
@@ -147,7 +152,7 @@ because they favour the same places for every site) and what a good analog is:
 | Max. / min. temperature, daily swing | area mean of the temperature layers | NASA POWER | matched (or most extreme) |
 | Terrain slope | mean of log10(slope), ~1.9 km scale | ETOPO 2022, same scale | matched |
 | Terrain relief | mean elevation standard deviation inside ~9 km blocks | ETOPO 2022, same blocks | matched |
-| Dryness | – (no Mars/Moon equivalent) | yearly rain, log | driest wins |
+| Dryness | – (no Mars/Moon equivalent) | yearly rain, log | any desert (under 250 mm/yr) counts as dry enough; wetter places count against |
 | UV radiation | – | average UV index | highest wins |
 | Altitude (thin air) | – | mean elevation | highest wins |
 
@@ -160,16 +165,18 @@ How it works (`src/analogs.js`):
 - Each characteristic's distance to its target is divided by its spread across Earth (5th-95th
   percentile), so degrees, millimetres and slopes become comparable. The score is the weighted
   root-mean-square; "% match" = 100 % minus the score (0 % = a whole Earth spread away).
-- The best circle is kept, then the next best at least 800 km from all kept ones, until there are 5.
+- The best circle is kept, then the next best at least 800 km from all kept ones, until there are as
+  many as asked for (3 by default).
 
 Results show as numbered circles of the site's radius. Click one (on the map or in the list) for its
 area summary and a site-vs-Earth comparison. Selecting new areas is paused until **Exit results**;
 data layers can still be shown. A search takes 0.1-1 s.
 
-Checks, with the default weights: Gale and Olympus Mons give the Peruvian Andes, Atacama and Kunlun;
-Utopia Planitia, Jezero and the Mars polar caps give Antarctica (plus Tibet for Jezero); Apollo 11 gives
-the Atacama, Tibet, Arabia and the Sahara; Shackleton (Moon south pole) gives Antarctica. With dryness,
-UV and altitude off, the Moon's equator gives Arabia, the Namib, the Sahara and Australia.
+Checks, with the default weights (3 places, 25 km radius): Gale gives the Peruvian Andes, the Bolivian
+Altiplano and Algeria; Meridiani the Sechura Desert (Peru), the Western Sahara and the Namib; Hellas
+West Greenland, Alaska's North Slope and the Canadian Arctic; Argyre the Canadian Arctic islands and
+Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antarctica; Apollo 11 Sudan,
+Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
 Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
 
 ### Mars temperatures: a thermal model

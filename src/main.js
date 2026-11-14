@@ -8,7 +8,7 @@ import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
-import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
+import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
 import { projection, PROJECTIONS } from './projections.js';
@@ -248,6 +248,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let weights = parseWeights(params.get('w'));            // last weights for 'Find similar spots'
   let analogWeights = parseAnalogWeights(params.get('aw')); // ... and for 'Find Earth analogs'
   let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
+  let analogCount = parseCount(params.get('an'));
   let available = {};                          // data layers for this body (from index.json)
   let describe = () => {};
   function selectView(v) {
@@ -263,7 +264,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
   // Earth keeps where it was opened from (and an analog search's site) in its address
-  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode'].filter((k) => params.has(k)) : [];
+  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n'].filter((k) => params.has(k)) : [];
   function query() {
     const q = new URLSearchParams();
     for (const k of keep) q.set(k, params.get(k));
@@ -275,6 +276,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (key !== 'earth' && Object.keys(analogWeights).length) {
       q.set('aw', formatWeights(analogWeights));
       q.set('am', analogMode);
+      q.set('an', analogCount);
     }
     return q.toString();
   }
@@ -532,11 +534,14 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       steps: WEIGHT_STEPS,
       initial: { ...DEFAULT_WEIGHTS, ...analogWeights },
       defaults: DEFAULT_WEIGHTS,
+      count: { value: analogCount, default: DEFAULT_COUNT, min: 1, max: MAX_COUNT },
       mode: {
         value: analogMode,
+        default: 'match',
         options: [
           ['match', 'Match my site', `Places whose temperatures are closest to this site's. Where ${body.name} is ` +
-            'beyond anything on Earth, the most extreme places on Earth win.'],
+            'beyond anything on Earth, places that are as cold (or warm) for Earth as this site is for ' +
+            `${body.name}.`],
           ['extreme', 'Most extreme', 'The most extreme places on Earth in the direction of this site: coldest, ' +
             'hottest or biggest day–night swing.'],
         ],
@@ -544,11 +549,13 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     });
     if (!chosen) return;
     analogMode = chosen.mode;
+    analogCount = chosen.count;
     delete chosen.mode;
+    delete chosen.count;
     analogWeights = chosen;
     saveToUrl();
     const site = new URLSearchParams({ from: key, site: `${current.lat.toFixed(4)},${current.lon.toFixed(4)}`,
-      sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode });
+      sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
     location.hash = `#/earth?${site}`;
   };
   $('find-similar').onclick = async () => {
@@ -563,6 +570,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
 // ---- Earth page opened from "Find Earth analogs": the search and its results ---------
 
+// number of places to find, from the address; 1-10, default 3
+function parseCount(text) {
+  const n = Number(text);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_COUNT ? n : DEFAULT_COUNT;
+}
+
 function showAnalogResults(params, selection) {
   const from = BODIES[params.get('from')] ? params.get('from') : 'mars';
   const source = BODIES[from];
@@ -572,6 +585,7 @@ function showAnalogResults(params, selection) {
   const weights = parseAnalogWeights(params.get('w'));
   if (!Object.values(weights).some((v) => v > 0)) Object.assign(weights, DEFAULT_WEIGHTS);
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
+  const count = parseCount(params.get('n'));
 
   $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
   $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}`;
@@ -598,7 +612,7 @@ function showAnalogResults(params, selection) {
     const index = await loadIndex();
     const site = await siteValues(from, source.radiusKm, index[from] ?? {}, lat, lon, r);
     const t0 = performance.now();
-    const found = await findAnalogs({ site, weights, mode, radiusKm: r });
+    const found = await findAnalogs({ site, weights, mode, radiusKm: r, count });
     if (map !== thisMap) return; // the page has changed meanwhile
     if (import.meta.env.DEV) console.log(`analog search: ${Math.round(performance.now() - t0)} ms`, found, site);
     showResults(found, site);
@@ -610,7 +624,7 @@ function showAnalogResults(params, selection) {
   function showResults({ results, used, relative, targets }, site) {
     const skipped = Object.keys(weights).filter((k) => weights[k] > 0 && !used.includes(k));
     $('analog-status').textContent = results.length
-      ? `Best ${results.length} areas, at least ${MIN_SEPARATION_KM} km apart.` +
+      ? (results.length === 1 ? 'Best area.' : `Best ${results.length} areas, at least ${MIN_SEPARATION_KM} km apart.`) +
         (skipped.length ? ` No ${source.name} data here for: ${skipped.map((k) => PARAMS[k].name).join(', ')}.` : '')
       : 'No matching areas found.';
     const group = L.layerGroup().addTo(map);

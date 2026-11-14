@@ -26,7 +26,7 @@ const fmt = (w) => (w === 0 ? 'off' : `×${w}`);
  * above the list. Resolves with the chosen weights (plus `mode` when used), or null if
  * cancelled.
  */
-export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null, defaults = null }) {
+export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null, defaults = null, count = null }) {
   items ??= layers.map((k) => ({ key: k, name: VIEWS[k].name }));
   layers = items.map((it) => it.key);
   const dialog = document.getElementById('weights');
@@ -76,12 +76,17 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
       row.querySelector('.w-share').textContent = total > 0 ? `${Math.round((weights[k] / total) * 1000) / 10}%` : '–';
       row.classList.toggle('off', weights[k] === 0);
     }
-    go.disabled = total === 0;
-    warning.hidden = total > 0;
+    const badCount = count && !countOk();
+    go.disabled = total === 0 || badCount;
+    warning.hidden = total > 0 && !badCount;
+    warning.textContent = total === 0 ? 'Turn on at least one characteristic to continue.'
+      : `Choose between ${count?.min} and ${count?.max} places.`;
+    countBox.classList.toggle('bad', !!badCount);
   }
   // optional switch (e.g. "Match my site" / "Most extreme")
   const modeBox = dialog.querySelector('.w-mode');
   let modeValue = mode?.value;
+  let showMode = null;
   modeBox.hidden = !mode;
   if (mode) {
     const buttons = mode.options.map(([id, label]) => {
@@ -93,7 +98,7 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
       return b;
     });
     modeBox.querySelector('.w-mode-buttons').replaceChildren(...buttons);
-    const showMode = () => {
+    showMode = () => {
       mode.options.forEach(([id], i) => buttons[i].setAttribute('aria-checked', id === modeValue));
       modeBox.querySelector('.w-mode-help').textContent = mode.options.find(([id]) => id === modeValue)?.[2] ?? '';
     };
@@ -102,7 +107,27 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
 
   const reset = dialog.querySelector('.w-all-1');
   reset.textContent = defaults ? 'Defaults' : 'All ×1';
-  reset.onclick = () => { for (const k of layers) weights[k] = defaults?.[k] ?? 1; update(); };
+  // optional number of results (e.g. 1-10)
+  const countBox = dialog.querySelector('.w-count');
+  const countInput = countBox.querySelector('input');
+  countBox.hidden = !count;
+  const countOk = () => {
+    const n = Number(countInput.value);
+    return Number.isInteger(n) && n >= count.min && n <= count.max;
+  };
+  if (count) {
+    countInput.min = count.min;
+    countInput.max = count.max;
+    countInput.value = count.value;
+    countBox.querySelector('.w-count-help').textContent = `Whole number from ${count.min} to ${count.max}.`;
+    countInput.oninput = () => update();
+  }
+  reset.onclick = () => {
+    for (const k of layers) weights[k] = defaults?.[k] ?? 1;
+    if (mode?.default) { modeValue = mode.default; showMode?.(); }
+    if (count) countInput.value = count.default ?? count.value;
+    update();
+  };
   dialog.querySelector('.w-all-0').onclick = () => { for (const k of layers) weights[k] = 0; update(); };
   update();
 
@@ -112,7 +137,8 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
       dialog.close();
       resolve(result);
     };
-    go.onclick = () => finish(mode ? { ...weights, mode: modeValue } : { ...weights });
+    go.onclick = () => finish({ ...weights, ...(mode ? { mode: modeValue } : {}),
+      ...(count ? { count: Number(countInput.value) } : {}) });
     dialog.querySelector('.w-cancel').onclick = () => finish(null);
     dialog.onclose = () => resolve(null); // Esc key
     dialog.showModal();

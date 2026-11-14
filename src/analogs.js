@@ -17,13 +17,15 @@
 //   * "Most extreme": target = Earth's extreme on the site's side, for the temperatures.
 //   * Slope and relief are always matched: rougher than the site isn't "better".
 //   * Dryness, UV and altitude (thin air) have no Mars/Moon equivalent in our data, so they
-//     are one-sided: drier / more UV / higher is better.
-// Finally the 5 best circles that are at least 800 km apart are kept.
+//     are one-sided. Dryness counts any desert (under 250 mm of rain a year) as dry enough, so
+//     not every search ends in the driest place on Earth; for UV / altitude, higher is better.
+// Finally the best circles (3 by default, 1-10) that are at least 800 km apart are kept.
 import { summarize } from './areastats.js';
 
 const BASE = `${import.meta.env.BASE_URL}search`;
 export const MIN_SEPARATION_KM = 800;
-export const RESULT_COUNT = 5;
+export const DEFAULT_COUNT = 3;   // how many places to show (the user can choose 1-10)
+export const MAX_COUNT = 10;
 const EARTH_R = 6371.0;
 
 // Search characteristics, in dialog order.
@@ -41,15 +43,19 @@ export const PARAMS = {
   relief: { name: 'Terrain relief', unit: 'm', site: ['relief', 'mean'], field: 'relief', toUnit: 1000, always: true,
     help: 'How much the height varies within ~9 km' },
   dry: { name: 'Dryness', unit: 'mm/yr', field: 'dry', better: 'low', log: true, offset: 1,
-    help: 'Yearly rain; no Mars/Moon value, so the driest places win' },
+    limit: Math.log10(250 + 1), // desert: under 250 mm of rain a year
+    help: 'Desert-dry (under 250 mm of rain a year) counts fully; wetter places count against' },
   uv: { name: 'UV radiation', unit: 'UV index', field: 'uv', better: 'high',
     help: 'Average UV index; no Mars/Moon value, so the highest wins' },
   alt: { name: 'Altitude (thin air)', unit: 'km', field: 'alt', better: 'high',
     help: 'Height above sea level: thinner air, closer to Mars; the highest wins' },
 };
 export const WEIGHT_STEPS = [0, 0.5, 1, 2, 3];
-// Dryness, UV and altitude pull towards the same places whatever the site, so they start at half weight.
-export const DEFAULT_WEIGHTS = { tmax: 1, tmin: 1, swing: 1, slope: 1, relief: 1, dry: 0.5, uv: 0.5, alt: 0.5 };
+// Defaults, tested on 18 Moon and Mars sites so that different sites get different places
+// (only 9% of results shared between sites): the characteristics that differ between sites
+// count most. UV and altitude are off: they have no Mars/Moon value, so they would pull every
+// search towards the same few highlands (Tibet, the Andes).
+export const DEFAULT_WEIGHTS = { tmax: 2, tmin: 1, swing: 1, slope: 2, relief: 2, dry: 2, uv: 0, alt: 0 };
 
 // Earth value of a parameter in display units (fields are stored as log10, km, ...)
 export function displayValue(key, v) {
@@ -195,7 +201,7 @@ export async function siteValues(body, bodyRadiusKm, index, lat, lon, radiusKm) 
  * weights: {param: weight}; mode: 'match' | 'extreme'; site: from siteValues().
  * Resolves to { results: [{lat, lon, score, values, targets}], targets, spreads, used }.
  */
-export async function findAnalogs({ site, weights, mode, radiusKm }) {
+export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAULT_COUNT }) {
   const grid = await loadEarthGrid();
   // parameters that take part: weight > 0, and for two-sided ones a site value
   const used = Object.keys(PARAMS).filter((k) => weights[k] > 0 && (!PARAMS[k].site || Number.isFinite(site[k])));
@@ -220,7 +226,8 @@ export async function findAnalogs({ site, weights, mode, radiusKm }) {
     spreads[k] = Math.max(1e-6, percentile(sorted, 0.95) - percentile(sorted, 0.05));
     extremes[k] = [lo, hi];
     const p = PARAMS[k];
-    if (p.better) targets[k] = p.better === 'low' ? lo : hi;
+    if (p.limit !== undefined) targets[k] = p.limit; // good enough beyond a limit (e.g. any desert)
+    else if (p.better) targets[k] = p.better === 'low' ? lo : hi;
     else if (mode === 'extreme' && !p.always) {
       targets[k] = site[k] < percentile(sorted, 0.5) ? lo : hi;
     } else if (site[k] >= lo && site[k] <= hi) {
@@ -243,7 +250,11 @@ export async function findAnalogs({ site, weights, mode, radiusKm }) {
     for (const k of used) {
       const v = c.values[PARAMS[k].field][j];
       if (!Number.isFinite(v)) { ok = false; break; }
-      s += weights[k] * ((v - targets[k]) / spreads[k]) ** 2;
+      const p = PARAMS[k];
+      // with a limit, only the wrong side counts (any desert is dry enough)
+      const diff = p.limit === undefined ? v - targets[k]
+        : p.better === 'low' ? Math.max(0, v - targets[k]) : Math.min(0, v - targets[k]);
+      s += weights[k] * (diff / spreads[k]) ** 2;
     }
     if (ok) scores[j] = Math.sqrt(s / totalW);
   }
@@ -258,7 +269,7 @@ export async function findAnalogs({ site, weights, mode, radiusKm }) {
       lat: c.lat[j], lon: c.lon[j], score: scores[j],
       values: Object.fromEntries(used.map((k) => [k, c.values[PARAMS[k].field][j]])),
     });
-    if (results.length === RESULT_COUNT) break;
+    if (results.length === count) break;
   }
   return { results, targets, spreads, extremes, relative, used };
 }
