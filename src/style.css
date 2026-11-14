@@ -364,3 +364,4 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   .map-btn.ruler-btn { padding: 0; width: 46px; justify-content: center; }
   .map-btn.ruler-btn .btn-label { display: none; }
 }
+.tut-hide { visibility: hidden !important; }

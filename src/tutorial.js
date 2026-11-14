@@ -22,6 +22,9 @@ async function until(test, ms = 8000) {
   }
   return false;
 }
+// Windows, panels and buttons the tutorial card must not cover
+const OBSTACLES = ['.top-buttons > *', '.zoom-bar', '#switch-world', '#menu', '#select-panel', '#area-panel',
+  '#analog-banner', '#ruler-panel', '.legend', '.map-settings', '.zoom-readout', '.leaflet-control-attribution', '.home-help'];
 const visible = (el) => el && !el.hidden && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
 
 /**
@@ -124,6 +127,8 @@ async function runTour(app) {
   document.body.append(layer);
   const card = layer.querySelector('.tut-card');
   let boxes = [];
+  let hidden = []; // windows hidden for the current step, to keep the card off them
+  const unhide = () => { for (const el of hidden) el.classList.remove('tut-hide'); hidden = []; };
   let index = -1;
   let busy = false;
 
@@ -151,21 +156,45 @@ async function runTour(app) {
       boxes.push(b);
     });
     layer.querySelector('.tut-shade').style.clipPath = `path(evenodd, '${path}')`;
-    // card: below the first target if there's room, else above it, else in the middle
+    // card: the spot nearest the highlighted element that covers no window, button or panel
+    // (scanned over the whole screen); if none is free (small phones), the one covering least.
     const W = window.innerWidth; const H = window.innerHeight;
     const cw = Math.min(340, W - 24);
     card.style.width = `${cw}px`;
     const ch = card.offsetHeight;
-    let left = (W - cw) / 2; let top = (H - ch) / 2;
-    if (targets.length) {
-      const r = targets[0].getBoundingClientRect();
-      left = Math.min(Math.max(12, r.left + r.width / 2 - cw / 2), W - cw - 12);
-      if (r.bottom + 18 + ch < H - 12) top = r.bottom + 18;
-      else if (r.top - 18 - ch > 12) top = r.top - 18 - ch;
-      else { // a tall target (a panel): beside it
-        top = Math.min(Math.max(12, r.top), H - ch - 12);
-        left = r.left > W / 2 ? Math.max(12, r.left - cw - 18) : Math.min(W - cw - 12, r.right + 18);
-      }
+    const M = 12; // margin from the screen edge
+    const GAP = 14; // space around obstacles
+    unhide();
+    const obstacles = OBSTACLES.flatMap((sel) => [...document.querySelectorAll(sel)])
+      .filter((el) => visible(el) && !targets.some((t) => t === el || t.contains(el)))
+      // a window that holds a highlighted element is avoided too, but never hidden
+      .map((el) => ({ el, r: el.getBoundingClientRect(), keep: targets.some((t) => el.contains(t)) }))
+      .concat(targets.map((el) => ({ el: null, r: el.getBoundingClientRect() }))); // never cover the highlight
+    const overlap = (x, y, r) => {
+      const ox = Math.min(x + cw, r.right + GAP) - Math.max(x, r.left - GAP);
+      const oy = Math.min(y + ch, r.bottom + GAP) - Math.max(y, r.top - GAP);
+      return ox > 0 && oy > 0 ? ox * oy : 0;
+    };
+    // covering the highlighted element counts far more than covering another window
+    const covered = (x, y) => obstacles.reduce((sum, o) => sum + overlap(x, y, o.r) * (!o.el ? 50 : o.keep ? 10 : 1), 0);
+    const t = targets[0]?.getBoundingClientRect();
+    const cx = t ? t.left + t.width / 2 : W / 2; const cy = t ? t.top + t.height / 2 : H / 2;
+    let best = null;
+    const tryAt = (x, y) => {
+      x = Math.min(Math.max(M, x), W - cw - M); y = Math.min(Math.max(M, y), H - ch - M);
+      const score = covered(x, y) * 1000 + Math.hypot(x + cw / 2 - cx, y + ch / 2 - cy);
+      if (!best || score < best.score) best = { x, y, score };
+    };
+    if (t) { // right next to the target first: below, above, left, right
+      tryAt(cx - cw / 2, t.bottom + GAP + 4); tryAt(cx - cw / 2, t.top - GAP - 4 - ch);
+      tryAt(t.left - GAP - 4 - cw, cy - ch / 2); tryAt(t.right + GAP + 4, cy - ch / 2);
+    }
+    for (let y = M; y <= H - ch - M; y += 16) for (let x = M; x <= W - cw - M; x += 16) tryAt(x, y);
+    tryAt((W - cw) / 2, (H - ch) / 2);
+    const left = best.x; const top = best.y;
+    // small screens: no free spot. Hide (for this step only) the windows the card would cover.
+    for (const o of obstacles) {
+      if (o.el && !o.keep && overlap(left, top, o.r) > 0) { o.el.classList.add('tut-hide'); hidden.push(o.el); }
     }
     Object.assign(card.style, { left: `${left}px`, top: `${top}px` });
   }
@@ -184,6 +213,7 @@ async function runTour(app) {
     busy = false;
   }
   function end() {
+    unhide();
     window.removeEventListener('resize', place);
     layer.remove();
     busy = false;
