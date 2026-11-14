@@ -561,8 +561,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // Zoom so the selected area fills the free part of the screen - the same size on screen
   // whatever its radius. Fitted in screen pixels, so it works in every projection (also
   // around a pole, where a latitude/longitude box doesn't).
-  function zoomToSelection() {
-    const ring = circlePoints(current.lat, current.lon, radiusKm, body.radiusKm);
+  function zoomToSelection() { zoomToArea(current.lat, current.lon, radiusKm); }
+  // Fly to a circular area so it fills the free part of the screen (selected area, similar spots)
+  function zoomToArea(lat, lon, km) {
+    const ring = circlePoints(lat, lon, km, body.radiusKm);
     // measured at the most detailed zoom, so even a 1 km area is many pixels wide
     const z0 = map.getMaxZoom();
     const pts = ring.map((ll) => map.project(ll, z0));
@@ -705,7 +707,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       li.querySelector('.num').textContent = i + 1;
       li.querySelector('.where').textContent = `${formatLatLon(res.lat, res.lon)} · ${formatKm(res.km)}`;
       li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
-      li.querySelector('button').onclick = () => pick(i, true);
+      li.querySelector('button').onclick = () => pick(i);
       return li;
     });
     $('analog-results').replaceChildren(...items);
@@ -715,14 +717,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       map.flyToBounds(all, { padding: [80, 80], duration: 0.8, maxZoom: map.getZoom() + 1 });
     }
 
-    function pick(i, fly = false) {
+    // clicking a spot (in the list or its marker on the map) zooms so it fills the free screen
+    function pick(i) {
       const res = results[i];
       items.forEach((li, j) => li.querySelector('button').setAttribute('aria-pressed', i === j));
       markers.forEach((m, j) => m.getElement()?.firstChild?.classList.toggle('picked', i === j));
-      if (fly) {
-        map.flyToBounds(L.latLngBounds(circlePoints(res.lat, res.lon, Math.max(r, 50), body.radiusKm)),
-          { padding: [60, 60], duration: 0.8 });
-      }
+      zoomToArea(res.lat, res.lon, r);
       const rows = used.map((k) => `<tr><td>${VIEWS[k].name}</td><td>${formatValue(available[k], siteValues[k])}</td>` +
         `<td>${formatValue(available[k], res.values[k])}</td></tr>`);
       const box = $('analog-compare');
