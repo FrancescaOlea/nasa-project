@@ -59,6 +59,16 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   surface traversability analysis (JPL).
 - Walking time: Tobler, W. (1993), hiking function (Earth-based).
 
+**Rover profiles** (`src/route/rovers.js`)
+- Rankin, A. et al. (2022), "Mars Curiosity Rover Wheel Wear", JPL: mass and wheel size of
+  Sojourner, Spirit/Opportunity, Curiosity and Perseverance (Table 1).
+- Mars Pathfinder Microrover Flight Experiment overview (NASA PDS, 1996); JPL Robotics, Mars
+  Pathfinder Rover: Sojourner.
+- JPL Mars Exploration Rover pages; Leger, P. C. et al. (2005), "Driving Spirit at Gusev Crater"
+  (JPL); JPL news "Rover Takes on Steepest Slope Ever Tried on Mars" (2016); JPL "Slip Sliding Away
+  on the Red Planet" (2004); NASA, Opportunity mission complete (2019).
+- NASA/JPL Mars Science Laboratory (Curiosity) pages; JPL Robotics, Mars 2020 rover mobility.
+
 ## Partner data
 
 - **Kaguya Terrain Camera ortho mosaic** (JAXA / SELENE), ~21 m/pixel, via NASA Moon Trek.

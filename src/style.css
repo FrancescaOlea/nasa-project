@@ -312,3 +312,51 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   .map-view:has(#route-panel:not([hidden])) .leaflet-top.leaflet-right { right: 0; }
 }
 .map-view:has(#route-panel:not([hidden])) .switch-world { right: min(476px, calc(100% - 12px)); }
+/* rover picker and route explanation */
+.traveller-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .3rem; margin-bottom: .3rem; }
+.panel .traveller-btn { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: .15rem;
+  min-height: 3.3rem; padding: .3rem .2rem; font-size: .74rem; color: #ddd; }
+.panel .traveller-btn[aria-checked="true"] { border-color: #7fd4ff; background: rgba(127,212,255,.14); color: #fff; font-weight: 600; }
+.traveller-btn .t-icon { display: flex; align-items: flex-end; justify-content: center; height: 24px; color: #e8b48a; }
+.route-rover { font-size: .78rem; }
+.rv-card summary { display: flex; gap: .6rem; align-items: center; cursor: pointer; padding: .25rem 0; list-style: none; }
+.rv-card summary::-webkit-details-marker { display: none; }
+.rv-card summary::after { content: '▾ specs'; margin-left: auto; color: #7fd4ff; font-size: .72rem; white-space: nowrap; }
+.rv-card[open] summary::after { content: '▴ hide'; }
+.rv-icon { color: #e8b48a; display: flex; }
+.rv-head { display: grid; gap: .05rem; }
+.rv-specs { margin: .3rem 0; }
+.rv-specs td:first-child { width: 5.5rem; }
+.src-dot { color: #7fd4ff; cursor: help; font-size: .75rem; }
+.rv-note { font-size: .68rem; }
+.rv-model { margin: .35rem 0 .2rem !important; color: #bbb; line-height: 1.4; }
+.tag { display: inline-block; padding: 0 .35rem; border-radius: 4px; font-size: .64rem; font-weight: 600; letter-spacing: .03em; vertical-align: 1px; }
+.tag-model { background: #3a2f12; color: #ffcf6e; border: 1px solid #6b5420; }
+.route-explain { margin: .4rem 0; font-size: .8rem; line-height: 1.4; }
+.route-explain ul { margin: .2rem 0 .45rem; padding-left: 1.1rem; color: #ccc; }
+.route-explain li { margin: .1rem 0; }
+.verdict { margin: .3rem 0 .45rem !important; padding: .4rem .55rem; border-radius: 6px; font-size: .78rem; }
+.verdict.ok { background: rgba(76,211,135,.12); border: 1px solid rgba(76,211,135,.4); }
+.verdict.bad { background: rgba(229,72,77,.14); border: 1px solid rgba(229,72,77,.5); }
+.verdict.warn { background: rgba(255,176,46,.12); border: 1px solid rgba(255,176,46,.45); }
+
+/* ---- 3D terrain view (src/terrain3d/) ---- */
+.view3d { position: absolute; inset: 0; z-index: 900; background: #0d0b0c; }
+.view3d-canvas { position: absolute; inset: 0; }
+.view3d-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.view3d-canvas canvas:active { cursor: grabbing; }
+.view3d-bar { left: 12px; right: auto; top: 70px; bottom: auto; width: min(330px, calc(100% - 24px)); max-height: calc(100% - 90px); overflow-y: auto; }
+.view3d-bar .eyebrow { display: block; margin-top: .55rem; }
+.v3-help { margin-top: .3rem !important; line-height: 1.4; }
+.v3-row { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .55rem; }
+.panel .v3-row button { padding: .35rem .55rem; font-size: .78rem; }
+.v3-legend { margin-top: .4rem !important; line-height: 1.5; }
+.v3-status { margin-top: .3rem !important; color: #ccc; }
+.view3d.busy .v3-status::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: .45rem;
+  border: 2px solid #7fd4ff; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+.v3-cursor { min-height: 1.1em; font-variant-numeric: tabular-nums; color: #7fd4ff; }
+.v3-info { margin-top: .45rem !important; color: #8a8a92; font-size: .7rem; line-height: 1.45; }
+body.in-3d #select-panel, body.in-3d #area-panel, body.in-3d .switch-world, body.in-3d #menu-btn, body.in-3d #menu { display: none !important; }
+@media (max-width: 600px) {
+  .view3d-bar { top: auto; bottom: 22px; max-height: 45%; }
+}

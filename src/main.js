@@ -11,7 +11,10 @@ import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
-import { createRoutePlanner } from './route/planner.js';
+import { createRoutePlanner, routeEvents } from './route/planner.js';
+import { createView3D } from './terrain3d/view3d.js';
+
+let view3d = null; // the 3D terrain view, made the first time it's opened
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -568,6 +571,31 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     };
     planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); });
     $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
+    // 3D terrain: opens on the route (if any) or on the area the 2D map shows
+    const btn3d = $('btn-3d');
+    btn3d.hidden = false;
+    const set3dButton = (on) => {
+      btn3d.setAttribute('aria-pressed', on);
+      btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
+    };
+    set3dButton(false);
+    btn3d.onclick = () => {
+      view3d ??= createView3D({ routeEvents });
+      if (view3d.isOpen()) { view3d.close(); return; }
+      if (shapes) clear();
+      set3dButton(true);
+      view3d.open({
+        planner,
+        onClose: () => set3dButton(false),
+        getLeafletView: () => {
+          const c = map.getCenter();
+          const b = map.getBounds();
+          const wKm = viewWidthKm(body);
+          const hKm = Math.min(180, b.getNorth() - b.getSouth()) * (Math.PI / 180) * body.radiusKm;
+          return { lat: c.lat, lon: c.lng, wKm, hKm };
+        },
+      });
+    };
   }
 
   const lat = parseFloat(params.get('lat'));
@@ -714,6 +742,8 @@ function setUpWorldSwitch(key, params) {
 }
 
 function hidePanels() {
+  if (view3d?.isOpen()) view3d.close();
+  $('btn-3d').hidden = true;
   for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'route-panel']) $(id).hidden = true;
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;

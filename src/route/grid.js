@@ -39,7 +39,7 @@ function tilePixels(url) {
 }
 
 /** Reads one layer's values (in real units) at its most detailed tile level. */
-async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax) {
+export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax) {
   const z = meta.max_zoom;
   const W = 512 * 2 ** z;
   const H = 256 * 2 ** z;
@@ -75,6 +75,28 @@ async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax) {
       if (!px) return NaN;
       const i = ((row & 255) * 256 + (col & 255)) * 4;
       return px[i + 3] >= 128 && px[i] > 0 ? lut[px[i]] : NaN;
+    },
+    /** value at a point, interpolated between the 4 nearest data pixels (NaN where none) */
+    smooth(lat, lon) {
+      if (lat < latLo || lat > latHi) return NaN;
+      const fy = Math.min(H - 1, Math.max(0, ((90 - lat) / 180) * H - 0.5));
+      const fx = ((lon + 180) / 360) * W - 0.5;
+      const r0 = Math.floor(fy); const c0 = Math.floor(fx);
+      const ty = fy - r0; const tx = fx - c0;
+      let sum = 0; let wsum = 0;
+      for (let dy = 0; dy < 2; dy++) {
+        const row = Math.min(H - 1, r0 + dy);
+        for (let dx = 0; dx < 2; dx++) {
+          const col = (((c0 + dx) % W) + W) % W;
+          const px = tiles.get(`${row >> 8}/${col >> 8}`);
+          if (!px) continue;
+          const i = ((row & 255) * 256 + (col & 255)) * 4;
+          if (px[i + 3] < 128 || px[i] === 0) continue;
+          const w = (dy ? ty : 1 - ty) * (dx ? tx : 1 - tx);
+          sum += lut[px[i]] * w; wsum += w;
+        }
+      }
+      return wsum > 1e-6 ? sum / wsum : NaN;
     },
   };
 }

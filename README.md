@@ -96,6 +96,65 @@ Data for the planner is built with `python3 tools/build_route_data.py` (inputs i
 the script): the Robbins crater catalog into `public/route/craters/` (30° blocks, loaded only
 where a route goes) and the dust-storm database into `public/route/storms.bin`.
 
+### Rovers: who travels changes the route
+
+**Who travels** offers an astronaut on foot and NASA's five Mars rovers: **Sojourner, Spirit,
+Opportunity, Curiosity, Perseverance**. Each has a compact profile (mission, dates, mass, wheels,
+obstacle clearance, speed, navigation; every fact with its source, hover ⓘ) and its own **model
+parameters** in `src/route/rovers.js`, clearly marked as assumptions:
+
+| | Slope limit (~2 km scale) | Hazard weights: slope / crater rim / rough / loose dust / rocky / dust storm | Why |
+|---|---|---|---|
+| On foot | 20° (xEVA spec) | 3 / 1.5 / 1.5 / 1 / 0.5 / 1 | |
+| Sojourner | 20° (assumption) | 3 / 3 / 4 / 1 / 2 / 1 | 13 cm wheels clear ~20 cm: rough ground and rims count most |
+| Spirit, Opportunity | 25° (MER test rover stalled on ~25° sand) | 3 / 2 / 3 / 3 / 1 / 1 | 26 cm wheels; both got stuck in sand |
+| Curiosity | 25° (steepest tilt in 7 years 25.3°) | 3 / 1.5 / 1.5 / 2 / 2.5 / 0.5 | 50 cm wheels clear ~65 cm, but sharp rocks damaged them; nuclear power |
+| Perseverance | 25° (assumption: Curiosity design) | 3 / 1.5 / 1.2 / 2 / 1 / 0.5 | thicker wheels after Curiosity's damage |
+
+"Rocky" = high TES thermal inertia (> 600 TIU: rock and bedrock at the surface). Single rocks
+are far too small for this data, so obstacle clearance only sets how much a rover dislikes rough
+ground and crater rims. With these weights the same A and B can give different routes: e.g. across
+Valles Marineris Spirit's safest route is ~885 km, Curiosity's ~635 km.
+
+The panel then explains the chosen route: **why** (how much longer than the shortest and what for),
+**what it avoids** compared with the shortest route (km of steep slopes, crater rims, dust, rocky
+and rough ground), the **difficult sections**, and a **verdict**: passable under the model (every
+cell below the rover's limit), or beyond the rover's capabilities (Sojourner had to stay within
+~10 m of its lander; Spirit drove 7.7 km in total). Routes longer than Opportunity's 45.16 km
+record get a warning. **Terrain difficulty** is the hazard per km (model). **Time** is shown only
+where there's a defensible pace: walking (Tobler), Curiosity (~29 m per drive), Spirit and
+Opportunity (lifetime averages from NASA's totals); none for Sojourner and Perseverance.
+
+`computeRoutes()` in `planner.js` is separate from the UI, so comparing two rovers on the same A
+and B later only means calling it twice (the terrain grid can be reused).
+
+## 3D terrain (Mars)
+
+**⛰ 3D terrain** (top bar) turns the area into a 3D landscape (`src/terrain3d/view3d.js`, three.js):
+the route's surroundings if there is a route (at least 150 km across, so a whole crater shows),
+otherwise the area the 2D map shows (up to 1,600 km).
+
+- **Real elevation**: the MOLA elevation tiles the map uses (~2.6 km per pixel), interpolated and
+  smoothed over about one data pixel (the tiles store heights in ~115 m steps). No artificial
+  shapes are added. Big craters, Mount Sharp, canyons and volcanoes show their real shape;
+  craters under ~10 km are blurred.
+- **Controls**: drag to rotate, tilt down to just above the horizon, right-drag (or Ctrl/⌘-drag)
+  to pan, scroll or pinch to zoom (towards the cursor). **Top view**, **Reset**, **Rebuild here**
+  (rebuilds the terrain around where you're looking, as wide as the view) and **Fit route**.
+  Near and far clipping follow the camera, so you can zoom right in.
+- **Heights ×1, ×2, ×3 (default), ×5, ×10**: vertical exaggeration, always shown. ×1 is true scale.
+- **Colour by**: elevation, slope, or spacecraft **Images** (Viking / CTX, only if the image
+  servers allow cross-site use; otherwise it says so and keeps elevation colours).
+- Lighting: a low afternoon sun from the north-west with shadows, plus soft sky light.
+- **Routes in 3D**: click the ground to set A and B (opens the planner). The chosen route follows
+  the surface; its difficult parts (steep, crater rim, loose dust, rocky) are **red**; A and B are
+  pins; dangers float above the route. Hovering the elevation profile moves a marker along the
+  route, and clicking a danger in the list flies the camera there.
+- The surface is drawn flat around the area's centre (no planet curvature).
+
+Upgrade path for sharper 3D: NASA/USGS's HRSC-MOLA blended elevation (200 m per pixel, global)
+would need its own 16-bit elevation tiles (the current ones are 8-bit, 2.6 km).
+
 ## Where the maps come from
 
 Every NASA and partner data set is listed, with dataset IDs, in [DATA_SOURCES.md](DATA_SOURCES.md).

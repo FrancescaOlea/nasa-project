@@ -75,6 +75,7 @@ function cellFactors(g, opts) {
   const n = g.rows * g.cols;
   const hazard = new Float32Array(n);
   const soft = new Float32Array(n);
+  const rocky = new Float32Array(n);
   const w = opts.weights;
   const lr0 = Math.log10(0.02);
   const lr1 = Math.log10(0.4);
@@ -83,10 +84,13 @@ function cellFactors(g, opts) {
     const rough = Number.isNaN(g.relief[i]) ? 0
       : Math.min(1, Math.max(0, (Math.log10(Math.max(g.relief[i], 1e-4)) - lr0) / (lr1 - lr0)));
     soft[i] = Number.isNaN(g.ti[i]) ? 0 : Math.min(1, Math.max(0, (150 - g.ti[i]) / 100));
+    // high thermal inertia = rock and bedrock at the surface (sharp rocks wear wheels)
+    rocky[i] = Number.isNaN(g.ti[i]) ? 0 : Math.min(1, Math.max(0, (g.ti[i] - 600) / 900));
     const storm = Math.min(1, g.storm[i] / 0.15);
-    hazard[i] = 1 + w.slope * s + w.crater * g.crater[i] + w.rough * rough + w.soft * soft[i] + w.storm * storm;
+    hazard[i] = 1 + w.slope * s + w.crater * g.crater[i] + w.rough * rough + w.soft * soft[i]
+      + (w.rocky ?? 0) * rocky[i] + w.storm * storm;
   }
-  return { hazard, soft };
+  return { hazard, soft, rocky };
 }
 
 function search(g, kind, opts, wall, f, z, start, goal) {
@@ -181,5 +185,5 @@ self.onmessage = ({ data }) => {
     routes[kind] = search(g, kind, opts, wall, f, z, start, goal);
     routes[kind].ms = Math.round(performance.now() - t0);
   }
-  self.postMessage({ id, routes, soft: f.soft, z });
+  self.postMessage({ id, routes, soft: f.soft, rocky: f.rocky, z });
 };

@@ -38,8 +38,35 @@
       <div class="top-buttons">
         <button id="back" class="map-btn">&larr; Home</button>
         <button id="menu-btn" class="map-btn" aria-expanded="false" aria-controls="menu" hidden>&#9776; View</button>
+        <button id="btn-3d" class="map-btn" aria-pressed="false" hidden>⛰ 3D terrain</button>
       </div>
       <div id="map"></div>
+
+      <!-- 3D terrain view (src/terrain3d/), drawn over the map -->
+      <div id="view3d" class="view3d" hidden>
+        <div id="view3d-canvas" class="view3d-canvas"></div>
+        <div class="panel view3d-bar" aria-label="3D view controls">
+          <div class="panel-head">
+            <span class="eyebrow">3D terrain · Mars</span>
+            <button id="view3d-close" class="icon-btn" aria-label="Back to the 2D map" title="Back to the 2D map">&times;</button>
+          </div>
+          <p class="sub v3-help">Drag to rotate · right-drag (or Ctrl/⌘-drag) to pan · scroll or pinch to zoom · click the ground to set A and B.</p>
+          <div class="v3-row">
+            <button id="view3d-top" type="button">⬇ Top view</button>
+            <button id="view3d-reset" type="button">⟲ Reset</button>
+            <button id="view3d-here" type="button" title="Rebuild the terrain around the point you are looking at, as wide as the view">⌖ Rebuild here</button>
+            <button id="view3d-route" type="button" hidden>↔ Fit route</button>
+          </div>
+          <span class="eyebrow">Heights</span>
+          <div id="view3d-exag" class="chips" role="radiogroup" aria-label="Vertical exaggeration"></div>
+          <span class="eyebrow">Colour by</span>
+          <div id="view3d-colour" class="chips" role="radiogroup" aria-label="Colour the terrain by"></div>
+          <p id="view3d-legend" class="sub v3-legend"></p>
+          <p id="view3d-status" class="sub v3-status"></p>
+          <p id="view3d-cursor" class="sub v3-cursor"></p>
+          <p id="view3d-info" class="v3-info"></p>
+        </div>
+      </div>
 
       <!-- Switch between Earth and the Moon / Mars (top right, next to the zoom buttons) -->
       <button id="switch-world" class="switch-world" hidden>
@@ -100,7 +127,8 @@
         <p id="route-ab" class="route-ab"></p>
         <div class="route-opts">
           <span class="eyebrow">Who travels</span>
-          <div id="route-traveller" class="chips" role="radiogroup" aria-label="Who travels"></div>
+          <div id="route-traveller" class="traveller-grid" role="radiogroup" aria-label="Who travels"></div>
+          <div id="route-rover" class="route-rover"></div>
           <span class="eyebrow">Season</span>
           <div id="route-season" class="chips" role="radiogroup" aria-label="Season"></div>
           <p id="route-season-note" class="sub"></p>
@@ -109,6 +137,7 @@
         <div id="route-results" hidden>
           <div id="route-tabs" class="route-tabs"></div>
           <p id="route-about" class="sub route-about"></p>
+          <div id="route-explain" class="route-explain"></div>
           <div id="route-stats"></div>
           <canvas id="route-profile" class="route-profile" height="90"></canvas>
           <p id="route-profile-note" class="sub"></p>
@@ -116,7 +145,8 @@
           <ol id="route-dangers" class="route-dangers"></ol>
           <p id="route-no-dangers" class="sub" hidden>No major hazards found at this map scale.</p>
           <p class="route-note">Measured = spacecraft data (MOLA, TES); catalog = Robbins crater database;
-            observed = dust storms mapped from orbit (MDAD); model = calculated. The data is 2–300 km per pixel,
+            observed = dust storms mapped from orbit (MDAD); model / estimate = calculated here from assumptions
+            (rover limits and weights: src/route/rovers.js). The data is 2–300 km per pixel,
             so this compares corridors; it can't see single boulders or small cliffs.</p>
         </div>
         <div class="actions">
