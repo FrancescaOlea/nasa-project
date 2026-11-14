@@ -13,6 +13,8 @@ import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SE
 import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILAR_DEFAULT_COUNT,
   MAX_COUNT as SIMILAR_MAX_COUNT, cellKm } from './similar.js';
 import { addLandmarks } from './landmarks.js';
+import { addRuler, isMeasuring } from './ruler.js';
+import { maybeStartTutorial, startTour } from './tutorial.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -163,6 +165,20 @@ function openMap(key, params) {
   const zoomEl = zoom.getContainer();
   zoomEl.classList.add('zoom-bar');
   map.getContainer().appendChild(zoomEl); // out of Leaflet's corner, positioned by CSS
+
+  // Ruler (measure a distance): button in the top-left row, next to Home / View
+  addRuler(map, {
+    button: $('ruler-btn'),
+    panel: $('ruler-panel'),
+    root: mapView,
+    radiusKm: body.radiusKm,
+    // polar maps: ignore clicks in the empty corners outside the world disc
+    inside: proj.inside ? (e) => {
+      const n = 256 * 2 ** map.getZoom();
+      const raw = map.containerPointToLayerPoint(e.containerPoint).add(map.getPixelOrigin());
+      return proj.inside(raw.x / n, raw.y / n);
+    } : null,
+  });
   body.layers.forEach((layer, i) => {
     // Each layer gets its own pane so it can have its own blend/filter.
     const pane = `layer${i}`;
@@ -315,6 +331,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     $('menu-btn').setAttribute('aria-expanded', open);
   };
   $('menu-btn').onclick = () => openMenu(menu.hidden);
+  appHooks.openMenu = openMenu;
+  appHooks.bodyName = () => body.name;
   if (keepViewPanelOpen) { openMenu(true); keepViewPanelOpen = false; }
   $('menu-close').onclick = () => openMenu(false);
   map.on('keydown', (e) => { if (e.originalEvent.key === 'Escape') openMenu(false); });
@@ -533,6 +551,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
   map.on('click', (e) => {
     if (analog || similarShown) return; // paused while search results are shown
+    if (isMeasuring()) return; // the ruler has the clicks
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -742,6 +761,24 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
   if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: analog ? undefined : 'always' });
+  appHooks.selectPoint = (lat, lon) => select(lat, lon, { fit: 'always' });
+  // tutorial: start from the whole planet, nothing selected
+  appHooks.zoomOut = () => {
+    clear();
+    map.setView(proj.center, map.getMinZoom(), { animate: false });
+  };
+  // tutorial: select the spot under a screen point, as a normal map click would
+  appHooks.selectAt = (clientX, clientY) => {
+    const p = map.mouseEventToContainerPoint({ clientX, clientY });
+    if (proj.inside) {
+      const n = 256 * 2 ** map.getZoom();
+      const raw = map.containerPointToLayerPoint(p).add(map.getPixelOrigin());
+      if (!proj.inside(raw.x / n, raw.y / n)) return false;
+    }
+    const ll = map.containerPointToLatLng(p);
+    select(ll.lat, ll.lng);
+    return true;
+  };
   return { select, clear, current: () => current, saveToUrl };
 }
 
@@ -927,8 +964,20 @@ function setUpWorldSwitch(key, params) {
   btn.hidden = false;
 }
 
+// Hooks the first-visit tutorial uses to drive the app (filled in when a map opens)
+const appHooks = {
+  openBody: (key) => { location.hash = `#/${key}`; },
+  currentBody: () => location.hash.replace(/^#\/?/, '').split('?')[0],
+  openMenu: () => {},
+  selectPoint: () => {},
+  zoomOut: () => {},
+  selectAt: () => false,
+  bodyName: () => 'Mars',
+};
+
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world']) $(id).hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel']) $(id).hidden = true;
+  mapView.classList.remove('measuring');
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
   $('select-info').hidden = true;
@@ -996,6 +1045,9 @@ function open3DPage(world, params) {
 }
 
 window.addEventListener('hashchange', route);
+
+// "?" button on the map pages (top left): show the tutorial any time
+$('help-btn').onclick = () => startTour(appHooks);
 route();
 
 // Reveal the page only when it's ready: styles applied, globe images loaded and the
@@ -1004,5 +1056,7 @@ Promise.race([globesReady(), new Promise((r) => setTimeout(r, 4000))]).then(() =
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.body.classList.add('ready');
     setTimeout(() => document.getElementById('loader')?.remove(), 600); // after its fade-out
+    // first visit, arriving on the home page: offer the tutorial
+    if (!location.hash.replace(/^#\/?/, '')) setTimeout(() => maybeStartTutorial(appHooks), 700);
   }));
 });
