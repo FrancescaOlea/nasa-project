@@ -815,11 +815,16 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       $('select-panel').hidden = open;
       if (open) $('area-panel').hidden = true; else updateSummary();
     };
-    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); });
-    $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
-    // 3D terrain: opens on the route (if any) or on the area the 2D map shows
+    // 3D terrain of the route: the button shows once A and B are set (and stays while the
+    // 3D view is open, as its way back to the 2D map)
     const btn3d = $('btn-3d');
-    btn3d.hidden = false;
+    const update3dButton = () => {
+      const r = planner?.result();
+      btn3d.hidden = !((r?.open && r.a && r.b) || terrainView?.isOpen());
+    };
+    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); update3dButton(); });
+    update3dButton(); // (a route restored from the address)
+    $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
     const set3dButton = (on) => {
       btn3d.setAttribute('aria-pressed', on);
       btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
@@ -832,7 +837,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       set3dButton(true);
       terrainView.open({
         planner,
-        onClose: () => set3dButton(false),
+        onClose: () => { set3dButton(false); update3dButton(); },
         getLeafletView: () => {
           const c = map.getCenter();
           const b = map.getBounds();
