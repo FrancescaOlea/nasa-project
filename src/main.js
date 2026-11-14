@@ -8,7 +8,7 @@ import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
-import { PARAMS, WEIGHT_STEPS, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
+import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
 import { projection, PROJECTIONS } from './projections.js';
@@ -530,7 +530,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       action: 'Find Earth analogs →',
       items: Object.entries(PARAMS).map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
       steps: WEIGHT_STEPS,
-      initial: analogWeights,
+      initial: { ...DEFAULT_WEIGHTS, ...analogWeights },
+      defaults: DEFAULT_WEIGHTS,
       mode: {
         value: analogMode,
         options: [
@@ -569,7 +570,7 @@ function showAnalogResults(params, selection) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
   const r = parseFloat(params.get('sr')) || DEFAULT_RADIUS_KM;
   const weights = parseAnalogWeights(params.get('w'));
-  if (!Object.values(weights).some((v) => v > 0)) for (const k of Object.keys(PARAMS)) weights[k] = 1;
+  if (!Object.values(weights).some((v) => v > 0)) Object.assign(weights, DEFAULT_WEIGHTS);
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
 
   $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
@@ -606,7 +607,7 @@ function showAnalogResults(params, selection) {
     $('analog-status').textContent = 'The search failed to load its data.';
   });
 
-  function showResults({ results, used }, site) {
+  function showResults({ results, used, relative, targets }, site) {
     const skipped = Object.keys(weights).filter((k) => weights[k] > 0 && !used.includes(k));
     $('analog-status').textContent = results.length
       ? `Best ${results.length} areas, at least ${MIN_SEPARATION_KM} km apart.` +
@@ -642,11 +643,11 @@ function showAnalogResults(params, selection) {
         const ring = L.latLngBounds(circlePoints(res.lat, res.lon, Math.max(r, 50), BODIES.earth.radiusKm));
         map.flyToBounds(ring, { padding: [60, 60], duration: 0.8, maxZoom: map.getMaxZoom() });
       }
-      showComparison(i, res, site);
+      showComparison(i, res, site, relative, targets);
     }
   }
 
-  function showComparison(i, res, site) {
+  function showComparison(i, res, site, relative = {}, targets = {}) {
     const fmt = (k, v) => {
       const d = displayValue(k, v);
       if (!Number.isFinite(d)) return '–';
@@ -656,13 +657,20 @@ function showAnalogResults(params, selection) {
     };
     const rows = Object.keys(res.values).map((k) => {
       const p = PARAMS[k];
-      const siteCell = p.site ? fmt(k, site[k]) : `<span class="note">${p.better === 'low' ? 'lower wins' : 'higher wins'}</span>`;
+      let siteCell = p.site ? fmt(k, site[k]) : `<span class="note">${p.better === 'low' ? 'lower wins' : 'higher wins'}</span>`;
+      if (k in relative) {
+        // beyond Earth's range: matched to the same percentile of Earth
+        const pct = Math.round(relative[k] * 100);
+        siteCell += `<br><span class="note" title="${pct}% of ${source.name} is below this value; matched to Earth's ${pct}th percentile">` +
+          `${pct}th pct → ${fmt(k, targets[k])} on Earth</span>`;
+      }
       return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
     });
     const box = $('analog-compare');
     box.innerHTML = `<p class="c-title">Area ${i + 1} compared with the site</p>
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
-      <p class="sub" style="margin-top:.4rem">Search values are averages over the area. The area summary
+      <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
+      as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
       (top right) shows this Earth area's typical values from the map data.</p>`;
     box.hidden = false;
   }

@@ -26,7 +26,7 @@ const fmt = (w) => (w === 0 ? 'off' : `×${w}`);
  * above the list. Resolves with the chosen weights (plus `mode` when used), or null if
  * cancelled.
  */
-export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null }) {
+export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null, defaults = null }) {
   items ??= layers.map((k) => ({ key: k, name: VIEWS[k].name }));
   layers = items.map((it) => it.key);
   const dialog = document.getElementById('weights');
@@ -100,7 +100,9 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
     showMode();
   }
 
-  dialog.querySelector('.w-all-1').onclick = () => { for (const k of layers) weights[k] = 1; update(); };
+  const reset = dialog.querySelector('.w-all-1');
+  reset.textContent = defaults ? 'Defaults' : 'All ×1';
+  reset.onclick = () => { for (const k of layers) weights[k] = defaults?.[k] ?? 1; update(); };
   dialog.querySelector('.w-all-0').onclick = () => { for (const k of layers) weights[k] = 0; update(); };
   update();
 

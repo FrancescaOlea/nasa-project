@@ -613,6 +613,19 @@ def catalogue():
     }
 
 
+def area_quantiles(grid):
+    """0th..100th percentile of an equirectangular grid, weighted by real area (cos lat)."""
+    h = grid.shape[0]
+    lat = 90 - (np.arange(h) + 0.5) * 180 / h
+    w = np.broadcast_to(np.cos(np.radians(lat))[:, None], grid.shape)
+    ok = np.isfinite(grid)
+    v, w = grid[ok], w[ok]
+    order = np.argsort(v)
+    cum = np.cumsum(w[order])
+    cum /= cum[-1]
+    return [float(f'{x:.4g}') for x in np.interp(np.linspace(0, 1, 101), cum, v[order])]
+
+
 def main():
     index_path = os.path.join(OUT, 'index.json')
     index = {}
@@ -650,6 +663,9 @@ def main():
             'below_min': bool((vals < scale['min']).any()), 'above_max': bool((vals > scale['max']).any()),
             'enc_min': float(f'{enc_min:.6g}'), 'enc_max': float(f'{enc_max:.6g}'), 'pixel_km': round(pixel_km(body, 1 / deg), 1),
             'max_zoom': max_zoom, 'format': TILE_FORMAT,
+            # area-weighted percentiles 0..100 of the whole body (the analog search uses them to
+            # say how warm or cold a site is *for its world*)
+            **({'quantiles': area_quantiles(grid)} if body != 'earth' else {}),
             **({'crs': 'EPSG3857'} if body == 'earth' else {})}
     # drop layers that no longer exist in the catalogue (e.g. the old roughness view)
     known = set(catalogue())

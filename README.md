@@ -126,11 +126,15 @@ with `python3 tools/build_layers.py earth`.
 ### Earth analog search
 
 **Find Earth analogs** (Moon or Mars, with an area selected) first asks how much each characteristic
-should count (off, ×0.5, ×1, ×2, ×3; at least one on) and what a good analog is:
+should count (off, ×0.5, ×1, ×2, ×3; at least one on; dryness, UV and altitude start at ×0.5
+because they favour the same places for every site) and what a good analog is:
 
 - **Match my site**: places whose values are closest to the site's. Where the site is beyond anything
-  on Earth (much colder, bigger day-night swing), the target becomes Earth's most extreme value, so
-  the most extreme places win automatically.
+  on Earth (Mars nights are always colder, its day-night swing always bigger), it is matched
+  *relatively*: a site that is cold for its world (say its 20th percentile by area) is matched to
+  places equally cold for Earth (Earth's 20th percentile). Taking Earth's extreme instead gave
+  every site the same target and the same results (always the Atacama and Tibet). The comparison
+  table shows the percentile and the Earth value it was matched to.
 - **Most extreme**: for the temperatures, Earth's extreme on the site's side, whatever the site's value.
 
 | Characteristic | Site value (Moon / Mars) | Earth (`public/search`) | How it's compared |
@@ -157,11 +161,10 @@ Results show as numbered circles of the site's radius. Click one (on the map or 
 area summary and a site-vs-Earth comparison. Selecting new areas is paused until **Exit results**;
 data layers can still be shown. A search takes 0.1-1 s.
 
-Checks, with all weights at ×1: Gale crater and Jezero give the Atacama, the Bolivian/Peruvian
-Altiplano, Ladakh/Aksai Chin and the Kunlun Mountains; the Mars north polar cap gives the East
-Antarctic plateau; the Moon's equator with maximum temperature weighted ×3 gives the Sahara (southern
-Egypt, Libya). The Moon's south pole gives Atacama/Tibet with all weights at ×1. That's because UV and
-day-night swing favour them over Antarctica; with those two off, the Transantarctic Mountains appear.
+Checks, with the default weights: Gale and Olympus Mons give the Peruvian Andes, Atacama and Kunlun;
+Utopia Planitia, Jezero and the Mars polar caps give Antarctica (plus Tibet for Jezero); Apollo 11 gives
+the Atacama, Tibet, Arabia and the Sahara; Shackleton (Moon south pole) gives Antarctica. With dryness,
+UV and altitude off, the Moon's equator gives Arabia, the Namib, the Sahara and Australia.
 Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
 
 ### Mars temperatures: a thermal model

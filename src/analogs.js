@@ -10,8 +10,10 @@
 // degrees of slope become comparable). The weighted root-mean-square of these is the
 // score; lower = more similar.
 //   * "Match my site": target = the site's own value. Where the site is beyond anything on
-//     Earth (Mars is far colder than anywhere here), the target is Earth's most extreme
-//     value, so the most extreme places win.
+//     Earth (Mars nights are far colder than anywhere here), it is matched *relatively*:
+//     a site that is cold for Mars (say its 20th percentile) is matched to places that are
+//     equally cold for Earth (Earth's 20th percentile, by area). Otherwise every Mars site
+//     would get the same target (Earth's extreme) and the same results.
 //   * "Most extreme": target = Earth's extreme on the site's side, for the temperatures.
 //   * Slope and relief are always matched: rougher than the site isn't "better".
 //   * Dryness, UV and altitude (thin air) have no Mars/Moon equivalent in our data, so they
@@ -46,6 +48,8 @@ export const PARAMS = {
     help: 'Height above sea level: thinner air, closer to Mars; the highest wins' },
 };
 export const WEIGHT_STEPS = [0, 0.5, 1, 2, 3];
+// Dryness, UV and altitude pull towards the same places whatever the site, so they start at half weight.
+export const DEFAULT_WEIGHTS = { tmax: 1, tmin: 1, swing: 1, slope: 1, relief: 1, dry: 0.5, uv: 0.5, alt: 0.5 };
 
 // Earth value of a parameter in display units (fields are stored as log10, km, ...)
 export function displayValue(key, v) {
@@ -171,6 +175,7 @@ function percentile(sorted, q) {
 /** The site's value of every two-sided parameter, in Earth-grid units (log10 for slope, km for relief). */
 export async function siteValues(body, bodyRadiusKm, index, lat, lon, radiusKm) {
   const out = {};
+  const quantiles = {}; // the body's own percentiles 0..100 of each parameter
   await Promise.all(Object.entries(PARAMS).map(async ([k, p]) => {
     if (!p.site) return;
     const [layer, stat] = p.site;
@@ -178,7 +183,9 @@ export async function siteValues(body, bodyRadiusKm, index, lat, lon, radiusKm) 
     if (!meta) return;
     const res = await summarize(body, layer, meta, lat, lon, radiusKm, bodyRadiusKm);
     if (!res.none) out[k] = res[stat];
+    if (meta.quantiles) quantiles[k] = meta.quantiles;
   }));
+  Object.defineProperty(out, 'quantiles', { value: quantiles, enumerable: false });
   return out;
 }
 
@@ -202,6 +209,8 @@ export async function findAnalogs({ site, weights, mode, radiusKm }) {
   const targets = {};
   const spreads = {};
   const extremes = {};
+  const relative = {}; // params matched relatively: the site's percentile on its own world
+  const areaW = Float32Array.from(c.lat, (la) => Math.cos(rad(la)));
   for (const k of used) {
     const v = c.values[PARAMS[k].field];
     const sorted = Float32Array.from({ length: n }, (_, j) => (candidate(j) ? v[j] : NaN))
@@ -214,7 +223,15 @@ export async function findAnalogs({ site, weights, mode, radiusKm }) {
     if (p.better) targets[k] = p.better === 'low' ? lo : hi;
     else if (mode === 'extreme' && !p.always) {
       targets[k] = site[k] < percentile(sorted, 0.5) ? lo : hi;
-    } else targets[k] = Math.min(hi, Math.max(lo, site[k])); // beyond Earth's range: its extreme
+    } else if (site[k] >= lo && site[k] <= hi) {
+      targets[k] = site[k];
+    } else {
+      // beyond anything on Earth: same percentile of Earth (by area) as the site has on its world
+      const q = site.quantiles?.[k];
+      const pct = q ? rankIn(q, site[k]) : (site[k] < lo ? 0 : 1);
+      targets[k] = weightedQuantile(v, areaW, candidate, pct);
+      relative[k] = pct;
+    }
   }
 
   const totalW = used.reduce((a, k) => a + weights[k], 0);
@@ -243,7 +260,33 @@ export async function findAnalogs({ site, weights, mode, radiusKm }) {
     });
     if (results.length === RESULT_COUNT) break;
   }
-  return { results, targets, spreads, extremes, used };
+  return { results, targets, spreads, extremes, relative, used };
+}
+
+// Where a value falls among a body's percentiles 0..100: 0..1
+function rankIn(q, x) {
+  if (x <= q[0]) return 0;
+  if (x >= q[q.length - 1]) return 1;
+  let i = 1;
+  while (q[i] < x) i++;
+  const f = q[i] > q[i - 1] ? (x - q[i - 1]) / (q[i] - q[i - 1]) : 0.5;
+  return (i - 1 + f) / (q.length - 1);
+}
+
+// The value below which a share `pct` of the (weighted) candidates lie
+function weightedQuantile(values, weights, include, pct) {
+  const idx = [];
+  let total = 0;
+  for (let j = 0; j < values.length; j++) {
+    if (include(j) && Number.isFinite(values[j])) { idx.push(j); total += weights[j]; }
+  }
+  idx.sort((a, b) => values[a] - values[b]);
+  let acc = 0;
+  for (const j of idx) {
+    acc += weights[j];
+    if (acc >= pct * total) return values[j];
+  }
+  return values[idx[idx.length - 1]];
 }
 
 // Similarity in % for display: 100 % = on target; 0 % = a whole Earth spread away (or more).
