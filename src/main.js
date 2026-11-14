@@ -580,6 +580,30 @@ function parseCount(text) {
   return Number.isInteger(n) && n >= 1 && n <= MAX_COUNT ? n : DEFAULT_COUNT;
 }
 
+// Padding for fitting something into the part of the map not covered by panels: the
+// results panel (left on wide screens, bottom on phones), the area summary (top right),
+// the top buttons and the bottom-left map controls.
+function freeScreenPadding() {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  const box = (id) => { const el = $(id); return el && !el.hidden ? el.getBoundingClientRect() : null; };
+  const left = box('analog-banner');
+  const summary = box('area-panel');
+  const gap = 24;
+  let pl = gap; let pr = gap; let pt = 70 + gap; let pb = gap;
+  if (W > 600) {
+    if (left) pl = Math.max(pl, left.right + gap);
+    if (summary) pr = Math.max(pr, W - summary.left + gap);
+  } else {
+    if (left) pb = Math.max(pb, H - left.top + gap);
+    if (summary) pt = Math.max(pt, summary.bottom + gap);
+  }
+  // always leave room for the area itself: a third of the width, and at least 160 px of height
+  pl = Math.min(pl, W / 3); pr = Math.min(pr, W / 3);
+  if (H - pt - pb < 160) pb = Math.max(gap, H - pt - 160);
+  return { paddingTopLeft: [pl, pt], paddingBottomRight: [pr, pb] };
+}
+
 function showAnalogResults(params, selection) {
   const from = BODIES[params.get('from')] ? params.get('from') : 'mars';
   const source = BODIES[from];
@@ -647,20 +671,20 @@ function showAnalogResults(params, selection) {
       li.querySelector('.num').textContent = i + 1;
       li.querySelector('.where').textContent = formatLatLon(res.lat, res.lon);
       li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
-      li.querySelector('button').onclick = () => pick(i, true);
+      li.querySelector('button').onclick = () => pick(i);
       return li;
     });
     $('analog-results').replaceChildren(...buttons);
 
-    function pick(i, fly = false) {
+    // Selecting a result (in the list or on the map) zooms so its area fills the part of
+    // the screen that the panels leave free.
+    function pick(i) {
       const res = results[i];
       buttons.forEach((li, j) => li.querySelector('button').setAttribute('aria-pressed', i === j));
       markers.forEach((m, j) => m.getElement()?.firstChild?.classList.toggle('picked', i === j));
       selection?.select(res.lat, res.lon);
-      if (fly) {
-        const ring = L.latLngBounds(circlePoints(res.lat, res.lon, Math.max(r, 50), BODIES.earth.radiusKm));
-        map.flyToBounds(ring, { padding: [60, 60], duration: 0.8, maxZoom: map.getMaxZoom() });
-      }
+      const area = L.latLngBounds(circlePoints(res.lat, res.lon, r, BODIES.earth.radiusKm));
+      map.flyToBounds(area, { ...freeScreenPadding(), duration: 0.9, maxZoom: map.getMaxZoom() });
       showComparison(i, res, site, relative, targets);
     }
   }
