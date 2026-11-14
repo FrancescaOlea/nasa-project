@@ -94,8 +94,12 @@
           <p id="toast" class="toast" hidden>Coming soon</p>
         </div>
         <div class="radius-row">
-          <span class="eyebrow">Radius, km</span>
-          <div id="radius-options" class="radius-chips" role="radiogroup" aria-label="Selection radius in km"></div>
+          <div class="radius-head">
+            <label class="eyebrow" for="radius-slider">Radius</label>
+            <output id="radius-value" for="radius-slider"></output>
+          </div>
+          <input id="radius-slider" type="range" min="0" max="1000" step="1" aria-describedby="radius-value">
+          <div class="radius-ticks" aria-hidden="true"></div>
         </div>
       </aside>
 

@@ -28,9 +28,15 @@ let map = null;
 // Closest you can zoom: about this many km across the screen.
 const MIN_VIEW_KM = 1;
 
-// Radius choices (km) for the area you select on the Moon or Mars.
-const RADIUS_OPTIONS_KM = [1, 5, 10, 25, 50, 100, 250];
+// Radius of the area you select (km): a slider from 1 to 250 km. It's logarithmic, so the
+// small sizes get as much room as the big ones (the middle of the slider is ~16 km).
+const MIN_RADIUS_KM = 1;
+const MAX_RADIUS_KM = 250;
 const DEFAULT_RADIUS_KM = 10;
+const SLIDER_STEPS = 1000;
+const sliderToKm = (v) => Math.round(MIN_RADIUS_KM * (MAX_RADIUS_KM / MIN_RADIUS_KM) ** (v / SLIDER_STEPS));
+const kmToSlider = (km) => Math.round((Math.log(km / MIN_RADIUS_KM) / Math.log(MAX_RADIUS_KM / MIN_RADIUS_KM)) * SLIDER_STEPS);
+const validRadius = (km) => Number.isFinite(km) && km >= MIN_RADIUS_KM && km <= MAX_RADIUS_KM;
 
 const $ = (id) => document.getElementById(id);
 
@@ -246,7 +252,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let shapes = null;
   let current = null; // { lat, lon } of the selected point
   const r = parseFloat(params.get('r'));
-  let radiusKm = RADIUS_OPTIONS_KM.includes(r) ? r : DEFAULT_RADIUS_KM;
+  let radiusKm = validRadius(r) ? Math.round(r) : DEFAULT_RADIUS_KM;
   let view = VIEWS[params.get('view')] ? params.get('view') : null;
   if (analog) radiusKm = parseFloat(params.get('sr')) || DEFAULT_RADIUS_KM; // results use the site's radius
   let weights = parseWeights(params.get('w'));            // last weights for 'Find similar spots'
@@ -482,25 +488,37 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     updateSummary();
   }
 
-  // Radius buttons (in the selection panel, bottom right)
-  const chips = $('radius-options');
-  chips.replaceChildren(...RADIUS_OPTIONS_KM.map((km) => {
-    const btn = document.createElement('button');
-    btn.textContent = km;
-    btn.setAttribute('aria-label', `${km} km`);
-    btn.setAttribute('role', 'radio');
-    btn.onclick = () => {
-      radiusKm = km;
-      markChosen();
-      if (current) draw({ fit: 'if-hidden' });
-      saveToUrl();
-      updateSummary();
-    };
-    return btn;
+  // Radius slider (in the selection panel, bottom right). While dragging, the circle follows;
+  // the area summary is recalculated once the slider stops moving.
+  const slider = $('radius-slider');
+  const showRadius = () => {
+    $('radius-value').textContent = `${radiusKm} km`;
+    slider.setAttribute('aria-valuetext', `${radiusKm} km`);
+  };
+  slider.value = kmToSlider(radiusKm);
+  $('radius-slider').parentElement.querySelector('.radius-ticks').replaceChildren(...[1, 5, 25, 100, 250].map((km) => {
+    const t = document.createElement('span');
+    t.textContent = km;
+    t.style.left = `${(kmToSlider(km) / SLIDER_STEPS) * 100}%`;
+    return t;
   }));
-  const markChosen = () => [...chips.children].forEach((btn, i) =>
-    btn.setAttribute('aria-checked', RADIUS_OPTIONS_KM[i] === radiusKm));
-  markChosen();
+  showRadius();
+  let summaryTimer = null;
+  slider.oninput = () => {
+    const km = sliderToKm(Number(slider.value));
+    if (km === radiusKm) return;
+    radiusKm = km;
+    showRadius();
+    if (current) draw();
+    clearTimeout(summaryTimer);
+    summaryTimer = setTimeout(() => { saveToUrl(); updateSummary(); }, 250);
+  };
+  slider.onchange = () => {
+    if (current) draw({ fit: 'if-hidden' });
+    clearTimeout(summaryTimer);
+    saveToUrl();
+    updateSummary();
+  };
 
   map.on('click', (e) => {
     if (analog) return; // paused while analog results are shown

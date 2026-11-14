@@ -187,18 +187,14 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .map-settings { padding: .55rem .75rem; background: rgba(10,10,14,.85); color: #eee; border: 1px solid #555;
   border-radius: 8px; font-size: .88rem; }
 
-/* ---- Radius chips (selection panel) ---- */
+/* ---- Radius (selection panel) ---- */
 .radius-row { margin-top: .75rem; padding-top: .65rem; border-top: 1px solid #333; }
-.radius-row .eyebrow { display: block; margin-bottom: .35rem; }
-.radius-chips { display: flex; gap: .3rem; }
-.panel .radius-chips button { flex: 1; min-width: 0; padding: .35rem 0; font-size: .82rem; border-radius: 999px;
-  font-variant-numeric: tabular-nums; }
-.panel .radius-chips button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; font-weight: 600; }
+.radius-row .eyebrow { display: block; }
 .legend, .zoom-readout, .map-settings { box-sizing: border-box; }
 
 /* ---- Area summary ---- */
 .area-panel { top: 70px; right: 12px; bottom: auto; width: min(360px, calc(100% - 24px));
-  max-height: calc(100% - 90px - var(--panel-h, 0px)); overflow-y: auto; }
+  max-height: calc(100% - 70px - 28px - 12px - var(--panel-h, 0px)); overflow-y: auto; }
 .area-panel .sub { margin-top: .15rem !important; }
 .area-rows { display: flex; flex-direction: column; margin-top: .55rem; }
 .area-panel.collapsed .area-rows, .area-panel.collapsed .area-note, .area-panel.collapsed .sub { display: none; }
@@ -287,3 +283,11 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 @media (max-width: 600px) {
   .leaflet-container .zoom-bar { left: auto; right: 12px; transform: none; }
 }
+
+/* ---- Radius slider (selection panel) ---- */
+.radius-head { display: flex; justify-content: space-between; align-items: baseline; }
+#radius-value { font-weight: 700; font-size: 1rem; font-variant-numeric: tabular-nums; color: #fff; }
+#radius-slider { width: 100%; margin: .45rem 0 0; height: 28px; accent-color: #7fd4ff; cursor: pointer; }
+.radius-ticks { position: relative; height: 1rem; margin: 0 9px; color: #8d8d96; font-size: .72rem;
+  font-variant-numeric: tabular-nums; }
+.radius-ticks span { position: absolute; transform: translateX(-50%); }
