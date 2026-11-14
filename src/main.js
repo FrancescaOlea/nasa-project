@@ -344,7 +344,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   const saveToUrl = () => {
     const q = query();
     history.replaceState(null, '', `#/${key}${q ? `?${q}` : ''}`);
-    if (key !== 'earth') lastPage[key] = location.hash; // so 'Back to Mars view' restores it
+    lastPage[key] = location.hash; // so 'Back to Mars view' (and leaving the 3D view) restores it
   };
   saveToUrl();
   // No analog search from Earth itself
@@ -978,11 +978,16 @@ function showAnalogResults(params, selection) {
       return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
     });
     const box = $('analog-compare');
-    box.innerHTML = `<p class="c-title">Area ${i + 1} compared with the site</p>
+    box.innerHTML = `<button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
+      <p class="c-title">Area ${i + 1} compared with the site</p>
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
       as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
       (top right) shows this Earth area's typical values from the map data.</p>`;
+    // detailed 3D landscape of this area's centre, loaded only on request
+    box.querySelector('.analog-3d').onclick = () => {
+      location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
+    };
     box.hidden = false;
   }
 }
@@ -1041,8 +1046,8 @@ function showHome() {
 //   #/earth?from=mars                     Earth map, opened from Mars (switch button goes back)
 //   #/earth?from=mars&site=lat,lon&sr=10&w=..  Earth map, looking for analogs of a Mars area
 //   (Earth's own selection and view use lat/lon/r/view like the other maps)
-//   #/moon3d?lat=..&lon=..&t=ISO           standing on the Moon in 3D at that time (#/mars3d: Mars)
-const WORLDS_3D = ['moon', 'mars'];
+//   #/moon3d?lat=..&lon=..&t=ISO           standing on the Moon in 3D at that time (#/mars3d, #/earth3d)
+const WORLDS_3D = ['moon', 'mars', 'earth'];
 function route() {
   const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   if (map) { map.remove(); map = null; }
@@ -1055,7 +1060,7 @@ function route() {
   else showHome();
 }
 
-// ---- Moon / Mars: stand on the surface in 3D (code loaded only when opened) ---------------
+// ---- Moon / Mars / Earth: stand on the surface in 3D (code loaded only when opened) ---------------
 let close3D = null;
 function open3DPage(world, params) {
   const lat = parseFloat(params.get('lat'));

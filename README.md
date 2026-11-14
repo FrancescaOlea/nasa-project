@@ -263,6 +263,23 @@ How it works (`src/surface3d/`, loaded only when opened; per-world settings in `
   so their positions are approximate (a few degrees). Checked: on 2 April 2022 Phobos crosses the Sun
   as seen from Jezero, the eclipse Perseverance filmed. Phobos rises in the west and sets in the east
   twice a day; neither is visible from near the poles (above ~70° for Phobos).
+
+### Earth analogs in 3D
+
+On the Earth map, pick an analog result (or select a point) and click **Stand here in 3D**
+(`#/earth3d?lat=..&lon=..&t=..`). Same view and controls as on the Moon and Mars, with Earth's data:
+- **Heights**: NASA **NASADEM** (the Space Shuttle radar mission SRTM, reprocessed), 1 arc second
+  (~30 m), 60° N to 56° S: near ring at full resolution, mid ring every 8th sample, far ring (±150 km)
+  from the file's coarsest overview. One cloud-optimised GeoTIFF per 1° tile on Microsoft Planetary
+  Computer, read in small pieces; the browser first fetches a free anonymous access token. No tile =
+  sea. North of 60° N and south of 56° S (Devon Island, Svalbard, Antarctica) the heights come from the
+  AWS Terrain Tiles (web-Mercator PNGs, ~40 m there), with the sea floor cut off at sea level.
+- **Ground**: Esri World Imagery as a texture per ring (up to ~1 m per pixel in deserts; where the
+  finest level is missing, the next coarser one), with its own shadows from when it was taken.
+  No made-up craters; rocks and small bumps are made up.
+- **Sky** (`sky.js`): Sun and Moon from astronomy-engine's observer functions (with refraction); the
+  Moon is a grey globe lit by the Sun, so it shows its phase. Blue sky, orange glow at sunset, haze
+  over distance (~90 km). Checked: noon Sun at 23° S on 21 June is 43.6° up (90 − 23 − 23.44).
 - Not yet: stars and planets, a real map of the Earth (it's a cloudy blue stand-in), the 5 m south-pole
   DEM. Very close to the poles (above ~88°) the DEM rows are read at full width, so loading is slower.
 

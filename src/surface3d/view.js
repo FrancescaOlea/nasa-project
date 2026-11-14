@@ -1,9 +1,9 @@
-// "Stand here in 3D" on the Moon or Mars: stand at a point, 1.8 m eye height, look around,
-// change the time and watch the light, shadows and sky. Loaded only when opened.
+// "Stand here in 3D" on the Moon, Mars or Earth: stand at a point, 1.8 m eye height, look
+// around, change the time and watch the light, shadows and sky. Loaded only when opened.
 import * as THREE from 'three';
 import { WORLDS } from './worlds.js';
-import { loadFar, loadDetail, loadColours } from './dem.js';
-import { levelsFor, buildLevels, levelGeometry, heightTexture, heightAt, sunVisibility, rng } from './terrain.js';
+import { loadFar, loadDetail, loadColours, groundImage } from './dem.js';
+import { levelsFor, buildLevels, levelGeometry, heightTexture, heightAt, sunVisibility, rng, projector } from './terrain.js';
 import { skyAt, azEl, nextSunCrossing } from './sky.js';
 
 const EYE_M = 1.8;
@@ -304,6 +304,13 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
     skyScene.add(m);
     return { mesh: m, star: star(0xfff0e0) };
   }) : [];
+  // from Earth: the Moon, a plain grey globe lit by the Sun (so it shows its phase)
+  if (key === 'earth') {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.MeshStandardMaterial({ color: 0xb8b4ae, roughness: 1 }));
+    m.renderOrder = 1;
+    skyScene.add(m);
+    moonMeshes.push({ mesh: m, star: star(0xffffff) });
+  }
 
   // ---- state
   const seed = (Math.round(lat * 1000) * 73856093) ^ (Math.round(lon * 1000) * 19349663);
@@ -321,6 +328,8 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
   let dirty = true;
   const sources = {};
   const colours = {};
+  const textures = [];  // Earth: a satellite-image texture per level (foot, near, mid, far)
+  const materials = []; // ... and the ground material that uses it
   const status = (text) => { els.status.textContent = text; els.status.hidden = !text; };
 
   // ground colour of a level: the world's colour, made darker or brighter by the map mosaic.
@@ -345,7 +354,10 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
     proj = built.proj;
     for (const m of meshes) { scene.remove(m); m.geometry.dispose(); }
     meshes = levels.map((L, i) => {
-      const mesh = new THREE.Mesh(levelGeometry(L, levels[i - 1], seed + i, colourFor(i)), groundMat);
+      // Earth: white vertex colours under the satellite image (once it has arrived)
+      const geo = textures[i] ? levelGeometry(L, levels[i - 1], seed + i, () => [1, 1, 1], { plain: true })
+        : levelGeometry(L, levels[i - 1], seed + i, colourFor(i));
+      const mesh = new THREE.Mesh(geo, materials[i] ?? groundMat);
       mesh.receiveShadow = i <= 1;
       scene.add(mesh);
       return mesh;
@@ -444,8 +456,8 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
     sunSprite.position.copy(sun3).multiplyScalar(SKY_D);
     sunSprite.scale.setScalar((2 * SKY_D * Math.tan((sky.sun.radiusDeg * Math.PI) / 180)) / CORE);
     sunSprite.visible = sunEl > -2;
-    // Earth
-    const e3 = toThree(sky.earth.dir).multiplyScalar(SKY_D);
+    // Earth (seen from the Moon or Mars)
+    const e3 = sky.earth ? toThree(sky.earth.dir).multiplyScalar(SKY_D) : null;
     if (earthDisc) {
       earthDisc.position.copy(e3);
       earthDisc.scale.setScalar(SKY_D * Math.tan((sky.earth.radiusDeg * Math.PI) / 180));
@@ -495,8 +507,13 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
         (vis < 0.98 ? `, partly hidden (${Math.round(vis * 100)}% visible)` : '') + '.';
     }
     els.sun.innerHTML = `${sunText} Local solar time ${clock(sky.solarTime)}${key === 'mars' ? ' (Mars hours)' : ''}.`;
-    const e = sky.earth; const ee = azEl(e.dir);
-    if (key === 'moon') {
+    const e = sky.earth; const ee = e && azEl(e.dir);
+    if (key === 'earth') {
+      const m = sky.moons[0]; const a = azEl(m.dir);
+      els.earth.innerHTML = a.el > 0
+        ? `<b>Moon</b> ${a.el.toFixed(1)}° up, ${compass(a.az)} · ${Math.round(m.lit * 100)}% lit · ${Math.round(m.km).toLocaleString()} km away`
+        : `<b>Moon</b> below the horizon now (${Math.round(m.lit * 100)}% lit).`;
+    } else if (key === 'moon') {
       els.earth.innerHTML = ee.el > -1
         ? `<b>Earth</b> ${ee.el.toFixed(1)}° up, ${compass(ee.az)} · ${Math.round(e.lit * 100)}% lit · ${Math.round(e.km).toLocaleString()} km away`
         : '<b>Earth</b> is below the horizon here (always, on the far side of the Moon).';
@@ -515,7 +532,8 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
     }
     clearTimeout(crossingTimer);
     crossingTimer = setTimeout(() => {
-      const c = key === 'mars' ? nextSunCrossing(key, W.radius, date, lat, lon, 2, 0.25) : nextSunCrossing(key, W.radius, date, lat, lon);
+      // a day of about 24 h (Mars, Earth): search 2 days in quarter hours; the Moon: a month, hourly
+      const c = key !== 'moon' ? nextSunCrossing(key, W.radius, date, lat, lon, 2, 0.25) : nextSunCrossing(key, W.radius, date, lat, lon);
       els.next.textContent = c ? `Next ${c.rising ? 'sunrise' : 'sunset'} (flat horizon): in ${fmtDuration((c.date - date) / 3600e3)}` +
         ` · ${c.date.toLocaleString()}` : '';
     }, 120);
@@ -523,9 +541,13 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
 
   els.slider.min = -W.range.hours; els.slider.max = W.range.hours; els.slider.step = W.range.step;
   els.slider.setAttribute('aria-label', `Move time, up to ${fmtDuration(W.range.hours)} either way`);
-  els.note.textContent = `Drag to look around, scroll to zoom. Hills and craters larger than ~${W.dem.detailM} m are real ` +
-    `(${W.dem.label})${W.imagery ? '; ground colours from Viking orbiter images' : ''}. Smaller craters, rocks and the ground ` +
-    `texture are made up.${key === 'moon' ? ' The Earth is a stand-in globe; stars and planets are not shown yet.' : ' Stars and planets are not shown yet.'}`;
+  els.note.textContent = key === 'earth'
+    ? `Drag to look around, scroll to zoom. Hills larger than ~${W.dem.detailM} m are real (${W.dem.label}; north of 60° N ` +
+      'and south of 56° S: AWS Terrain Tiles, partly coarser). The ground is a satellite image (Esri, Maxar, Earthstar ' +
+      'Geographics) with its own shadows from when it was taken. Rocks and small bumps are made up. Stars and planets are not shown yet.'
+    : `Drag to look around, scroll to zoom. Hills and craters larger than ~${W.dem.detailM} m are real ` +
+      `(${W.dem.label})${W.imagery ? '; ground colours from Viking orbiter images' : ''}. Smaller craters, rocks and the ground ` +
+      `texture are made up.${key === 'moon' ? ' The Earth is a stand-in globe; stars and planets are not shown yet.' : ' Stars and planets are not shown yet.'}`;
   els.slider.oninput = () => { offsetH = Number(els.slider.value); updateSky(); onTime?.(now()); };
   els.date.onchange = () => {
     const d = new Date(els.date.value);
@@ -635,7 +657,7 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
       else if (az % 15 === 0) { g.fillStyle = 'rgba(255,255,255,.6)'; g.font = `${10 * s}px system-ui`; g.fillText(String(az), x, 14 * s); }
     }
     if (sky) {
-      const marks = [[sky.sun.dir, '☀', '#ffd27a'], [sky.earth.dir, '● Earth', '#9cc4ff'],
+      const marks = [[sky.sun.dir, '☀', '#ffd27a'], ...(sky.earth ? [[sky.earth.dir, '● Earth', '#9cc4ff']] : []),
         ...sky.moons.map((m) => [m.dir, `● ${m.name}`, '#e8d2c0'])];
       for (const [dir, label, color] of marks) {
         const { az, el } = azEl(dir);
@@ -670,23 +692,47 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
   if (camera.aspect < 1) zoomTo(85); // portrait phones: wider view so there's more than a slit sideways
   requestAnimationFrame(frame);
 
+  // Earth: the satellite image of each level's square as its texture (image pixels: foot
+  // ~0.2 m (the images go to ~1 m), near ~5 m, mid ~80 m, far ~300 m)
+  async function loadGroundTextures() {
+    const proj0 = projector(lat, lon, W.radius);
+    const sizes = [1024, 2048, 1024, 1024];
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
+    await Promise.all([1, 0, 2, 3].map(async (i) => {
+      const data = await groundImage(W, lat, lon, proj0, LEVELS[i].half, sizes[i]);
+      if (closed) return;
+      const tex = new THREE.DataTexture(data, sizes[i], sizes[i], THREE.RGBAFormat, THREE.UnsignedByteType);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      tex.anisotropy = maxAniso; // sharp ground towards the horizon
+      tex.needsUpdate = true;
+      textures[i] = tex;
+      materials[i] = shadowedMaterial(uniforms, { vertexColors: true, map: tex });
+    }));
+  }
+
   // ---- load: coarse terrain first, then ground colours and the detailed rings as they arrive
   (async () => {
     status(`Loading ${W.name}’s terrain…`);
-    sources.far = await loadFar(W);
+    sources.far = await loadFar(W, lat, lon);
     if (closed) return;
     rebuild();
-    const colourJob = W.imagery ? Promise.all([
+    const colourJob = W.imagery?.texture ? loadGroundTextures().catch((err) => console.error(err)) : W.imagery ? Promise.all([
       loadColours(W, lat, lon, LEVELS[3].half, LEVELS[3].half / 120).then((c) => { colours.far = c; }),
       loadColours(W, lat, lon, LEVELS[2].half, LEVELS[2].half / 150).then((c) => { colours.mid = c; }),
       loadColours(W, lat, lon, LEVELS[1].half, 100).then((c) => { colours.near = c; }),
     ]).catch((err) => console.error(err)) : Promise.resolve();
     try {
+      status('Loading detailed terrain around you…');
       sources.near = await loadDetail(W, lat, lon, LEVELS[1].half * 1.06, 1,
         (d, n) => status(`Loading detailed terrain around you… ${Math.round((100 * d) / n)}%`));
+      if (W.imagery?.texture) status('Loading satellite images…');
       await colourJob;
       if (closed) return;
       rebuild();
+      status('Loading the surrounding landscape…');
       sources.mid = await loadDetail(W, lat, lon, LEVELS[2].half * 1.03, W.dem.midStep,
         (d, n) => status(`Loading the surrounding landscape… ${Math.round((100 * d) / n)}%`));
       if (closed) return;
@@ -694,7 +740,7 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
       status('');
     } catch (err) {
       console.error(err);
-      if (!closed) status('Could not load the detailed terrain (NASA/USGS server unreachable); showing coarse terrain.');
+      if (!closed) status(`Could not load the detailed terrain (${key === 'earth' ? 'NASADEM' : 'NASA/USGS'} server unreachable); showing coarse terrain.`);
     }
   })().catch((err) => {
     console.error(err);
@@ -709,6 +755,8 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
     for (const m of meshes) m.geometry.dispose();
     rockGeos.forEach((g) => g.dispose());
     for (let i = 0; i < 4; i++) uniforms[`uH${i}`].value?.dispose();
+    textures.forEach((t) => t?.dispose());
+    materials.forEach((m) => m?.dispose());
     renderer.dispose();
     renderer.forceContextLoss(); // hand the WebGL context back (browsers allow only ~16 at once)
   };

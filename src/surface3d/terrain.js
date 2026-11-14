@@ -4,8 +4,10 @@
 //
 //   foot  ±100 m  at 1 m    detailed DEM (via 'near') + made-up small craters and texture
 //   near  ±5 km   at 20 m   detailed DEM (Moon 118 m, Mars 200 m) + made-up craters 70-600 m
-//   mid   ±40 km  at 250 m  detailed DEM, every 4th (Moon) / 2nd (Mars) sample
+//   mid   ±40 km  at 250 m  detailed DEM, every 4th (Moon) / 2nd (Mars) / 8th (Earth) sample
 //   far   ±250 km (Moon) / ±400 km (Mars)   bundled 8 px/degree file
+//         ±150 km (Earth)                   NASADEM's coarsest overview (polar: AWS terrain tiles)
+// (Earth: no made-up craters; its 'near' DEM is NASADEM at ~30 m)
 //
 // Each finer level fades its made-up detail out and blends into the next coarser level
 // towards its edge, so the levels meet without steps. Where a finer level exists, the
@@ -213,11 +215,17 @@ export function sunVisibility(levels, sun, x, y, z, sunRadiusDeg) {
 
 // ---- meshes and GPU heightfields ---------------------------------------------------------
 
-/** Mesh of level `L` (three.js coords: x = east, y = up, z = -north) with `finer` cut out. */
-export function levelGeometry(L, finer, seed, colourAt) {
+/**
+ * Mesh of level `L` (three.js coords: x = east, y = up, z = -north) with `finer` cut out.
+ * uv runs 0..1 west to east and north to south (for a ground image of the level's square,
+ * row 0 = north, uploaded without flipping);
+ * `plain`: no made-up colour patchiness (the ground image has the real detail).
+ */
+export function levelGeometry(L, finer, seed, colourAt, { plain = false } = {}) {
   const { n, half, cell, z } = L;
   const pos = new Float32Array(n * n * 3);
   const col = new Float32Array(n * n * 3);
+  const uv = new Float32Array(n * n * 2);
   const inner = finer ? finer.half - cell : -1;
   let lo = Infinity; let hi = -Infinity;
   for (const v of z) lo = Math.min(lo, v);
@@ -231,8 +239,9 @@ export function levelGeometry(L, finer, seed, colourAt) {
       pos.set([x, h, -y], k * 3);
       // ground colour (map colour or the world's plain colour) with gentle made-up patchiness
       const [r, g, b] = colourAt(x, y);
-      const a = 1 + 0.11 * fbm(x / (cell * 40), y / (cell * 40), seed + 9, 3) + 0.05 * fbm(x / (cell * 3), y / (cell * 3), seed + 3, 2);
+      const a = plain ? 1 : 1 + 0.11 * fbm(x / (cell * 40), y / (cell * 40), seed + 9, 3) + 0.05 * fbm(x / (cell * 3), y / (cell * 3), seed + 3, 2);
       col.set([r * a, g * a, b * a], k * 3);
+      uv.set([i / (n - 1), 1 - j / (n - 1)], k * 2);
     }
   }
   const index = [];
@@ -247,6 +256,7 @@ export function levelGeometry(L, finer, seed, colourAt) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setIndex(index);
   g.computeVertexNormals();
   L.zMin = lo; L.zMax = hi;

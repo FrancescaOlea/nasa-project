@@ -71,10 +71,16 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **NOAA ETOPO 2022** global relief model, 60 arc-seconds (NOAA National Centers for Environmental
   Information; includes NASA SRTM data). Earth elevation, slope, relief, land mask and the analog
   search.
-- **Esri World Imagery** (Esri, Maxar, Earthstar Geographics). Earth satellite imagery.
+- **Esri World Imagery** (Esri, Maxar, Earthstar Geographics). Earth satellite imagery, also the
+  ground texture in the Earth 3D view.
+- **NASADEM** (NASA JPL, reprocessed SRTM Space Shuttle radar data), 1 arc second, 60° N–56° S, as
+  cloud-optimised GeoTIFFs on Microsoft Planetary Computer (`nasadem` collection), read on demand by
+  the browser: terrain in the Earth 3D view.
+- **AWS Terrain Tiles** (Registry of Open Data on AWS; Mapzen/Tilezen, from SRTM, GMTED, ETOPO1 and
+  national models). Earth 3D view terrain north of 60° N and south of 56° S.
 
 ## Software
 
-- Leaflet (maps), three.js (3D globes and the Moon / Mars 3D views), astronomy-engine (Sun, Earth,
+- Leaflet (maps), three.js (3D globes and the Moon / Mars / Earth 3D views), astronomy-engine (Sun, Earth,
   Moon and Mars positions and rotation), geotiff.js (reading the DEM file layout), Vite (build); Python with NumPy, SciPy, Numba,
   Pillow and tifffile for data processing.

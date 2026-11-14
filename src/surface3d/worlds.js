@@ -41,4 +41,25 @@ export const WORLDS = {
     range: { hours: 72, step: 0.25 }, // about ±3 sols
     dayName: 'sol',
   },
+  earth: {
+    name: 'Earth',
+    radius: 6371000,
+    far: null, // no bundled file: the far ring comes from the AWS terrain tiles (dem.js)
+    // NASA NASADEM, 1 arc second (~30 m); mid ring every 8th sample (~240 m)
+    dem: { source: 'nasadem', midStep: 8, label: 'NASA NASADEM, from the Space Shuttle’s radar', detailM: 30 },
+    farHalf: 150000,
+    // true-colour satellite images as the ground texture (Esri World Imagery, ~1 m in most deserts)
+    imagery: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false',
+      maxZoom: 17, texture: true },
+    ground: [0.55, 0.45, 0.34],
+    rock: 0x8f7a64,
+    craters: { near: 0, foot: 0 },
+    rocks: 500,
+    // clear desert air: blue sky, orange glow at sunset
+    atmosphere: { tau: 0.12, zenith: [0.2, 0.4, 0.85], horizon: [0.7, 0.8, 0.92], glow: [1.0, 0.55, 0.25],
+      hazeKm: 90 },
+    speeds: [0.25, 1, 3],
+    range: { hours: 72, step: 0.25 }, // ±3 days
+    dayName: 'day',
+  },
 };
