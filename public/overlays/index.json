@@ -12,8 +12,7 @@
       "enc_max": 75.3948,
       "pixel_km": 1.9,
       "max_zoom": 4,
-      "format": "webp",
-      "palette": "slope"
+      "format": "webp"
     },
     "elevation": {
       "unit": "km",
@@ -600,8 +599,7 @@
       "enc_max": 77.9688,
       "pixel_km": 1.9,
       "max_zoom": 3,
-      "format": "webp",
-      "palette": "slope"
+      "format": "webp"
     },
     "elevation": {
       "unit": "km",
@@ -1278,8 +1276,7 @@
       "pixel_km": 3.7,
       "max_zoom": 5,
       "format": "webp",
-      "crs": "EPSG3857",
-      "palette": "slope"
+      "crs": "EPSG3857"
     },
     "temp_max": {
       "unit": "°C",

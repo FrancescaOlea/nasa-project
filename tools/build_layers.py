@@ -498,7 +498,7 @@ def write_tiles(encoded, folder, max_zoom, lat_range=(-90, 90)):
 # Elevation and slope share a range between the bodies so the same colour means the
 # same value on the Moon and on Mars.
 
-SLOPE = dict(unit='°', log=True, min=0.1, max=30, palette='slope')
+SLOPE = dict(unit='°', log=True, min=0.1, max=30)
 RELIEF = dict(unit='km', log=True, min=0.005, max=0.5)
 
 
