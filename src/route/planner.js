@@ -255,6 +255,7 @@ export function createRoutePlanner(map, params, onChange) {
     kind: KINDS[params.get('rk')] ? params.get('rk') : 'safest',
     result: null,
     busy: false,
+    fresh: false, // a route was just calculated (the views zoom to it once)
   };
   if (!map.getPane('route')) map.createPane('route').style.zIndex = 450;
   const layer = L.layerGroup().addTo(map);
@@ -387,12 +388,32 @@ export function createRoutePlanner(map, params, onChange) {
       if (my !== token) return;
       state.result = { ...res, a: state.a, b: state.b };
       render();
+      fitRoute();
+      state.fresh = true;
     } catch (err) {
       console.error(err);
       if (my === token) status('Could not load the terrain data for this route.');
     } finally {
-      if (my === token) { panel.classList.remove('busy'); state.busy = false; emit(); }
+      if (my === token) { panel.classList.remove('busy'); state.busy = false; emit(); state.fresh = false; }
     }
+  }
+
+  // Zoom the 2D map so the whole route fills the space next to the panel.
+  function fitRoute() {
+    const r = state.result?.routes?.[state.kind] ?? Object.values(state.result?.routes ?? {}).find(Boolean);
+    if (!r) return;
+    const pts = r.pts.map(([lat, lon]) => [lat, wrap(lon)]);
+    const lons = pts.map((p) => p[1]);
+    if (Math.max(...lons) - Math.min(...lons) > 180) return; // crosses the map's edge: leave the view
+    const bounds = L.latLngBounds(pts);
+    const wide = window.innerWidth > 600;
+    const panelW = wide ? Math.min(400, window.innerWidth - 24) + 24 : 0;
+    map.flyToBounds(bounds, {
+      paddingTopLeft: [50, 80],
+      paddingBottomRight: wide ? [panelW + 50, 50] : [30, Math.round(window.innerHeight * 0.55)],
+      maxZoom: map.getMaxZoom(),
+      duration: 0.9,
+    });
   }
 
   // Leaflet lines can't cross the map's edge at +/-180: split them there.
@@ -587,7 +608,7 @@ export function createRoutePlanner(map, params, onChange) {
     isOpen: () => state.open,
     /** current state for the 3D view: endpoints, route and which one is chosen */
     result: () => ({
-      open: state.open, a: state.a, b: state.b, busy: state.busy, kind: state.kind,
+      open: state.open, a: state.a, b: state.b, busy: state.busy, kind: state.kind, fresh: state.fresh,
       route: state.result?.routes?.[state.kind] ?? null,
       opts: state.result?.opts ?? null, colour: KINDS[state.kind].colour,
     }),

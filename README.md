@@ -51,7 +51,9 @@ Or by hand: `npm install`, then `npm run dev`.
 ## Mars route planner (A to B)
 
 On the Mars map, **🧭 Plan a route from A to B** (selection panel) opens the route planner.
-Click the start (A), then the destination (B); drag either pin to change the route. It finds
+Click the start (A), then the destination (B); drag either pin to change the route. As soon as
+the route is calculated, the map zooms so the whole route fills the space next to the panel (in 3D,
+the camera flies to a tilted view of the route, centred between the panels). It finds
 three routes and shows what's dangerous on each:
 
 | Route | What it minimises |

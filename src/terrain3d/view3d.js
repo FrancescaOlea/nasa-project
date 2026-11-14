@@ -109,7 +109,8 @@ export function createView3D({ routeEvents }) {
     resize();
     // click (not drag) on the terrain: pick A / B
     let down = null;
-    renderer.domElement.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, b: e.button }; });
+    renderer.domElement.addEventListener('pointerdown', (e) => { tween = null; down = { x: e.clientX, y: e.clientY, b: e.button }; });
+    renderer.domElement.addEventListener('wheel', () => { tween = null; }, { passive: true });
     renderer.domElement.addEventListener('pointerup', (e) => {
       if (!down || down.b !== 0 || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
       const hit = pick(e);
@@ -146,8 +147,42 @@ export function createView3D({ routeEvents }) {
     camera.updateProjectionMatrix();
   }
 
+  let tween = null; // { from: {pos, target}, to: {pos, target}, t0, ms }
+
+  // The panels cover the left and right of the screen: centre the view (and the point the
+  // camera orbits around) in the free space between them.
+  let free = { frac: 1, shift: 0 };
+  function updateViewOffset() {
+    const W = canvasHost.clientWidth; const H = canvasHost.clientHeight;
+    if (!W || !H) return;
+    let left = 0; let right = W;
+    if (W > 600) {
+      const bar = root.querySelector('.view3d-bar')?.getBoundingClientRect();
+      const rp = document.getElementById('route-panel');
+      if (bar && bar.width) left = Math.max(left, bar.right);
+      if (rp && !rp.hidden) { const r = rp.getBoundingClientRect(); if (r.width) right = Math.min(right, r.left); }
+    }
+    if (right - left < W * 0.3) { left = 0; right = W; }
+    const shift = Math.round(W / 2 - (left + right) / 2);
+    const frac = (right - left) / W;
+    if (shift !== free.shift || Math.abs(frac - free.frac) > 0.01) {
+      free = { frac, shift };
+      if (shift) camera.setViewOffset(W, H, shift, 0, W, H); else camera.clearViewOffset();
+      camera.updateProjectionMatrix();
+    }
+  }
+
   function loop() {
     animId = requestAnimationFrame(loop);
+    updateViewOffset();
+    if (tween) {
+      const t = Math.min(1, (performance.now() - tween.t0) / tween.ms);
+      const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2; // ease in-out
+      camera.position.lerpVectors(tween.from.pos, tween.to.pos, e);
+      controls.target.lerpVectors(tween.from.target, tween.to.target, e);
+      if (t >= 1) tween = null;
+      updateClip();
+    }
     controls.update();
     renderer.render(scene, camera);
   }
@@ -245,6 +280,7 @@ export function createView3D({ routeEvents }) {
     scene.fog = new THREE.Fog(FOG, Math.max(wKm, hKm) * 1.1, Math.max(wKm, hKm) * CONTEXT_FACTOR * 0.9);
     resetCamera();
     drawRoute();
+    if (planner?.result()?.route) frameRoute();
     root.classList.remove('busy');
     let lo = Infinity; let hi = -Infinity;
     for (const h of heights) { if (h < lo) lo = h; if (h > hi) hi = h; }
@@ -510,6 +546,27 @@ export function createView3D({ routeEvents }) {
     updateClip();
   }
 
+  // Fly the camera so the whole route fills the screen, seen from above at a tilt
+  // (keeping the current compass direction).
+  function frameRoute() {
+    const pts = terrain?.routePts;
+    if (!pts?.length) return;
+    let x0 = Infinity; let x1 = -Infinity; let z0 = Infinity; let z1 = -Infinity; let ySum = 0;
+    for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); ySum += p.y; }
+    const span = Math.max(x1 - x0, z1 - z0, terrain.cellKm * 8);
+    const target = new THREE.Vector3((x0 + x1) / 2, ySum / pts.length, (z0 + z1) / 2);
+    // fit the route both in height and in the free width between the panels
+    const fitH = span / 2 / Math.tan((camera.fov / 2) * DEG);
+    const fitW = fitH / Math.max(0.2, camera.aspect * free.frac);
+    const dist = Math.max(fitH, fitW) * 1.25;
+    const dir = camera.position.clone().sub(controls.target).setY(0);
+    if (dir.lengthSq() < 1e-9) dir.set(0, 0, 1);
+    dir.normalize();
+    const tilt = 55 * DEG; // degrees above the horizon
+    const pos = target.clone().add(new THREE.Vector3(dir.x * Math.cos(tilt) * dist, Math.sin(tilt) * dist, dir.z * Math.cos(tilt) * dist));
+    tween = { from: { pos: camera.position.clone(), target: controls.target.clone() }, to: { pos, target }, t0: performance.now(), ms: 1100 };
+  }
+
   function topView() {
     const d = camera.position.distanceTo(controls.target);
     camera.position.set(controls.target.x, controls.target.y + d, controls.target.z + d * 0.001);
@@ -698,16 +755,23 @@ export function createView3D({ routeEvents }) {
     build({ lat: ll.lat, lon: ll.lon, wKm: d * 1.4, hKm: d * 1.4 });
   };
   $('view3d-route').onclick = () => {
-    const reg = regionFromRoute(planner?.result());
-    if (reg) build(reg);
+    const state = planner?.result();
+    if (!state?.route) return;
+    if (routeInside(state)) frameRoute(); else build(regionFromRoute(state));
   };
   $('view3d-close').onclick = () => close();
 
   routeEvents?.addEventListener('update', ({ detail }) => {
     if (!isOpen || !terrain || detail.busy) { if (isOpen && terrain) drawRoute(); return; }
     $('view3d-route').hidden = !detail.route;
-    if (detail.route && !routeInside(detail)) build(regionFromRoute(detail));
-    else drawRoute();
+    if (detail.route && detail.fresh) {
+      // a new route: rebuild around it if it's outside the area or tiny in it, then zoom to it
+      const reg = regionFromRoute(detail);
+      if (!routeInside(detail) || reg.wKm < terrain.wKm * 0.3) build(reg);
+      else { drawRoute(); frameRoute(); }
+    } else {
+      drawRoute();
+    }
   });
   routeEvents?.addEventListener('hover', ({ detail }) => { if (isOpen) showHover(detail.k); });
   routeEvents?.addEventListener('focus', ({ detail }) => { if (isOpen) focusOn(detail.k); });
