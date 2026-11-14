@@ -1,0 +1,16 @@
+MARS ROUTE PLANNER - how to add these files to your project
+============================================================
+
+1. Unzip this file.
+2. Copy everything inside it INTO your nasa-project folder (the one with
+   package.json, index.html, src/, public/ ...).
+3. When your computer asks, choose "Replace" for the files that already exist:
+     index.html, README.md, DATA_SOURCES.md, src/main.js, src/style.css
+   The other files are new:
+     src/route/          (grid.js, planner.js, search.worker.js)
+     public/route/       (crater and dust-storm data)
+     tools/build_route_data.py
+4. In VS Code: Terminal > New Terminal, then type
+     npm install      (first time only)
+     npm run dev
+5. In the browser: click Mars, then "Plan a route from A to B".
