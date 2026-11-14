@@ -49,6 +49,9 @@ Or by hand: `npm install`, then `npm run dev`.
   **Find Earth analogs**.
 
 ## Where the maps come from
+
+Every NASA and partner data set is listed, with dataset IDs, in [DATA_SOURCES.md](DATA_SOURCES.md).
+
 Map images are streamed as tiles from these services while you browse, so nothing is downloaded up front:
 
 | World | Zoomed out | Zoomed in (sharpest detail) |
