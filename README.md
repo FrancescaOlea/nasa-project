@@ -38,8 +38,9 @@ Or by hand: `npm install`, then `npm run dev`.
   with a legend). See *Map views* below for what's available on each body.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
   (1, 5, 10, 25, 50, 100 or 250 km; default 10).
-- Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** opens the Earth map for that
-  area (the analog search itself is still to be built); **Find similar spots** is a placeholder.
+- Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** searches Earth for
+  the 5 places most like the selected area (see *Earth analog search* below); **Find similar spots** is
+  still a placeholder.
   The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10&view=slope`), so links and the
   back button bring it back.
 - The home page shows spinning 3D globes of the Moon and Mars (three.js, textures made from the
@@ -73,7 +74,13 @@ both share one colour range, so the same colour means the same value on each.
 | Underground ice | *no global map product found* | Mars Odyssey averaged neutron data (~12 Mars years): % fewer epithermal neutrons than the driest ground (hydrogen, mostly ice near the poles), ~300 km | linear |
 | Temperature | Diviner: average over a full lunar day, ~15 km | **Calculated** (see below): average over a Mars year, ~60 km | linear |
 | Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | **Calculated**: typical day-night swing | linear |
-| Maximum temperature variation | *not added* | **Calculated**: hottest minus coldest moment of the year | linear |
+| Yearly temperature range | *not added* | **Calculated**: hottest minus coldest moment of the year | linear |
+| Maximum temperature | Diviner: hottest time of a typical day, ~15 km | **Calculated**: hottest month's average afternoon maximum | linear |
+| Minimum temperature | Diviner: coldest time of a typical night, ~15 km | **Calculated**: coldest month's average night minimum | linear |
+
+Maximum / minimum temperature are defined like Earth's (NASA POWER): the hottest month's average daily
+maximum and the coldest month's average daily minimum. On Mars a "month" is a sliding 1/12 of the
+Mars year (~56 sols). The Moon has no real seasons, so its typical day's max and night's min are used.
 
 On the Moon (1.5 deg axial tilt) the maximum variation is essentially the daily variation, and
 Diviner's archived product holds per-time-of-day averages, not all-time extremes, so it isn't added.
@@ -115,6 +122,47 @@ The land mask comes from ETOPO: below-sea-level areas count as water only if big
 are Web Mercator (to match the satellite basemap) with the ocean in a lossless alpha channel.
 Download the climate data with `python3 tools/fetch_power.py` (cached, resumable), then build
 with `python3 tools/build_layers.py earth`.
+
+### Earth analog search
+
+**Find Earth analogs** (Moon or Mars, with an area selected) first asks how much each characteristic
+should count (off, ×0.5, ×1, ×2, ×3; at least one on) and what a good analog is:
+
+- **Match my site**: places whose values are closest to the site's. Where the site is beyond anything
+  on Earth (much colder, bigger day-night swing), the target becomes Earth's most extreme value, so
+  the most extreme places win automatically.
+- **Most extreme**: for the temperatures, Earth's extreme on the site's side, whatever the site's value.
+
+| Characteristic | Site value (Moon / Mars) | Earth (`public/search`) | How it's compared |
+|---|---|---|---|
+| Max. / min. temperature, daily swing | area mean of the temperature layers | NASA POWER | matched (or most extreme) |
+| Terrain slope | mean of log10(slope), ~1.9 km scale | ETOPO 2022, same scale | matched |
+| Terrain relief | mean elevation standard deviation inside ~9 km blocks | ETOPO 2022, same blocks | matched |
+| Dryness | – (no Mars/Moon equivalent) | yearly rain, log | driest wins |
+| UV radiation | – | average UV index | highest wins |
+| Altitude (thin air) | – | mean elevation | highest wins |
+
+How it works (`src/analogs.js`):
+- `tools/build_search_grid.py` stores, for each of the ~96,000 half-degree cells with land, the
+  land-area mean of each characteristic (2.7 MB, loaded only when a search starts).
+- For the chosen radius, every land cell becomes the centre of a circle; the cells inside are
+  combined, weighted by land area (circles smaller than a cell use the cell, centred on its land).
+  Circles that are less than half land are skipped. Every circle is scored: nothing is sampled.
+- Each characteristic's distance to its target is divided by its spread across Earth (5th-95th
+  percentile), so degrees, millimetres and slopes become comparable. The score is the weighted
+  root-mean-square; "% match" = 100 % minus the score (0 % = a whole Earth spread away).
+- The best circle is kept, then the next best at least 800 km from all kept ones, until there are 5.
+
+Results show as numbered circles of the site's radius. Click one (on the map or in the list) for its
+area summary and a site-vs-Earth comparison. Selecting new areas is paused until **Exit results**;
+data layers can still be shown. A search takes 0.1-1 s.
+
+Checks, with all weights at ×1: Gale crater and Jezero give the Atacama, the Bolivian/Peruvian
+Altiplano, Ladakh/Aksai Chin and the Kunlun Mountains; the Mars north polar cap gives the East
+Antarctic plateau; the Moon's equator with maximum temperature weighted ×3 gives the Sahara (southern
+Egypt, Libya). The Moon's south pole gives Atacama/Tibet with all weights at ×1. That's because UV and
+day-night swing favour them over Antarctica; with those two off, the Transantarctic Mountains appear.
+Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
 
 ### Mars temperatures: a thermal model
 
@@ -170,3 +218,4 @@ The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value ->
     pip install numpy scipy pandas pillow numba tifffile imagecodecs
     python3 tools/fetch_power.py               # Earth climate (NASA POWER), ~10 min
     python3 tools/build_layers.py              # or e.g.: python3 tools/build_layers.py mars iron
+    python3 tools/build_search_grid.py         # Earth grid for the analog search, ~1 min

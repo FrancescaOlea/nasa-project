@@ -2,7 +2,7 @@
 // analog / similar-spot search. Weights are relative: only their ratios matter.
 import { VIEWS } from './overlays.js';
 
-export const STEPS = [0, 0.1, 0.5, 1, 2, 3, 5, 10];
+export const STEPS = [0, 0.5, 1, 2, 3];
 export const DEFAULT_WEIGHT = 1;
 
 // "slope:2,elevation:0.5" <-> { slope: 2, elevation: 0.5 }
@@ -20,11 +20,15 @@ export const formatWeights = (w) => Object.entries(w).map(([k, v]) => `${k}:${v}
 const fmt = (w) => (w === 0 ? 'off' : `×${w}`);
 
 /**
- * Show the weights dialog. `layers` are the characteristics available for the
- * body (view keys); `initial` any saved weights. Resolves with the chosen
- * weights, or null if cancelled.
+ * Show the weights dialog. `layers` are the characteristics (view keys), or `items`
+ * [{ key, name, help }] for any other list; `steps` the allowed weights; `initial` any
+ * saved weights. With `mode` ({ value, options: [[id, label, help]] }) a switch is shown
+ * above the list. Resolves with the chosen weights (plus `mode` when used), or null if
+ * cancelled.
  */
-export function askWeights({ heading, subheading, action, layers, initial = {} }) {
+export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null }) {
+  items ??= layers.map((k) => ({ key: k, name: VIEWS[k].name }));
+  layers = items.map((it) => it.key);
   const dialog = document.getElementById('weights');
   const list = dialog.querySelector('.w-list');
   const go = dialog.querySelector('.w-go');
@@ -34,24 +38,29 @@ export function askWeights({ heading, subheading, action, layers, initial = {} }
   go.textContent = action;
 
   const weights = Object.fromEntries(layers.map((k) => [k, initial[k] ?? DEFAULT_WEIGHT]));
-  const rows = layers.map((k) => {
+  const rows = items.map(({ key: k, name: label, help }) => {
     const row = document.createElement('div');
     row.className = 'w-row';
     row.innerHTML = `
       <label class="w-name"></label>
-      <input type="range" min="0" max="${STEPS.length - 1}" step="1">
+      <input type="range" min="0" max="${steps.length - 1}" step="1">
       <output class="w-value"></output>
       <span class="w-share"></span>`;
     const id = `w-${k}`;
     const name = row.querySelector('.w-name');
-    name.textContent = VIEWS[k].name;
+    name.textContent = label;
+    if (help) {
+      const small = document.createElement('small');
+      small.textContent = help;
+      name.append(small);
+    }
     name.htmlFor = id;
     const input = row.querySelector('input');
     input.id = id;
-    input.value = STEPS.indexOf(weights[k]);
+    input.value = steps.indexOf(weights[k]);
     input.setAttribute('aria-valuetext', fmt(weights[k]));
     input.oninput = () => {
-      weights[k] = STEPS[input.value];
+      weights[k] = steps[input.value];
       input.setAttribute('aria-valuetext', fmt(weights[k]));
       update();
     };
@@ -62,7 +71,7 @@ export function askWeights({ heading, subheading, action, layers, initial = {} }
   function update() {
     const total = Object.values(weights).reduce((a, b) => a + b, 0);
     for (const { k, row, input } of rows) {
-      input.value = STEPS.indexOf(weights[k]);
+      input.value = steps.indexOf(weights[k]);
       row.querySelector('.w-value').textContent = fmt(weights[k]);
       row.querySelector('.w-share').textContent = total > 0 ? `${Math.round((weights[k] / total) * 1000) / 10}%` : '–';
       row.classList.toggle('off', weights[k] === 0);
@@ -70,6 +79,27 @@ export function askWeights({ heading, subheading, action, layers, initial = {} }
     go.disabled = total === 0;
     warning.hidden = total > 0;
   }
+  // optional switch (e.g. "Match my site" / "Most extreme")
+  const modeBox = dialog.querySelector('.w-mode');
+  let modeValue = mode?.value;
+  modeBox.hidden = !mode;
+  if (mode) {
+    const buttons = mode.options.map(([id, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'radio');
+      b.textContent = label;
+      b.onclick = () => { modeValue = id; showMode(); };
+      return b;
+    });
+    modeBox.querySelector('.w-mode-buttons').replaceChildren(...buttons);
+    const showMode = () => {
+      mode.options.forEach(([id], i) => buttons[i].setAttribute('aria-checked', id === modeValue));
+      modeBox.querySelector('.w-mode-help').textContent = mode.options.find(([id]) => id === modeValue)?.[2] ?? '';
+    };
+    showMode();
+  }
+
   dialog.querySelector('.w-all-1').onclick = () => { for (const k of layers) weights[k] = 1; update(); };
   dialog.querySelector('.w-all-0').onclick = () => { for (const k of layers) weights[k] = 0; update(); };
   update();
@@ -80,7 +110,7 @@ export function askWeights({ heading, subheading, action, layers, initial = {} }
       dialog.close();
       resolve(result);
     };
-    go.onclick = () => finish({ ...weights });
+    go.onclick = () => finish(mode ? { ...weights, mode: modeValue } : { ...weights });
     dialog.querySelector('.w-cancel').onclick = () => finish(null);
     dialog.onclose = () => resolve(null); // Esc key
     dialog.showModal();

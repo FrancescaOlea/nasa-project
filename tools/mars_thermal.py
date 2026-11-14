@@ -202,7 +202,7 @@ def simulate_fast(lat_deg, albedo, inertia, elev_km, years=2, layers=30):
 
     @numba.njit(parallel=True, fastmath=True, cache=True)
     def kernel(lat, albedo, inertia, t_frost, dec, flux, hour, keep_from, steps_per_sol, layers,
-               out_mean, out_daily, out_yearly, out_low, out_high):
+               out_mean, out_daily, out_yearly, out_low, out_high, out_tmax, out_tmin):
         n = lat.size
         total = dec.size
         dt = SOL / steps_per_sol
@@ -234,6 +234,8 @@ def simulate_fast(lat_deg, albedo, inertia, elev_km, years=2, layers=30):
             ymax, ymin = -1e9, 1e9
             dmax, dmin = -1e9, 1e9
             daily_sum = low_sum = high_sum = 0.0
+            day_hi = np.empty(700)
+            day_lo = np.empty(700)
             days = 0
             for step in range(total):
                 sd, cd = math.sin(dec[step]), math.cos(dec[step])
@@ -301,6 +303,9 @@ def simulate_fast(lat_deg, albedo, inertia, elev_km, years=2, layers=30):
                         daily_sum += dmax - dmin
                         low_sum += dmin
                         high_sum += dmax
+                        if days < 700:
+                            day_hi[days] = dmax
+                            day_lo[days] = dmin
                         days += 1
                         dmax, dmin = -1e9, 1e9
             out_mean[cell] = s_sum / n_sum - 273.15
@@ -308,14 +313,32 @@ def simulate_fast(lat_deg, albedo, inertia, elev_km, years=2, layers=30):
             out_yearly[cell] = ymax - ymin
             out_low[cell] = low_sum / days
             out_high[cell] = high_sum / days
+            # Like Earth's 'hottest month' / 'coldest month': average the daily highs (lows)
+            # over a sliding Mars month (1/12 of the year, ~56 sols, wrapping around the
+            # year) and keep the warmest (coldest) such month.
+            nd = min(days, 700)
+            win = max(1, int(round(nd / 12)))
+            best_hi = -1e9
+            best_lo = 1e9
+            for start in range(nd):
+                shi = 0.0
+                slo = 0.0
+                for k in range(win):
+                    idx = (start + k) % nd
+                    shi += day_hi[idx]
+                    slo += day_lo[idx]
+                best_hi = max(best_hi, shi / win)
+                best_lo = min(best_lo, slo / win)
+            out_tmax[cell] = best_hi - 273.15
+            out_tmin[cell] = best_lo - 273.15
 
     dec, flux, hour = _sun_tables(years)
     keep_from = dec.size - int(round(SOLS_PER_YEAR * STEPS_PER_SOL))
     n = lat_deg.size
-    outs = [np.empty(n) for _ in range(5)]
+    outs = [np.empty(n) for _ in range(7)]
     kernel(np.radians(lat_deg).astype(np.float64), albedo.astype(np.float64), inertia.astype(np.float64),
            frost_point(elev_km).astype(np.float64), dec, flux, hour, keep_from, STEPS_PER_SOL, layers, *outs)
-    return dict(zip(('mean', 'daily', 'yearly', 'low', 'high'), outs))
+    return dict(zip(('mean', 'daily', 'yearly', 'low', 'high', 'tmax', 'tmin'), outs))
 
 
 def cell_inputs(raw_dir, res=1.0):
@@ -352,16 +375,19 @@ def cell_inputs(raw_dir, res=1.0):
 
 
 def mars_temperature_maps(raw_dir, res=1.0, cache=True):
+    """mean, daily, yearly, tmax, tmin grids (C / K differences)."""
+    keys = ('mean', 'daily', 'yearly', 'tmax', 'tmin')
     path = os.path.join(raw_dir, f'mars_temps_{res}.npz')
     if cache and os.path.exists(path):
         z = np.load(path)
-        return z['mean'], z['daily'], z['yearly']
+        if all(k in z for k in keys):
+            return [z[k] for k in keys]
     lat, alb, ti, elev = cell_inputs(raw_dir, res)
     shape = lat.shape
     r = simulate_fast(lat.ravel(), alb.ravel(), ti.ravel(), elev.ravel())
-    out = [r[x].reshape(shape).astype(np.float32) for x in ('mean', 'daily', 'yearly')]
-    np.savez(path, mean=out[0], daily=out[1], yearly=out[2])
-    return out
+    out = {k: r[k].reshape(shape).astype(np.float32) for k in keys}
+    np.savez(path, **out)
+    return [out[k] for k in keys]
 
 
 # Published surface temperatures at landing sites, for a sanity check.

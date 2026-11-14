@@ -115,6 +115,48 @@
       "pixel_km": 59.3,
       "max_zoom": 2,
       "format": "webp"
+    },
+    "temp_max": {
+      "unit": "°C",
+      "log": false,
+      "min": -40,
+      "max": 35,
+      "about": "Hottest month's average afternoon maximum (a sliding 1/12 of the Mars year), as for Earth. Calculated with a thermal model from TES and MOLA data.",
+      "below_min": true,
+      "above_max": true,
+      "enc_min": -88.9332,
+      "enc_max": 36.8248,
+      "pixel_km": 59.3,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temp_min": {
+      "unit": "°C",
+      "log": false,
+      "min": -127,
+      "max": -85,
+      "about": "Coldest month's average night minimum (a sliding 1/12 of the Mars year), as for Earth. Calculated with a thermal model from TES and MOLA data.",
+      "below_min": true,
+      "above_max": true,
+      "enc_min": -130.135,
+      "enc_max": -78.1151,
+      "pixel_km": 59.3,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "relief": {
+      "unit": "km",
+      "log": true,
+      "min": 0.005,
+      "max": 0.5,
+      "about": "Local relief: how much the height varies inside ~9 km blocks (MOLA).",
+      "below_min": true,
+      "above_max": true,
+      "enc_min": 5e-06,
+      "enc_max": 1.63342,
+      "pixel_km": 9.3,
+      "max_zoom": 2,
+      "format": "webp"
     }
   },
   "moon": {
@@ -201,6 +243,48 @@
       "enc_min": 22.1127,
       "enc_max": 345.818207,
       "pixel_km": 15.2,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temp_max": {
+      "unit": "°C",
+      "log": false,
+      "min": -15,
+      "max": 125,
+      "about": "Hottest time of a typical lunar day (Diviner, LRO). The Moon has no real seasons, so this is every day's maximum.",
+      "below_min": true,
+      "above_max": true,
+      "enc_min": -221.838,
+      "enc_max": 165.85,
+      "pixel_km": 15.2,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "temp_min": {
+      "unit": "°C",
+      "log": false,
+      "min": -210,
+      "max": -175,
+      "about": "Coldest time of a typical lunar night (Diviner, LRO).",
+      "below_min": true,
+      "above_max": true,
+      "enc_min": -253.757,
+      "enc_max": -141.167,
+      "pixel_km": 15.2,
+      "max_zoom": 2,
+      "format": "webp"
+    },
+    "relief": {
+      "unit": "km",
+      "log": true,
+      "min": 0.005,
+      "max": 0.5,
+      "about": "Local relief: how much the height varies inside ~9 km blocks (LOLA).",
+      "below_min": true,
+      "above_max": true,
+      "enc_min": 0.000775508,
+      "enc_max": 1.49594,
+      "pixel_km": 9.5,
       "max_zoom": 2,
       "format": "webp"
     }

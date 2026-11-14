@@ -90,6 +90,26 @@ def slope_deg(dem, ppd, radius_km):
     return np.degrees(np.arctan(np.hypot(dzdx, dzdy)))
 
 
+RELIEF_BLOCK = 5  # DEM pixels (~1.9 km) per side of a relief block: ~9.3 km on all three bodies
+
+
+def relief_blocks(dem_m, mask=None, f=RELIEF_BLOCK):
+    """Local relief: standard deviation of elevation (km) inside f x f pixel blocks.
+    With a mask (True = use), blocks less than half covered are NaN."""
+    h, w = dem_m.shape
+    d = np.asarray(dem_m, dtype=np.float64)[:h - h % f, :w - w % f] / 1000
+    m = np.ones_like(d) if mask is None else np.asarray(mask[:h - h % f, :w - w % f], dtype=np.float64)
+    d = np.where(m > 0, d, 0)
+    shape = (d.shape[0] // f, f, d.shape[1] // f, f)
+    n = m.reshape(shape).sum(axis=(1, 3))
+    with np.errstate(invalid='ignore', divide='ignore'):
+        mean = (d * m).reshape(shape).sum(axis=(1, 3)) / n
+        var = (d * d * m).reshape(shape).sum(axis=(1, 3)) / n - mean ** 2
+    out = np.sqrt(np.maximum(var, 0)).astype(np.float32)
+    out[n < f * f / 2] = np.nan
+    return out
+
+
 # ---- Gridding helpers ---------------------------------------------------------
 
 def grid_from_cells(lat_lo, lat_hi, lon_lo, lon_hi, values, res_deg):
@@ -224,10 +244,14 @@ DIVINER_BANDS = ['90s80s', '80s70s', '70s60s', '60s50s', '50s40s', '40s30s', '30
 
 def moon_temperatures():
     """Diviner Global Cumulative Products: bolometric surface temperature for every
-    0.5 deg cell and every 0.25 h of local time. Returns (mean, daily max - min) in C/K."""
+    0.5 deg cell and every 0.25 h of local time. Returns (mean, daily max - min, daily max,
+    daily min) in C (or K for the difference). The Moon has no real seasons (1.5 deg tilt),
+    so the daily max/min stand for Earth's 'hottest month max' / 'coldest month min'."""
     base = f'{PDS}/lro/urn-nasa-pds-lro_diviner_derived1/data_derived_gcp/global_cumul_avg_cyl_{{}}_002.tab'
     mean = np.full((360, 720), np.nan, dtype=np.float32)
     rng = np.full((360, 720), np.nan, dtype=np.float32)
+    tmax = np.full((360, 720), np.nan, dtype=np.float32)
+    tmin = np.full((360, 720), np.nan, dtype=np.float32)
     for band in DIVINER_BANDS:
         path = fetch(base.format(band), 'diviner_gcp')
         df = pd.read_csv(path, skipinitialspace=True, usecols=['clon', 'clat', 'ltim', 'tbol'])
@@ -260,9 +284,11 @@ def moon_temperatures():
         rows = np.round((90 - lats - 0.25) / 0.5).astype(int)
         mean[rows] = np.where(ok, np.nanmean(filled, axis=2) - 273.15, np.nan)
         rng[rows] = np.where(ok, np.nanmax(filled, axis=2) - np.nanmin(filled, axis=2), np.nan)
+        tmax[rows] = np.where(ok, np.nanmax(filled, axis=2) - 273.15, np.nan)
+        tmin[rows] = np.where(ok, np.nanmin(filled, axis=2) - 273.15, np.nan)
         print(f'  diviner {band}: {ok.mean():.0%} of cells usable')
     # a few spots never got enough readings: fill them from their neighbours
-    return fill_holes(mean), fill_holes(rng)
+    return fill_holes(mean), fill_holes(rng), fill_holes(tmax), fill_holes(tmin)
 
 
 
@@ -462,6 +488,7 @@ def write_tiles(encoded, folder, max_zoom, lat_range=(-90, 90)):
 # same value on the Moon and on Mars.
 
 SLOPE = dict(unit='°', log=True, min=0.1, max=30)
+RELIEF = dict(unit='km', log=True, min=0.005, max=0.5)
 
 
 def catalogue():
@@ -481,21 +508,25 @@ def catalogue():
         d, ppd = dem(body)
         return slope_deg(d, ppd, RADIUS_KM[body]), 1 / ppd
 
+    def relief(body):
+        d, ppd = dem(body)
+        return relief_blocks(d), RELIEF_BLOCK / ppd
+
     mars_temps = {}
 
     def mars_temp(which):
         if not mars_temps:
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import mars_thermal
-            mars_temps['mean'], mars_temps['daily'], mars_temps['yearly'] = \
-                mars_thermal.mars_temperature_maps(RAW, res=1.0)
+            (mars_temps['mean'], mars_temps['daily'], mars_temps['yearly'],
+             mars_temps['tmax'], mars_temps['tmin']) = mars_thermal.mars_temperature_maps(RAW, res=1.0)
         return mars_temps[which], 1.0
 
     temps = {}
 
     def moon_temp(which):
         if not temps:
-            temps['mean'], temps['range'] = moon_temperatures()
+            temps['mean'], temps['range'], temps['max'], temps['min'] = moon_temperatures()
         return temps[which], 0.5
 
     return {
@@ -507,6 +538,12 @@ def catalogue():
                             'How steep the ground is, in degrees, between points ~1.9 km apart (MOLA).'),
         ('moon', 'slope'): (lambda: slope('moon'), SLOPE, 3,
                             'How steep the ground is, in degrees, between points ~1.9 km apart (LOLA).'),
+        # Relief is not a map view: the analog search reads it (same definition as Earth's
+        # in tools/build_search_grid.py). Stored log-scaled, so flat plains keep their detail.
+        ('mars', 'relief'): (lambda: relief('mars'), RELIEF, 2,
+                             'Local relief: how much the height varies inside ~9 km blocks (MOLA).'),
+        ('moon', 'relief'): (lambda: relief('moon'), RELIEF, 2,
+                             'Local relief: how much the height varies inside ~9 km blocks (LOLA).'),
         ('mars', 'surface'): (mars_surface, dict(unit='TIU', log=True, min=30, max=1000, lat_min=-70, lat_max=70), 3,
                               'Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS). '
                               '70°S–70°N; nearer the poles seasonal frost spoils the readings.'),
@@ -550,6 +587,17 @@ def catalogue():
         ('earth', 'uv'): (lambda: power_grid('ALLSKY_SFC_UV_INDEX', 'mean'), dict(unit='UV index', log=False, min=0, max=2.5), 5,
                           'Ultraviolet at the ground: UV index averaged over day and night, including clouds '
                           '(NASA POWER, from CERES). Midday peaks are several times higher.'),
+        ('moon', 'temp_max'): (lambda: moon_temp('max'), dict(unit='°C', log=False, min=-15, max=125), 2,
+                               'Hottest time of a typical lunar day (Diviner, LRO). The Moon has no real '
+                               'seasons, so this is every day\'s maximum.'),
+        ('moon', 'temp_min'): (lambda: moon_temp('min'), dict(unit='°C', log=False, min=-210, max=-175), 2,
+                               'Coldest time of a typical lunar night (Diviner, LRO).'),
+        ('mars', 'temp_max'): (lambda: mars_temp('tmax'), dict(unit='°C', log=False, min=-40, max=35), 2,
+                               'Hottest month\'s average afternoon maximum (a sliding 1/12 of the Mars year), as '
+                               'for Earth. Calculated with a thermal model from TES and MOLA data.'),
+        ('mars', 'temp_min'): (lambda: mars_temp('tmin'), dict(unit='°C', log=False, min=-127, max=-85), 2,
+                               'Coldest month\'s average night minimum (a sliding 1/12 of the Mars year), as for '
+                               'Earth. Calculated with a thermal model from TES and MOLA data.'),
         # Mars temperatures are calculated (no global measured product exists), with
         # their own ranges: Mars is far milder than the Moon.
         ('mars', 'temperature'): (lambda: mars_temp('mean'), dict(unit='°C', log=False, min=-120, max=-45), 2,

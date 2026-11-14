@@ -21,7 +21,7 @@ export const VIEWS = {
   ice: { name: 'Underground ice', short: 'Underground ice' },
   temperature: { name: 'Temperature', short: 'Temperature' },
   temp_range: { name: 'Daily temperature variation', short: 'Daily temp. swing' },
-  temp_yearly: { name: 'Maximum temperature variation', short: 'Yearly temp. range' },
+  temp_yearly: { name: 'Yearly temperature range', short: 'Yearly temp. range' },
   temp_max: { name: 'Maximum temperature', short: 'Max. temperature' },
   temp_min: { name: 'Minimum temperature', short: 'Min. temperature' },
   dryness: { name: 'Dryness (yearly rainfall)', short: 'Dryness' },

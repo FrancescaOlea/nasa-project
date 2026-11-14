@@ -36,7 +36,9 @@ function weightedQuantiles(values, weights, qs) {
 
 /**
  * Summary of one layer over a circle. Resolves to
- *   { median, p10, p90, pixels } or { none: true } where the layer has no data.
+ *   { median, p10, p90, mean, logMean, sd, pixels } or { none: true } where the layer
+ * has no data. mean / logMean (mean of log10) / sd (standard deviation) are area-weighted;
+ * the analog search uses them because they combine the same way as the Earth grid.
  */
 export async function summarize(body, layer, meta, lat0, lon0, radiusKm, sphereKm) {
   const z = meta.max_zoom;
@@ -121,8 +123,15 @@ export async function summarize(body, layer, meta, lat0, lon0, radiusKm, sphereK
     const code = codeAt(row, col);
     if (!code) return { none: true };
     const v = decode(meta, code);
-    return { median: v, p10: v, p90: v, pixels: 1 };
+    return { median: v, p10: v, p90: v, mean: v, logMean: Math.log10(Math.max(v, 0.01)), sd: 0, pixels: 1 };
   }
   const [p10, median, p90] = weightedQuantiles(values, weights, [0.1, 0.5, 0.9]);
-  return { median, p10, p90, pixels: values.length };
+  let sw = 0; let s1 = 0; let s2 = 0; let sl = 0;
+  values.forEach((v, i) => {
+    const w = weights[i];
+    sw += w; s1 += w * v; s2 += w * v * v; sl += w * Math.log10(Math.max(v, 0.01));
+  });
+  const mean = s1 / sw;
+  const sd = Math.sqrt(Math.max(0, s2 / sw - mean * mean));
+  return { median, p10, p90, mean, logMean: sl / sw, sd, pixels: values.length };
 }

@@ -8,6 +8,8 @@ import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
+import { PARAMS, WEIGHT_STEPS, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
+  similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
@@ -224,22 +226,28 @@ function openMap(key, params) {
     map.setMaxZoom(maxZoomFor(body, size));
   });
 
-  if (body.selectable) setUpSelection(key, body, params);
-  if (key === 'earth' && params.has('site')) showAnalogBanner(params);
+  const analog = key === 'earth' && params.has('site');
+  const selection = body.selectable ? setUpSelection(key, body, params, { analog }) : null;
+  if (analog) showAnalogResults(params, selection);
   setUpWorldSwitch(key, params);
 }
 
 // ---- Menu, views and area selection (Moon and Mars) -------------------------
 
-function setUpSelection(key, body, params) {
-  $('select-panel').hidden = false;
+function setUpSelection(key, body, params, { analog = false } = {}) {
+  // During an analog search the results replace the selection panel, and clicking the
+  // map doesn't select anything until 'Exit results'.
+  $('select-panel').hidden = analog;
   $('menu-btn').hidden = false;
   let shapes = null;
   let current = null; // { lat, lon } of the selected point
   const r = parseFloat(params.get('r'));
   let radiusKm = RADIUS_OPTIONS_KM.includes(r) ? r : DEFAULT_RADIUS_KM;
   let view = VIEWS[params.get('view')] ? params.get('view') : null;
-  let weights = parseWeights(params.get('w')); // last weights chosen for this site
+  if (analog) radiusKm = parseFloat(params.get('sr')) || DEFAULT_RADIUS_KM; // results use the site's radius
+  let weights = parseWeights(params.get('w'));            // last weights for 'Find similar spots'
+  let analogWeights = parseAnalogWeights(params.get('aw')); // ... and for 'Find Earth analogs'
+  let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
   let available = {};                          // data layers for this body (from index.json)
   let describe = () => {};
   function selectView(v) {
@@ -255,7 +263,7 @@ function setUpSelection(key, body, params) {
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
   // Earth keeps where it was opened from (and an analog search's site) in its address
-  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w'].filter((k) => params.has(k)) : [];
+  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode'].filter((k) => params.has(k)) : [];
   function query() {
     const q = new URLSearchParams();
     for (const k of keep) q.set(k, params.get(k));
@@ -264,6 +272,10 @@ function setUpSelection(key, body, params) {
     if (view) q.set('view', view);
     if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
     if (key !== 'earth' && Object.keys(weights).length) q.set('w', formatWeights(weights));
+    if (key !== 'earth' && Object.keys(analogWeights).length) {
+      q.set('aw', formatWeights(analogWeights));
+      q.set('am', analogMode);
+    }
     return q.toString();
   }
   const saveToUrl = () => {
@@ -485,6 +497,7 @@ function setUpSelection(key, body, params) {
   markChosen();
 
   map.on('click', (e) => {
+    if (analog) return; // paused while analog results are shown
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -511,9 +524,30 @@ function setUpSelection(key, body, params) {
     return true;
   }
   $('find-analogs').onclick = async () => {
-    if (!(await chooseWeights('analogs'))) return;
+    const chosen = await askWeights({
+      heading: 'Find Earth analogs',
+      subheading: `${body.name} · ${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius`,
+      action: 'Find Earth analogs →',
+      items: Object.entries(PARAMS).map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
+      steps: WEIGHT_STEPS,
+      initial: analogWeights,
+      mode: {
+        value: analogMode,
+        options: [
+          ['match', 'Match my site', `Places whose temperatures are closest to this site's. Where ${body.name} is ` +
+            'beyond anything on Earth, the most extreme places on Earth win.'],
+          ['extreme', 'Most extreme', 'The most extreme places on Earth in the direction of this site: coldest, ' +
+            'hottest or biggest day–night swing.'],
+        ],
+      },
+    });
+    if (!chosen) return;
+    analogMode = chosen.mode;
+    delete chosen.mode;
+    analogWeights = chosen;
+    saveToUrl();
     const site = new URLSearchParams({ from: key, site: `${current.lat.toFixed(4)},${current.lon.toFixed(4)}`,
-      sr: radiusKm, w: formatWeights(weights) });
+      sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode });
     location.hash = `#/earth?${site}`;
   };
   $('find-similar').onclick = async () => {
@@ -522,27 +556,116 @@ function setUpSelection(key, body, params) {
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
-  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: 'always' });
+  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: analog ? undefined : 'always' });
+  return { select, clear, current: () => current, saveToUrl };
 }
 
-// ---- Earth page opened from "Find Earth analogs" -----------------------------
+// ---- Earth page opened from "Find Earth analogs": the search and its results ---------
 
-function showAnalogBanner(params) {
+function showAnalogResults(params, selection) {
   const from = BODIES[params.get('from')] ? params.get('from') : 'mars';
+  const source = BODIES[from];
   const [lat, lon] = (params.get('site') ?? '').split(',').map(Number);
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
   const r = parseFloat(params.get('sr')) || DEFAULT_RADIUS_KM;
-  $('analog-source').textContent = `${BODIES[from].name} · ${formatLatLon(lat, lon)}`;
-  $('analog-radius').textContent = `Area: ${r} km radius`;
-  const w = Object.entries(parseWeights(params.get('w'))).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const weights = parseAnalogWeights(params.get('w'));
+  if (!Object.values(weights).some((v) => v > 0)) for (const k of Object.keys(PARAMS)) weights[k] = 1;
+  const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
+
+  $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
+  $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}`;
+  const w = Object.entries(weights).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const total = w.reduce((a, [, v]) => a + v, 0);
-  $('analog-weights').textContent = w.length
-    ? `Weights: ${w.map(([k, v]) => `${VIEWS[k].name} ${Math.round((v / total) * 100)}%`).join(' · ')}`
-    : '';
+  $('analog-weights').textContent = `Weights: ${w.map(([k, v]) => `${PARAMS[k].name} ${Math.round((v / total) * 100)}%`).join(' · ')}`;
   $('back-to-site').onclick = () => {
-    location.hash = lastPage[from] ?? `#/${from}?lat=${lat}&lon=${lon}&r=${r}&w=${params.get('w') ?? ''}`;
+    location.hash = lastPage[from] ?? `#/${from}?lat=${lat}&lon=${lon}&r=${r}`;
   };
+  $('exit-results').onclick = () => {
+    // back to the plain Earth map (same view and projection); selecting works again
+    const q = new URLSearchParams({ from });
+    const cur = new URLSearchParams(location.hash.split('?')[1] ?? '');
+    for (const k of ['view', 'proj']) if (cur.has(k)) q.set(k, cur.get(k));
+    location.hash = `#/earth?${q}`;
+  };
+  $('analog-results').replaceChildren();
+  $('analog-compare').hidden = true;
+  $('analog-status').textContent = 'Searching every land area on Earth…';
   $('analog-banner').hidden = false;
+
+  const thisMap = map;
+  (async () => {
+    const index = await loadIndex();
+    const site = await siteValues(from, source.radiusKm, index[from] ?? {}, lat, lon, r);
+    const t0 = performance.now();
+    const found = await findAnalogs({ site, weights, mode, radiusKm: r });
+    if (map !== thisMap) return; // the page has changed meanwhile
+    if (import.meta.env.DEV) console.log(`analog search: ${Math.round(performance.now() - t0)} ms`, found, site);
+    showResults(found, site);
+  })().catch((err) => {
+    console.error(err);
+    $('analog-status').textContent = 'The search failed to load its data.';
+  });
+
+  function showResults({ results, used }, site) {
+    const skipped = Object.keys(weights).filter((k) => weights[k] > 0 && !used.includes(k));
+    $('analog-status').textContent = results.length
+      ? `Best ${results.length} areas, at least ${MIN_SEPARATION_KM} km apart.` +
+        (skipped.length ? ` No ${source.name} data here for: ${skipped.map((k) => PARAMS[k].name).join(', ')}.` : '')
+      : 'No matching areas found.';
+    const group = L.layerGroup().addTo(map);
+    const markers = [];
+    const buttons = results.map((res, i) => {
+      L.polygon(circlePoints(res.lat, res.lon, r, BODIES.earth.radiusKm), { className: 'analog-area', interactive: false })
+        .addTo(group);
+      const m = L.marker([res.lat, res.lon], {
+        icon: L.divIcon({ className: '', html: `<span class="analog-marker">${i + 1}</span>`, iconSize: [26, 26] }),
+        keyboard: false, title: `Analog ${i + 1}`,
+      }).addTo(group);
+      m.on('click', () => pick(i));
+      markers.push(m);
+      const li = document.createElement('li');
+      li.innerHTML = '<button type="button" aria-pressed="false"><span class="num"></span><span class="where"></span><span class="sim"></span></button>';
+      li.querySelector('.num').textContent = i + 1;
+      li.querySelector('.where').textContent = formatLatLon(res.lat, res.lon);
+      li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
+      li.querySelector('button').onclick = () => pick(i, true);
+      return li;
+    });
+    $('analog-results').replaceChildren(...buttons);
+
+    function pick(i, fly = false) {
+      const res = results[i];
+      buttons.forEach((li, j) => li.querySelector('button').setAttribute('aria-pressed', i === j));
+      markers.forEach((m, j) => m.getElement()?.firstChild?.classList.toggle('picked', i === j));
+      selection?.select(res.lat, res.lon);
+      if (fly) {
+        const ring = L.latLngBounds(circlePoints(res.lat, res.lon, Math.max(r, 50), BODIES.earth.radiusKm));
+        map.flyToBounds(ring, { padding: [60, 60], duration: 0.8, maxZoom: map.getMaxZoom() });
+      }
+      showComparison(i, res, site);
+    }
+  }
+
+  function showComparison(i, res, site) {
+    const fmt = (k, v) => {
+      const d = displayValue(k, v);
+      if (!Number.isFinite(d)) return '–';
+      const p = PARAMS[k];
+      const digits = Math.abs(d) >= 100 || p.unit === '°C' || p.unit === 'm' ? 0 : Math.abs(d) >= 10 ? 1 : 2;
+      return `${d.toFixed(digits)}${p.unit === '°C' || p.unit === '°' ? p.unit : ` ${p.unit}`}`;
+    };
+    const rows = Object.keys(res.values).map((k) => {
+      const p = PARAMS[k];
+      const siteCell = p.site ? fmt(k, site[k]) : `<span class="note">${p.better === 'low' ? 'lower wins' : 'higher wins'}</span>`;
+      return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
+    });
+    const box = $('analog-compare');
+    box.innerHTML = `<p class="c-title">Area ${i + 1} compared with the site</p>
+      <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+      <p class="sub" style="margin-top:.4rem">Search values are averages over the area. The area summary
+      (top right) shows this Earth area's typical values from the map data.</p>`;
+    box.hidden = false;
+  }
 }
 
 // ---- Earth <-> Moon/Mars switch (top right) ---------------------------------
