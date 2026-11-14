@@ -136,8 +136,11 @@ and B later only means calling it twice (the terrain grid can be reused).
 **⛰ 3D terrain** (top bar) turns the area into a 3D landscape (`src/terrain3d/view3d.js`, three.js):
 the route's area if there is a route, otherwise the area the 2D map shows (up to 1,000 km).
 
-- **Real elevation**: the MOLA elevation tiles the map uses (~2.6 km per pixel), interpolated and
-  smoothed over about one data pixel (the tiles store heights in ~115 m steps). No artificial
+- **Real elevation**: the MOLA elevation tiles the map uses (~2.6 km per pixel). The tiles store
+  heights in ~115 m steps (8 bits); instead of blurring, the 3D view finds the smoothest surface
+  that keeps every data pixel inside its own step (smoothing passes, each clamped back to the
+  allowed range), then interpolates bicubically. Plains lose their fake terraces while cliffs and
+  crater walls stay sharp, and every height stays within what NASA measured. No artificial
   shapes are added. Big craters, Mount Sharp, canyons and volcanoes show their real shape;
   craters under ~10 km are blurred.
 - **Controls**: drag to rotate, tilt down to just above the horizon, right-drag (or Ctrl/⌘-drag)

@@ -28,10 +28,9 @@ const SHOWCASE = { lat: -5.4, lon: 137.8, wKm: 180, hKm: 180, name: 'Gale Crater
 const $ = (id) => document.getElementById(id);
 const fmtM = (km) => `${Math.round(km * 1000).toLocaleString()} m`;
 
-// Elevation colours matched to the 2D map's NASA Viking colour mosaic: dark reddish browns,
-// a little lighter on high ground (no pale "sand" tones)
+// Elevation colours: Mars rust reds, deeper in low ground, a little lighter on high ground
 const ELEV_STOPS = [
-  [0.0, [46, 27, 20]], [0.3, [74, 41, 27]], [0.55, [101, 56, 35]], [0.8, [124, 70, 44]], [1.0, [142, 84, 54]],
+  [0.0, [66, 22, 13]], [0.3, [104, 34, 18]], [0.55, [140, 48, 25]], [0.8, [166, 64, 34]], [1.0, [186, 84, 48]],
 ];
 // slope colours: green (gentle) -> amber -> red (steep)
 const SLOPE_STOPS = [[0, [76, 160, 110]], [0.33, [215, 190, 90]], [0.6, [230, 130, 60]], [1, [200, 50, 50]]];
@@ -94,7 +93,7 @@ export function createView3D({ routeEvents }) {
     scene.background = new THREE.CanvasTexture(sky);
     scene.background.colorSpace = THREE.SRGBColorSpace;
     camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1e5);
-    scene.add(new THREE.HemisphereLight(0xffe2cc, 0x2a160e, 0.6));
+    scene.add(new THREE.HemisphereLight(0xffe0cc, 0x2a100a, 0.6));
     const sun = new THREE.DirectionalLight(0xffeedd, 2.2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
@@ -253,6 +252,9 @@ export function createView3D({ routeEvents }) {
       layerSampler('surface', metas.surface, ...box),
     ]);
     if (my !== building) return;
+    setStatus('Removing the storage steps from the elevation data…');
+    await new Promise((r) => setTimeout(r, 0));
+    const dem = dequantizedGrid(fe, metas.elevation, box);
     const rows = GRID; const cols = GRID;
     const n = rows * cols;
     const raw = new Float32Array(n);
@@ -267,18 +269,16 @@ export function createView3D({ routeEvents }) {
         const x = ax.pos[c];
         const lon = ((((lon0 + x / kx) + 180) % 360) + 360) % 360 - 180;
         const i = r * cols + c;
-        let h = fe.smooth(lat, lon);
+        let h = dem.at(lat, lon);
         if (Number.isNaN(h)) { h = 0; missing++; }
         raw[i] = h;
         slopes[i] = fs.smooth(lat, lon);
         surface[i] = fu.smooth(lat, lon);
       }
     }
-    // The tiles store elevation in ~115 m steps: smooth over just under one data pixel, the
-    // least that hides the steps. (No real detail is lost: the data has none finer.)
+    // no extra blur: the dequantized grid is already free of the storage steps
     const pxKm = (180 / (256 * 2 ** metas.elevation.max_zoom)) * KM_PER_DEG;
-    const sigmaFor = (axis) => axis.pos.map((p, i) => Math.min(20, Math.max(0.7, (1.0 * pxKm) / axis.step[i])));
-    const heights = blurVar(raw, rows, cols, sigmaFor(ax), sigmaFor(az));
+    const heights = raw;
     const cellKm = ax.step[(cols - 1) / 2];
     terrain?.mesh.geometry.dispose();
     if (terrain) scene.remove(terrain.mesh);
@@ -344,6 +344,60 @@ export function createView3D({ routeEvents }) {
     let lo = Infinity; let hi = -Infinity;
     terrain.heights.forEach((h, i) => { if (terrain.fine[i] > 0.99) { if (h < lo) lo = h; if (h > hi) hi = h; } });
     return { lo, hi };
+  }
+
+  // The elevation tiles store heights in steps of ~115 m (8 bits). The true height of each
+  // data pixel lies somewhere inside its step. Find the smoothest surface that stays inside
+  // every pixel's step: repeated smoothing, each time clamped back into the allowed range.
+  // Flat plains lose their fake terraces, while cliffs and crater walls (which span many
+  // steps) stay sharp. Nothing is invented: every height stays within what NASA measured.
+  function dequantizedGrid(sampler, meta, [south, north, west, east]) {
+    const z = meta.max_zoom;
+    const W = 512 * 2 ** z; const H = 256 * 2 ** z;
+    const r0 = Math.max(0, Math.floor(((90 - north) / 180) * H) - 3);
+    const r1 = Math.min(H - 1, Math.ceil(((90 - south) / 180) * H) + 3);
+    const c0 = Math.floor(((west + 180) / 360) * W) - 3;
+    const c1 = Math.ceil(((east + 180) / 360) * W) + 3;
+    const rows = r1 - r0 + 1; const cols = c1 - c0 + 1;
+    const q = new Float32Array(rows * cols);
+    const known = new Uint8Array(rows * cols);
+    for (let r = 0; r < rows; r++) {
+      const lat = 90 - ((r0 + r + 0.5) / H) * 180;
+      for (let c = 0; c < cols; c++) {
+        const lon = ((c0 + c + 0.5) / W) * 360 - 180;
+        const v = sampler.at(lat, ((((lon + 180) % 360) + 360) % 360) - 180);
+        if (!Number.isNaN(v)) { q[r * cols + c] = v; known[r * cols + c] = 1; }
+      }
+    }
+    const half = ((meta.enc_max - meta.enc_min) / 254) / 2; // half a storage step, km
+    let h = Float32Array.from(q);
+    // coarse-to-fine smoothing, clamped into each pixel's step after every pass
+    for (const sigma of [16, 12, 8, 6, 5, 4, 3, 2.5, 2, 1.6, 1.3, 1, 1, 0.8, 0.8, 0.7, 0.7]) {
+      h = blur(h, rows, cols, sigma);
+      for (let i = 0; i < h.length; i++) {
+        if (!known[i]) continue;
+        const lo = q[i] - half; const hi = q[i] + half;
+        if (h[i] < lo) h[i] = lo; else if (h[i] > hi) h[i] = hi;
+      }
+    }
+    // a final light pass (under one data pixel) takes the corners off what's left of the steps
+    h = blur(h, rows, cols, 0.9);
+    // Catmull-Rom (bicubic) interpolation between data pixels: smooth curves, no facets
+    const cr = (p0, p1, p2, p3, t) => p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)));
+    const get = (r, c) => h[Math.min(rows - 1, Math.max(0, r)) * cols + Math.min(cols - 1, Math.max(0, c))];
+    return {
+      at(lat, lon) {
+        let l = lon;
+        const ref = ((c0 + c1) / 2 / W) * 360 - 180;
+        l += Math.round((ref - l) / 360) * 360; // same side of the map as the grid
+        const fy = ((90 - lat) / 180) * H - 0.5 - r0;
+        const fx = ((l + 180) / 360) * W - 0.5 - c0;
+        const ry = Math.floor(fy); const rx = Math.floor(fx);
+        const ty = fy - ry; const tx = fx - rx;
+        const row = (rr) => cr(get(rr, rx - 1), get(rr, rx), get(rr, rx + 1), get(rr, rx + 2), tx);
+        return cr(row(ry - 1), row(ry), row(ry + 1), row(ry + 2), ty);
+      },
+    };
   }
 
   function blur(src, rows, cols, sigma) {
@@ -413,7 +467,7 @@ export function createView3D({ routeEvents }) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.computeVertexNormals();
-    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x2a1810, roughness: 1, side: THREE.DoubleSide }));
+    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x3a140b, roughness: 1, side: THREE.DoubleSide }));
     scene.add(skirt);
   }
 
