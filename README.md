@@ -134,8 +134,7 @@ and B later only means calling it twice (the terrain grid can be reused).
 ## 3D terrain (Mars)
 
 **⛰ 3D terrain** (top bar) turns the area into a 3D landscape (`src/terrain3d/view3d.js`, three.js):
-the route's surroundings if there is a route (at least 150 km across, so a whole crater shows),
-otherwise the area the 2D map shows (up to 1,600 km).
+the route's area if there is a route, otherwise the area the 2D map shows (up to 1,000 km).
 
 - **Real elevation**: the MOLA elevation tiles the map uses (~2.6 km per pixel), interpolated and
   smoothed over about one data pixel (the tiles store heights in ~115 m steps). No artificial
@@ -144,10 +143,11 @@ otherwise the area the 2D map shows (up to 1,600 km).
 - **Controls**: drag to rotate, tilt down to just above the horizon, right-drag (or Ctrl/⌘-drag)
   to pan, scroll or pinch to zoom (towards the cursor). **Top view** and **Reset**.
   Near and far clipping follow the camera, so you can zoom right in.
-- **No square edge**: the terrain is one continuous landscape reaching 8× the area's size (up to
-  7,000 km), with vertices packed densely around the area and spread out further away (sinh-shaped
-  spacing). Near the area it uses the detailed elevation tiles, further out coarser ones (~10 km),
-  blended smoothly; the far landscape fades into haze at the horizon.
+- **3 × 3 tiles**: the route's area is the middle tile (the route plus a small margin, at least
+  80 km), with one tile of the same size on every side and corner. The whole model uses the most
+  detailed elevation tiles, at 769 × 769 vertices (~256 per tile), smoothed only as much as needed
+  to hide the 115 m storage steps, with sharp shadows over the whole model, no haze, and side walls
+  down to a base like a physical terrain model.
 - If the 2D map shows the whole planet, 3D opens on **Gale Crater** and says how to pick another place.
 - **Heights ×5 (default) or ×10**: vertical exaggeration, always shown.
 - Elevation colours are lighter where TES thermal inertia says the ground is dusty and darker where

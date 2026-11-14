@@ -17,15 +17,14 @@ import { formatLatLon } from '../geo.js';
 const DEG = Math.PI / 180;
 const KM_PER_DEG = MARS_R * DEG;
 const MAX_SIDE = 420;          // mesh vertices along the longer side
-const MAX_REGION_KM = 1600;    // biggest area built at once
+const MAX_REGION_KM = 1000;    // biggest middle tile (the whole model is 3 x 3 tiles)
 const MIN_REGION_KM = 12;
 const EXAGGERATIONS = [5, 10];
-const EXTENT_FACTOR = 8;       // the landscape reaches this many times the area's size...
-const MAX_EXTENT_KM = 7000;    // ...but not further than this
-const GRID = 481;              // vertices per side of the one continuous landscape mesh
+const TILES = 3;               // 3 x 3 tiles: the route's tile in the middle, its 8 neighbours around
+const GRID = 3 * 256 + 1;      // vertices per side (769: ~256 per tile, the highest detail we draw)
 const FOG = '#2b1f19';         // haze colour at the horizon (matches the sky's lower edge)
 const IMG_W = 2050; // draped image width (2048 + a 1-pixel border on each side)
-const SHOWCASE = { lat: -5.4, lon: 137.8, wKm: 320, hKm: 320, name: 'Gale Crater (Curiosity)' };
+const SHOWCASE = { lat: -5.4, lon: 137.8, wKm: 180, hKm: 180, name: 'Gale Crater (Curiosity)' };
 const $ = (id) => document.getElementById(id);
 const fmtM = (km) => `${Math.round(km * 1000).toLocaleString()} m`;
 
@@ -77,7 +76,7 @@ export function createView3D({ routeEvents }) {
   // ---- three.js setup (once)
   function init() {
     renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(Math.min(3, window.devicePixelRatio || 1)); // full screen sharpness
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -239,21 +238,17 @@ export function createView3D({ routeEvents }) {
     const index = await loadIndex();
     const metas = index.mars;
     const size = Math.max(wKm, hKm);
-    // the whole landscape: EXTENT_FACTOR x the area, as far as the poles allow
-    const ex = Math.min(MAX_EXTENT_KM, wKm * EXTENT_FACTOR);
-    const ez = Math.min(MAX_EXTENT_KM, hKm * EXTENT_FACTOR, 2 * (89 - Math.abs(lat0)) * KM_PER_DEG + hKm);
-    const ax = makeAxis(ex, wKm); const az = makeAxis(ez, hKm);
-    // detailed data near the area, coarse (zoom 2, ~10 km) for the far landscape
-    const fLat = Math.min(85, dLat * 3.4); const fLon = Math.min(179, dLon * 3.4);
-    const cLat = ez / 2 / KM_PER_DEG; const cLon = Math.min(179, ex / 2 / kx);
-    const box = (a, b) => [Math.max(-89.9, lat0 - a), Math.min(89.9, lat0 + a), lon0 - b, lon0 + b];
-    const [fe, fs, fu, ce, cs, cu] = await Promise.all([
-      layerSampler('elevation', metas.elevation, ...box(fLat, fLon)),
-      layerSampler('slope', metas.slope, ...box(fLat, fLon)),
-      layerSampler('surface', metas.surface, ...box(fLat, fLon)),
-      layerSampler('elevation', metas.elevation, ...box(cLat, cLon), 2),
-      layerSampler('slope', metas.slope, ...box(cLat, cLon), 2),
-      layerSampler('surface', metas.surface, ...box(cLat, cLon), 2),
+    // the model: 3 x 3 tiles of the area's size, the area (route) in the middle tile
+    const ex = wKm * TILES;
+    const ez = Math.min(hKm * TILES, 2 * (89.5 - Math.abs(lat0)) * KM_PER_DEG + hKm);
+    const ax = makeAxis(ex); const az = makeAxis(ez);
+    // the most detailed elevation, slope and surface tiles over the whole model
+    const box = [Math.max(-89.9, lat0 - ez / 2 / KM_PER_DEG), Math.min(89.9, lat0 + ez / 2 / KM_PER_DEG),
+      lon0 - Math.min(179, ex / 2 / kx), lon0 + Math.min(179, ex / 2 / kx)];
+    const [fe, fs, fu] = await Promise.all([
+      layerSampler('elevation', metas.elevation, ...box),
+      layerSampler('slope', metas.slope, ...box),
+      layerSampler('surface', metas.surface, ...box),
     ]);
     if (my !== building) return;
     const rows = GRID; const cols = GRID;
@@ -261,10 +256,8 @@ export function createView3D({ routeEvents }) {
     const raw = new Float32Array(n);
     const slopes = new Float32Array(n);
     const surface = new Float32Array(n); // TES thermal inertia: low = dust, high = rock
-    const fine = new Float32Array(n);    // 1 = detailed data, 0 = coarse (blended in between)
+    const fine = new Float32Array(n).fill(1);
     let missing = 0;
-    const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-    const mix = (a, b, w) => (Number.isNaN(a) ? b : Number.isNaN(b) ? a : a * w + b * (1 - w));
     for (let r = 0; r < rows; r++) {
       const z = az.pos[r];
       const lat = Math.max(-89.9, Math.min(89.9, lat0 - z / KM_PER_DEG));
@@ -272,28 +265,18 @@ export function createView3D({ routeEvents }) {
         const x = ax.pos[c];
         const lon = ((((lon0 + x / kx) + 180) % 360) + 360) % 360 - 180;
         const i = r * cols + c;
-        // how far out, in units of the area's half-size: detailed inside 1.2, coarse beyond 1.6
-        const d = Math.max(Math.abs(x) / (wKm / 2), Math.abs(z) / (hKm / 2));
-        const w = 1 - smoothstep(1.2, 1.6, d);
-        fine[i] = w;
-        let h = w > 0 ? mix(fe.smooth(lat, lon), ce.smooth(lat, lon), w) : ce.smooth(lat, lon);
+        let h = fe.smooth(lat, lon);
         if (Number.isNaN(h)) { h = 0; missing++; }
         raw[i] = h;
-        slopes[i] = w > 0 ? mix(fs.smooth(lat, lon), cs.smooth(lat, lon), w) : cs.smooth(lat, lon);
-        surface[i] = w > 0 ? mix(fu.smooth(lat, lon), cu.smooth(lat, lon), w) : cu.smooth(lat, lon);
+        slopes[i] = fs.smooth(lat, lon);
+        surface[i] = fu.smooth(lat, lon);
       }
     }
-    // The tiles store elevation in ~115 m steps: blur over about one data pixel (more where the
-    // data is coarse) so the steps don't show as terraces. No real detail is lost: there is none finer.
+    // The tiles store elevation in ~115 m steps: smooth over just under one data pixel, the
+    // least that hides the steps. (No real detail is lost: the data has none finer.)
     const pxKm = (180 / (256 * 2 ** metas.elevation.max_zoom)) * KM_PER_DEG;
-    const coarsePxKm = (180 / (256 * 2 ** 2)) * KM_PER_DEG;
-    const sigmaFor = (axis, other) => axis.pos.map((p, i) => {
-      const step = axis.step[i];
-      const out = Math.abs(p) / (other / 2);
-      const px = out < 1.4 ? pxKm : coarsePxKm;
-      return Math.min(10, Math.max(0.8, (1.1 * px) / step));
-    });
-    const heights = blurVar(raw, rows, cols, sigmaFor(ax, wKm), sigmaFor(az, hKm));
+    const sigmaFor = (axis) => axis.pos.map((p, i) => Math.min(20, Math.max(0.7, (1.0 * pxKm) / axis.step[i])));
+    const heights = blurVar(raw, rows, cols, sigmaFor(ax), sigmaFor(az));
     const cellKm = ax.step[(cols - 1) / 2];
     terrain?.mesh.geometry.dispose();
     if (terrain) scene.remove(terrain.mesh);
@@ -304,14 +287,14 @@ export function createView3D({ routeEvents }) {
     await applyColours();
     if (my !== building) return;
     placeSun();
-    // haze only far away: the area itself stays crisp, the far landscape fades into the horizon
-    scene.fog = new THREE.Fog(FOG, size * 2.2, Math.min(terrain.ex, terrain.ez) * 0.5);
+    scene.fog = null; // no haze: everything in the model stays sharp
+    makeSkirt();
     resetCamera();
     drawRoute();
     if (planner?.result()?.route) frameRoute();
     root.classList.remove('busy');
     const { lo, hi } = areaRange();
-    setStatus(`${region.name ? `${region.name} · ` : ''}${Math.round(wKm).toLocaleString()} × ${Math.round(hKm).toLocaleString()} km · elevation ${fmtM(lo)} to ${fmtM(hi)}${region.note ? ` · ${region.note}` : ''}`);
+    setStatus(`${region.name ? `${region.name} · ` : ''}${Math.round(terrain.ex).toLocaleString()} × ${Math.round(terrain.ez).toLocaleString()} km (3 × 3 tiles of ${Math.round(wKm).toLocaleString()} km) · elevation ${fmtM(lo)} to ${fmtM(hi)}${region.note ? ` · ${region.note}` : ''}`);
     updateInfo();
     // try the spacecraft images in the background; switch to them if the servers allow it
 
@@ -340,16 +323,9 @@ export function createView3D({ routeEvents }) {
 
   // Positions along one axis: dense around the area (about its size / 400 apart), spreading out
   // smoothly to the far edge: pos(u) = E/2 * sinh(k u) / sinh(k), u in [-1, 1].
-  function makeAxis(extent, areaSize) {
-    const target = areaSize / 400;
+  function makeAxis(extent) {
     const du = 2 / (GRID - 1);
-    const spacingAt0 = (k) => (extent / 2) * (k < 1e-6 ? 1 : k / Math.sinh(k)) * du;
-    let k = 0;
-    if (spacingAt0(0) > target) {
-      let lo = 0; let hi = 12;
-      for (let it = 0; it < 60; it++) { const m = (lo + hi) / 2; if (spacingAt0(m) > target) lo = m; else hi = m; }
-      k = (lo + hi) / 2;
-    }
+    const k = 0; // evenly spaced
     const f = (u) => (k < 1e-6 ? u : Math.sinh(k * u) / Math.sinh(k)) * (extent / 2);
     const pos = new Float64Array(GRID); const step = new Float64Array(GRID);
     for (let i = 0; i < GRID; i++) pos[i] = f(-1 + i * du);
@@ -396,7 +372,7 @@ export function createView3D({ routeEvents }) {
     const pass = (from, to, n, m, sig, at) => {
       for (let a = 0; a < m; a++) {
         for (let b = 0; b < n; b++) {
-          const sg = sig[b]; const rad = Math.min(25, Math.ceil(sg * 2.5));
+          const sg = sig[b]; const rad = Math.min(50, Math.ceil(sg * 2.5));
           let s = 0; let ws = 0;
           for (let i = -rad; i <= rad; i++) {
             const bb = b + i; if (bb < 0 || bb >= n) continue;
@@ -410,6 +386,33 @@ export function createView3D({ routeEvents }) {
     pass(src, tmp, cols, rows, sigX, (r, c) => r * cols + c);
     pass(tmp, out, rows, cols, sigZ, (c, r) => r * cols + c);
     return out;
+  }
+
+  // Side walls down to a flat base, so the model looks like a solid block of terrain.
+  let skirt = null;
+  function makeSkirt() {
+    if (skirt) { scene.remove(skirt); skirt.geometry.dispose(); skirt.material.dispose(); skirt = null; }
+    const { rows, cols, ax, az, heights } = terrain;
+    let lo = Infinity;
+    for (const h of heights) lo = Math.min(lo, h);
+    const base = lo * exaggeration - Math.max(terrain.ex, terrain.ez) * 0.02;
+    const edge = [];
+    for (let c = 0; c < cols; c++) edge.push([0, c]);
+    for (let r = 1; r < rows; r++) edge.push([r, cols - 1]);
+    for (let c = cols - 2; c >= 0; c--) edge.push([rows - 1, c]);
+    for (let r = rows - 2; r >= 0; r--) edge.push([r, 0]);
+    const pos = [];
+    for (let i = 0; i < edge.length; i++) {
+      const [r1, c1] = edge[i]; const [r2, c2] = edge[(i + 1) % edge.length];
+      const x1 = ax.pos[c1]; const z1 = az.pos[r1]; const y1 = heights[r1 * cols + c1] * exaggeration;
+      const x2 = ax.pos[c2]; const z2 = az.pos[r2]; const y2 = heights[r2 * cols + c2] * exaggeration;
+      pos.push(x1, y1, z1, x1, base, z1, x2, y2, z2, x2, y2, z2, x1, base, z1, x2, base, z2);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x4a2e22, roughness: 1, side: THREE.DoubleSide }));
+    scene.add(skirt);
   }
 
   function makeMesh() {
@@ -451,6 +454,7 @@ export function createView3D({ routeEvents }) {
     terrain.mesh.geometry.computeVertexNormals();
     terrain.mesh.geometry.computeBoundingSphere();
     terrain.mesh.geometry.computeBoundingBox();
+    makeSkirt();
     drawRoute();
     updateInfo();
   }
@@ -564,14 +568,15 @@ export function createView3D({ routeEvents }) {
 
   function placeSun() {
     const sun = scene.userData.sun;
-    const size = Math.max(terrain.wKm, terrain.hKm);
+    const size = Math.max(terrain.ex, terrain.ez);
     // afternoon sun from the north-west, 35 degrees up: long shadows show the relief
     const el = 35 * DEG; const az = 315 * DEG;
     sun.position.set(Math.sin(az) * Math.cos(el) * size, Math.sin(el) * size, -Math.cos(az) * Math.cos(el) * size);
     sun.target.position.set(0, 0, 0);
     const cam = sun.shadow.camera;
-    cam.left = -size * 0.85; cam.right = size * 0.85; cam.top = size * 0.85; cam.bottom = -size * 0.85;
-    cam.near = 0.01; cam.far = size * 6;
+    const half = Math.max(terrain.ex, terrain.ez) * 0.55;
+    cam.left = -half; cam.right = half; cam.top = half; cam.bottom = -half;
+    cam.near = 0.01; cam.far = size * 10;
     cam.updateProjectionMatrix();
   }
 
@@ -582,10 +587,10 @@ export function createView3D({ routeEvents }) {
     const h = centreHeight();
     controls.target.set(0, h, 0);
     // looking north, tilted 55 degrees down from the horizon
-    const d = size * 0.95;
+    const d = Math.max(terrain.ex, terrain.ez) * 0.95;
     camera.position.set(0, h + d * Math.sin(55 * DEG), d * Math.cos(55 * DEG));
     controls.minDistance = Math.max(0.05, terrain.cellKm * 0.25);
-    controls.maxDistance = Math.min(terrain.ex, terrain.ez) * 0.45;
+    controls.maxDistance = Math.max(terrain.ex, terrain.ez) * 2.5;
     controls.update();
     updateClip();
   }
@@ -597,7 +602,8 @@ export function createView3D({ routeEvents }) {
     if (!pts?.length) return;
     let x0 = Infinity; let x1 = -Infinity; let z0 = Infinity; let z1 = -Infinity; let ySum = 0;
     for (const p of pts) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); ySum += p.y; }
-    const span = Math.max(x1 - x0, z1 - z0, terrain.cellKm * 8);
+    // at least the middle tile: closer than that the ~2.6 km data shows no more detail
+    const span = Math.max(x1 - x0, z1 - z0, terrain.wKm * 0.9);
     const target = new THREE.Vector3((x0 + x1) / 2, ySum / pts.length, (z0 + z1) / 2);
     // fit the route both in height and in the free width between the panels
     const fitH = span / 2 / Math.tan((camera.fov / 2) * DEG);
@@ -750,8 +756,9 @@ export function createView3D({ routeEvents }) {
     const lat = (la0 + la1) / 2; const lon = (lo0 + lo1) / 2;
     const kx = KM_PER_DEG * Math.max(0.05, Math.cos(lat * DEG));
     const span = Math.max((la1 - la0) * KM_PER_DEG, (lo1 - lo0) * kx);
-    // room around the route so its surroundings (e.g. the whole crater) are visible
-    const side = Math.max(150, span * 1.8);
+    // the route's tile: the route with a small margin (the 8 tiles around it add the surroundings)
+    // at least 80 km: below that the ~2.6 km elevation data is only a few dozen pixels across
+    const side = Math.max(80, span * 1.25);
     return { lat, lon, wKm: side, hKm: side };
   }
   function routeInside(state) {
