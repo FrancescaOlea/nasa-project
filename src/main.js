@@ -10,6 +10,8 @@ import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
+import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILAR_DEFAULT_COUNT,
+  MAX_COUNT as SIMILAR_MAX_COUNT, cellKm } from './similar.js';
 import { addLandmarks } from './landmarks.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
@@ -261,6 +263,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let analogWeights = parseAnalogWeights(params.get('aw')); // ... and for 'Find Earth analogs'
   let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
   let analogCount = parseCount(params.get('an'));
+  let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
+  let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
   let describe = () => {};
   function selectView(v) {
@@ -284,7 +288,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
     if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
-    if (key !== 'earth' && Object.keys(weights).length) q.set('w', formatWeights(weights));
+    if (key !== 'earth' && Object.keys(weights).length) {
+      q.set('w', formatWeights(weights));
+      q.set('sn', similarCount);
+    }
     if (key !== 'earth' && Object.keys(analogWeights).length) {
       q.set('aw', formatWeights(analogWeights));
       q.set('am', analogMode);
@@ -476,7 +483,6 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     $('select-hint').hidden = true;
     $('select-info').hidden = false;
     $('select-coords').textContent = formatLatLon(lat, lon);
-    $('toast').hidden = true;
     draw(opts);
     saveToUrl();
     updateSummary();
@@ -526,7 +532,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   };
 
   map.on('click', (e) => {
-    if (analog) return; // paused while analog results are shown
+    if (analog || similarShown) return; // paused while search results are shown
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -574,17 +580,21 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     map.flyTo(map.unproject(mid.subtract(shift), z), z, { duration: 0.8 });
   }
 
-  // Both searches first ask how much each characteristic should count.
-  async function chooseWeights(action) {
+  // 'Find similar spots' first asks how much each characteristic should count.
+  async function chooseWeights() {
     const layers = Object.keys(VIEWS).filter((v) => available[v]);
     const chosen = await askWeights({
-      heading: action === 'analogs' ? 'Find Earth analogs' : `Find similar spots on ${body.name}`,
-      subheading: `${body.name} · ${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius`,
-      action: action === 'analogs' ? 'Find Earth analogs →' : 'Find similar spots →',
+      heading: `Find similar spots on ${body.name}`,
+      subheading: `${body.name} · ${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius · ` +
+        `at least ${SIMILAR_MIN_KM} km away`,
+      action: 'Find similar spots →',
       layers,
       initial: weights,
+      count: { value: similarCount, default: SIMILAR_DEFAULT_COUNT, min: 1, max: SIMILAR_MAX_COUNT },
     });
     if (!chosen) return false;
+    similarCount = chosen.count;
+    delete chosen.count;
     weights = chosen;
     saveToUrl();
     return true;
@@ -623,8 +633,106 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     location.hash = `#/earth?${site}`;
   };
   $('find-similar').onclick = async () => {
-    if (await chooseWeights('similar')) $('toast').hidden = false; // search not built yet
+    if (!Object.keys(available).length || !(await chooseWeights())) return;
+    showSimilarResults();
   };
+
+  // ---- 'Find similar spots': search this world, show the best spots on the map
+  let similarGroup = null;
+  function exitSimilar() {
+    similarShown = false;
+    similarGroup?.remove();
+    similarGroup = null;
+    $('analog-banner').hidden = true;
+    $('select-panel').hidden = false;
+  }
+  function showSimilarResults() {
+    const site = { ...current };
+    const r = radiusKm;
+    const w = Object.entries(weights).filter(([k, v]) => v > 0 && available[k]).sort((a, b) => b[1] - a[1]);
+    const total = w.reduce((a, [, v]) => a + v, 0);
+    similarShown = true;
+    $('select-panel').hidden = true;
+    $('analog-heading').textContent = `Similar spots on ${body.name} to`;
+    $('analog-source').textContent = formatLatLon(site.lat, site.lon);
+    const cell = Math.round(cellKm(body.radiusKm));
+    $('analog-radius').textContent = `${r} km radius · at least ${SIMILAR_MIN_KM} km away` +
+      (r < cell ? ` · compared at ~${cell} km detail` : '');
+    $('analog-weights').textContent = `Weights: ${w.map(([k, v]) => `${VIEWS[k].name} ${Math.round((v / total) * 100)}%`).join(' · ')}`;
+    $('analog-results').replaceChildren();
+    $('analog-compare').hidden = true;
+    $('analog-status').textContent = 'Searching…';
+    $('analog-banner').hidden = false;
+    $('back-to-site').onclick = () => {
+      map.flyToBounds(L.latLngBounds(circlePoints(site.lat, site.lon, Math.max(r, 50), body.radiusKm)),
+        { padding: [60, 60], duration: 0.8 });
+    };
+    $('exit-results').onclick = exitSimilar;
+
+    const thisMap = map;
+    const still = () => map === thisMap && similarShown;
+    findSimilar({
+      body: key, sphereKm: body.radiusKm, layers: available, weights: Object.fromEntries(w), site,
+      radiusKm: r, count: similarCount,
+      onProgress: (text) => { if (still()) $('analog-status').textContent = text; },
+    }).then((found) => {
+      if (!still()) return;
+      if (import.meta.env.DEV) console.log('similar spots', found);
+      showSpots(found, site, r);
+    }).catch((err) => {
+      console.error(err);
+      if (still()) $('analog-status').textContent = 'The search failed to load its data. Please try again.';
+    });
+  }
+  function showSpots({ results, site: siteValues, used, skipped }, site, r) {
+    $('analog-status').textContent = (results.length
+      ? (results.length === 1 ? 'Best spot.' : `Best ${results.length} spots, at least ${SIMILAR_MIN_KM} km from the site and from each other.`)
+      : 'No matching spots found.') +
+      (skipped.length ? ` No data at the site for: ${skipped.map((k) => VIEWS[k].name).join(', ')}.` : '');
+    similarGroup = L.layerGroup().addTo(map);
+    const markers = [];
+    const items = results.map((res, i) => {
+      L.polygon(circlePoints(res.lat, res.lon, r, body.radiusKm), { className: 'analog-area', interactive: false })
+        .addTo(similarGroup);
+      const m = L.marker([res.lat, res.lon], {
+        icon: L.divIcon({ className: '', html: `<span class="analog-marker">${i + 1}</span>`, iconSize: [26, 26] }),
+        keyboard: false, title: `Spot ${i + 1}`,
+      }).addTo(similarGroup);
+      m.on('click', () => pick(i));
+      markers.push(m);
+      const li = document.createElement('li');
+      li.innerHTML = '<button type="button" aria-pressed="false"><span class="num"></span><span class="where"></span><span class="sim"></span></button>';
+      li.querySelector('.num').textContent = i + 1;
+      li.querySelector('.where').textContent = `${formatLatLon(res.lat, res.lon)} · ${formatKm(res.km)}`;
+      li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
+      li.querySelector('button').onclick = () => pick(i, true);
+      return li;
+    });
+    $('analog-results').replaceChildren(...items);
+    // show the site and every spot
+    if (results.length) {
+      const all = L.latLngBounds([[site.lat, site.lon], ...results.map((p) => [p.lat, p.lon])]);
+      map.flyToBounds(all, { padding: [80, 80], duration: 0.8, maxZoom: map.getZoom() + 1 });
+    }
+
+    function pick(i, fly = false) {
+      const res = results[i];
+      items.forEach((li, j) => li.querySelector('button').setAttribute('aria-pressed', i === j));
+      markers.forEach((m, j) => m.getElement()?.firstChild?.classList.toggle('picked', i === j));
+      if (fly) {
+        map.flyToBounds(L.latLngBounds(circlePoints(res.lat, res.lon, Math.max(r, 50), body.radiusKm)),
+          { padding: [60, 60], duration: 0.8 });
+      }
+      const rows = used.map((k) => `<tr><td>${VIEWS[k].name}</td><td>${formatValue(available[k], siteValues[k])}</td>` +
+        `<td>${formatValue(available[k], res.values[k])}</td></tr>`);
+      const box = $('analog-compare');
+      box.innerHTML = `<p class="c-title">Spot ${i + 1} compared with the site · ${formatKm(res.km)} away</p>
+        <table><thead><tr><th></th><th>Site</th><th>Spot ${i + 1}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+        <p class="sub" style="margin-top:.4rem">Averages over each area, from the map data at ~${Math.round(cellKm(body.radiusKm))} km
+        detail, so they can differ a little from the area summary (top right), which shows the selected site's medians.</p>`;
+      box.hidden = false;
+    }
+  }
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
@@ -635,9 +743,9 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 // ---- Earth page opened from "Find Earth analogs": the search and its results ---------
 
 // number of places to find, from the address; 1-10, default 3
-function parseCount(text) {
+function parseCount(text, fallback = DEFAULT_COUNT) {
   const n = Number(text);
-  return Number.isInteger(n) && n >= 1 && n <= MAX_COUNT ? n : DEFAULT_COUNT;
+  return Number.isInteger(n) && n >= 1 && n <= MAX_COUNT ? n : fallback;
 }
 
 // Padding for fitting something into the part of the map not covered by panels: the
@@ -688,6 +796,7 @@ function showAnalogResults(params, selection) {
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
   const count = parseCount(params.get('n'));
 
+  $('analog-heading').textContent = 'Earth analogs for';
   $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
   $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}`;
   const w = Object.entries(weights).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);

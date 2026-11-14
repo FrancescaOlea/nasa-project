@@ -44,8 +44,8 @@ Or by hand: `npm install`, then `npm run dev`.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
   (a slider from 1 to 250 km, logarithmic so small sizes get as much room as big ones; default 10).
 - Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** searches Earth for
-  the 5 places most like the selected area (see *Earth analog search* below); **Find similar spots** is
-  still a placeholder.
+  the places most like the selected area (see *Earth analog search* below); **Find similar spots**
+  searches the same world (see *Similar spots* below).
   The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10&view=slope`), so links and the
   back button bring it back.
 - The home page shows spinning 3D globes of the Moon and Mars (three.js, textures made from the
@@ -172,6 +172,26 @@ How it works (`src/analogs.js`):
   root-mean-square; "% match" = 100 % minus the score (0 % = a whole Earth spread away).
 - The best circle is kept, then the next best at least 800 km from all kept ones, until there are as
   many as asked for (3 by default).
+
+### Similar spots
+
+**Find similar spots** (Moon or Mars, with an area selected) looks for the places on the *same* world
+most like the selected area, at least 500 km away from it. It asks how much each data layer should count
+(all ×1 by default) and how many spots to find (1-10, default 3). The results appear as numbered circles
+with a "% match" and the distance from the site; click one for a site-vs-spot comparison table. Map clicks
+are paused until **Exit results**.
+
+How it works (`src/similar.js`):
+- Each layer is read from its own map tiles at zoom level 1 (1024 x 512 pixels for the whole world:
+  ~21 km per pixel on Mars, ~11 km on the Moon). The tile pyramid is box-averaged, so each pixel is the
+  area mean of the detailed data (the mean of the log for slope and thermal inertia).
+- Around every pixel, each layer is averaged over a circle of the selected radius (per-row running sums,
+  so this takes about a second); the site gets the same treatment. Smaller radii than a pixel compare
+  single pixels. Circles less than half covered by a layer (beyond its latitude limits) are skipped.
+- Score and "% match" work as for Earth analogs: distance to the site's value divided by the layer's
+  spread across the world (5th-95th percentile by area), weighted root-mean-square.
+- Spots closer than 500 km to the site are left out; the best spot is kept, then the next best at least
+  500 km from every kept one.
 
 Results show as numbered circles of the site's radius. Click one (on the map or in the list) for its
 area summary and a site-vs-Earth comparison. Selecting new areas is paused until **Exit results**;

@@ -73,7 +73,6 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .panel button.primary:hover { background: #3a8be6; }
 .panel .icon-btn { border: 0; background: none; font-size: 1.3rem; line-height: 1; padding: 0 .2rem; color: #999; }
 .panel .icon-btn:hover { background: none; color: #fff; }
-.toast { margin-top: .6rem !important; color: #fc6; font-size: .8rem; }
 
 .banner { top: 12px; bottom: auto; right: auto; left: 50%; transform: translateX(-50%); text-align: center; }
 .banner button { margin-top: .6rem; }

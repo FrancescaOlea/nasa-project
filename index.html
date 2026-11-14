@@ -91,7 +91,6 @@
             <button id="find-analogs" class="primary">Find Earth analogs</button>
             <button id="find-similar">Find similar spots</button>
           </div>
-          <p id="toast" class="toast" hidden>Coming soon</p>
         </div>
         <div class="radius-row">
           <div class="radius-head">
@@ -115,9 +114,9 @@
           range = 10th–90th percentile. Click a row to show it on the map.</p>
       </aside>
 
-      <!-- Shown on the Earth map when it was opened from "Find Earth analogs" -->
+      <!-- Search results: Earth analogs (on the Earth map) or similar spots (on the Moon/Mars) -->
       <aside id="analog-banner" class="panel analog-panel" hidden aria-live="polite">
-        <div class="panel-head"><span class="eyebrow">Earth analogs for</span></div>
+        <div class="panel-head"><span id="analog-heading" class="eyebrow">Earth analogs for</span></div>
         <p id="analog-source" class="coords"></p>
         <p id="analog-radius" class="sub"></p>
         <p id="analog-weights" class="sub"></p>
