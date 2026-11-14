@@ -361,7 +361,7 @@ function zoomFor(R, lat, pxM, maxZoom) {
  * next coarser one that exists (up to `back` levels), else left transparent.
  * Returns { z, n (tiles across the world), X0, Y0 (pixel origin, world pixels at z), W, H, rgba }.
  */
-async function mosaic(template, R, lat, lon, halfM, pxM, maxZoom, back = 0) {
+async function mosaic(template, R, lat, lon, halfM, pxM, maxZoom, back = 0, maxTiles = 144) {
   const b = box(R, lat, lon, halfM);
   let z = zoomFor(R, lat, pxM, maxZoom);
   const span = (zz) => {
@@ -370,7 +370,7 @@ async function mosaic(template, R, lat, lon, halfM, pxM, maxZoom, back = 0) {
       ty0: Math.max(0, Math.floor(mercY(b.n) * n)), ty1: Math.min(n - 1, Math.floor(mercY(b.s) * n)) };
   };
   let sp = span(z);
-  while (z > 0 && (sp.tx1 - sp.tx0 + 1) * (sp.ty1 - sp.ty0 + 1) > 144) sp = span(--z); // at most 12 x 12 tiles
+  while (z > 0 && (sp.tx1 - sp.tx0 + 1) * (sp.ty1 - sp.ty0 + 1) > maxTiles) sp = span(--z); // e.g. at most 12 x 12 tiles
   const nx = sp.tx1 - sp.tx0 + 1; const ny = sp.ty1 - sp.ty0 + 1;
   const W = nx * 256; const H = ny * 256;
   const rgba = new Uint8ClampedArray(W * H * 4);
@@ -459,17 +459,21 @@ export async function boxImage(world, south, north, west, east, W, H) {
   const cos = Math.cos((lat * Math.PI) / 180);
   const halfM = Math.max(((north - south) / 2) * (Math.PI / 180) * R, ((east - west) / 2) * (Math.PI / 180) * R * cos);
   const pxM = ((east - west) * (Math.PI / 180) * R * cos) / W;
-  const m = await mosaic(im.url, R, lat, lon, halfM, pxM, im.maxZoom, 5);
+  const m = await mosaic(im.url, R, lat, lon, halfM, pxM, im.maxZoom, 5, 256); // up to 16 x 16 tiles
   const xy = mosaicXY(m);
   const out = new Uint8ClampedArray(W * H * 4);
   const { rgba } = m;
+  // in a lat/lon box the mosaic column depends only on longitude and the row only on latitude
+  const colX = new Float64Array(W); const rowY = new Float64Array(H);
+  for (let c = 0; c < W; c++) {
+    const lo = west + ((c + 0.5) / W) * (east - west);
+    colX[c] = Math.min(m.W - 1.001, Math.max(0, xy(lat, ((((lo + 180) % 360) + 360) % 360) - 180)[0]));
+  }
+  for (let r = 0; r < H; r++) rowY[r] = Math.min(m.H - 1.001, Math.max(0, xy(north - ((r + 0.5) / H) * (north - south), lon)[1]));
   for (let r = 0; r < H; r++) {
-    const la = north - ((r + 0.5) / H) * (north - south);
+    const j = Math.floor(rowY[r]); const ay = rowY[r] - j;
     for (let c = 0; c < W; c++) {
-      const lo = west + ((c + 0.5) / W) * (east - west);
-      const [fx0, fy0] = xy(la, ((((lo + 180) % 360) + 360) % 360) - 180);
-      const fx = Math.min(m.W - 1.001, Math.max(0, fx0)); const fy = Math.min(m.H - 1.001, Math.max(0, fy0));
-      const i = Math.floor(fx); const j = Math.floor(fy); const ax = fx - i; const ay = fy - j;
+      const i = Math.floor(colX[c]); const ax = colX[c] - i;
       const k = (j * m.W + i) * 4; const o = (r * W + c) * 4;
       for (let ch = 0; ch < 3; ch++) {
         out[o + ch] = (rgba[k + ch] * (1 - ax) + rgba[k + 4 + ch] * ax) * (1 - ay) +

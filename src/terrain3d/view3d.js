@@ -130,7 +130,11 @@ export function createView3D({ routeEvents }) {
     colourMode = style.colours[0][0];
     makeButtons();
   }
-  const imgH = () => Math.max(258, Math.round(((IMG_W - 2) * terrain.hKm) / terrain.wKm) + 2);
+  // The draped image: Mars, the middle tile (2048 px wide); Earth, the whole 3 x 3 model
+  // (4096 px wide, so the analog area still gets ~1300 px). Plus a 1-pixel white border.
+  const imgBox = () => (world === 'earth' ? { w: terrain.ex, h: terrain.ez } : { w: terrain.wKm, h: terrain.hKm });
+  const imgW = () => (world === 'earth' ? Math.min(4096, renderer.capabilities.maxTextureSize - 2) + 2 : IMG_W);
+  const imgH = () => Math.max(258, Math.round(((imgW() - 2) * imgBox().h) / imgBox().w) + 2);
 
   // ---- three.js setup (once)
   function init() {
@@ -385,7 +389,7 @@ export function createView3D({ routeEvents }) {
 
   let triedImagery = false;
   async function tryImagery(my) {
-    const tex = await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null);
+    const tex = await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), world === 'earth' ? 30000 : 12000))]).catch(() => null);
     if (!tex || my !== building || colourMode !== 'elevation') return;
     colourMode = 'imagery';
     refreshButtons();
@@ -558,16 +562,17 @@ export function createView3D({ routeEvents }) {
     geo.rotateX(-Math.PI / 2); // now x = east, z = south, y = up
     const pos = geo.attributes.position;
     const uv = geo.attributes.uv;
+    const box = imgBox(); const iw = imgW(); const ih = imgH();
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const i = r * cols + c;
         pos.setXYZ(i, ax.pos[c], heights[i] * exaggeration, az.pos[r]);
         // texture coordinates for draped images: the area maps to the image's inner part,
         // everything outside to its white border (so outside, the vertex colours show)
-        const u = (ax.pos[c] + terrain.wKm / 2) / terrain.wKm;
-        const v = 1 - (az.pos[r] + terrain.hKm / 2) / terrain.hKm;
+        const u = (ax.pos[c] + box.w / 2) / box.w;
+        const v = 1 - (az.pos[r] + box.h / 2) / box.h;
         const inside = u >= 0 && u <= 1 && v >= 0 && v <= 1;
-        uv.setXY(i, inside ? (1 + u * (IMG_W - 2)) / IMG_W : 0.5 / IMG_W, inside ? (1 + v * (imgH() - 2)) / imgH() : 0.5 / imgH());
+        uv.setXY(i, inside ? (1 + u * (iw - 2)) / iw : 0.5 / iw, inside ? (1 + v * (ih - 2)) / ih : 0.5 / ih);
       }
     }
     geo.computeBoundingSphere();
@@ -603,10 +608,11 @@ export function createView3D({ routeEvents }) {
     const span = Math.max(0.05, hi - lo);
     mesh.material.map = null;
     if (colourMode === 'imagery') {
-      const tex = readyTexture ?? await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null);
+      const tex = readyTexture ?? await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), world === 'earth' ? 30000 : 12000))]).catch(() => null);
       if (tex) {
         // images inside the area; elevation colours outside (multiplied by the white border)
-        const { ax, az, cols, wKm, hKm } = terrain;
+        const { ax, az, cols } = terrain;
+        const { w: wKm, h: hKm } = imgBox();
         for (let i = 0; i < col.count; i++) {
           const inTile = Math.abs(ax.pos[i % cols]) <= wKm / 2 && Math.abs(az.pos[Math.floor(i / cols)]) <= hKm / 2;
           if (inTile && fine[i] > 0.99) { col.setXYZ(i, 1, 1, 1); continue; }
@@ -617,7 +623,7 @@ export function createView3D({ routeEvents }) {
         col.needsUpdate = true;
         mesh.material.needsUpdate = true;
         $('terrain3d-legend').textContent = world === 'earth'
-          ? 'Colour: satellite image (Esri, Maxar, Earthstar Geographics) in the middle tile; elevation colours around it'
+          ? 'Colour: satellite image (Esri, Maxar, Earthstar Geographics) draped on the terrain'
           : 'Colour: spacecraft images (Viking, CTX) draped on the terrain';
         return;
       }
@@ -653,12 +659,13 @@ export function createView3D({ routeEvents }) {
   // Spacecraft images for the texture, read from the same tile servers as the 2D map.
   // Only works if the server allows cross-site use of its images (CORS).
   async function imageryTexture() {
-    const { lat0, lon0, wKm, hKm, kx } = terrain;
+    const { lat0, lon0, kx } = terrain;
+    const { w: wKm, h: hKm } = imgBox();
     const dLat = hKm / 2 / KM_PER_DEG; const dLon = wKm / 2 / kx;
     const south = lat0 - dLat; const north = lat0 + dLat; const west = lon0 - dLon; const east = lon0 + dLon;
-    const W = IMG_W - 2; const H = imgH() - 2;
+    const W = imgW() - 2; const H = imgH() - 2;
     const cv = document.createElement('canvas');
-    cv.width = IMG_W; cv.height = imgH();
+    cv.width = imgW(); cv.height = imgH();
     const ctx = cv.getContext('2d');
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, cv.width, cv.height);
