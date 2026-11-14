@@ -113,7 +113,11 @@ async function runTour(app) {
       target: () => [$('find-similar')],
       text: () => `This tool finds similar places to the selected area on ${app.bodyName() === 'Moon' ? 'the Moon' : 'Mars'}.`,
     },
-    { target: () => [], text: '<strong>That’s it!</strong> Click anywhere to start exploring.' },
+    {
+      target: () => [],
+      text: 'You can now explore and try out all your functions yourself. <strong>Good luck!</strong>'
+        + '<span class="tut-close-hint">Click anywhere to close.</span>',
+    },
   ].filter((s) => !s.when || s.when());
 
   const layer = document.createElement('div');
@@ -215,6 +219,7 @@ async function runTour(app) {
     await step.before?.();
     layer.querySelector('.tut-text').innerHTML = typeof step.text === 'function' ? step.text() : step.text;
     layer.querySelector('.tut-count').textContent = `${index + 1} / ${steps.length}`;
+    layer.querySelector('.tut-skip').textContent = index === steps.length - 1 ? 'Close' : 'Skip tutorial';
     place();
     busy = false;
   }
