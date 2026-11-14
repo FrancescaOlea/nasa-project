@@ -15,6 +15,8 @@ import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILA
 import { addLandmarks } from './landmarks.js';
 import { addRuler, isMeasuring } from './ruler.js';
 import { maybeStartTutorial, startTour } from './tutorial.js';
+import { createRoutePlanner, routeEvents } from './route/planner.js';
+import { createView3D } from './terrain3d/view3d.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -24,6 +26,8 @@ import marsPhoto from './assets/mars.png';
 import iconMoon from './assets/icon-moon.png';
 import iconMars from './assets/icon-mars.png';
 import marsTexture from './assets/mars-texture.jpg';
+
+let terrainView = null; // Mars 3D terrain view (src/terrain3d/), made the first time it's opened
 
 const home = document.getElementById('home');
 const mapView = document.getElementById('map-view');
@@ -308,6 +312,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
   let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
+  let planner = null;                          // Mars route planner (src/route/), when open
   let describe = () => {};
   function selectView(v) {
     view = v;
@@ -330,6 +335,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
     if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
+    planner?.query(q);
     if (key !== 'earth' && Object.keys(weights).length) {
       q.set('w', formatWeights(weights));
       q.set('sn', similarCount);
@@ -585,6 +591,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   map.on('click', (e) => {
     if (analog || similarShown) return; // paused while search results are shown
     if (isMeasuring()) return; // the ruler has the clicks
+    if (planner?.isOpen()) { planner.click(e.latlng); return; } // route planner picks A and B
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -799,6 +806,42 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       $('results-analogs').textContent = `Find Earth analogs for spot ${i + 1}`;
       $('results-analogs').onclick = () => findEarthAnalogs(res);
     }
+  }
+
+  // ---- Route planner (Mars only): A to B, with the dangers on the way
+  $('plan-route').hidden = key !== 'mars';
+  if (key === 'mars') {
+    const showRoutePanels = (open) => {
+      $('select-panel').hidden = open;
+      if (open) $('area-panel').hidden = true; else updateSummary();
+    };
+    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); });
+    $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
+    // 3D terrain: opens on the route (if any) or on the area the 2D map shows
+    const btn3d = $('btn-3d');
+    btn3d.hidden = false;
+    const set3dButton = (on) => {
+      btn3d.setAttribute('aria-pressed', on);
+      btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
+    };
+    set3dButton(false);
+    btn3d.onclick = () => {
+      terrainView ??= createView3D({ routeEvents });
+      if (terrainView.isOpen()) { terrainView.close(); return; }
+      if (shapes) clear();
+      set3dButton(true);
+      terrainView.open({
+        planner,
+        onClose: () => set3dButton(false),
+        getLeafletView: () => {
+          const c = map.getCenter();
+          const b = map.getBounds();
+          const wKm = viewWidthKm(body);
+          const hKm = Math.min(180, b.getNorth() - b.getSouth()) * (Math.PI / 180) * body.radiusKm;
+          return { lat: c.lat, lon: c.lng, wKm, hKm };
+        },
+      });
+    };
   }
 
   const lat = parseFloat(params.get('lat'));
@@ -1026,7 +1069,9 @@ const appHooks = {
 };
 
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel']) $(id).hidden = true;
+  if (terrainView?.isOpen()) terrainView.close();
+  $('btn-3d').hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel', 'route-panel']) $(id).hidden = true;
   mapView.classList.remove('measuring');
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
@@ -1071,6 +1116,10 @@ function open3DPage(world, params) {
   mapView.hidden = true;
   $('view3d').hidden = false;
   document.title = `${BODIES[world].name} 3D · Planet Maps`;
+  // a fresh canvas each time: closing the last view gave its WebGL context back (forceContextLoss),
+  // which leaves that canvas unable to draw again
+  const oldCanvas = $('v3-canvas');
+  oldCanvas.replaceWith(oldCanvas.cloneNode(false));
   const els = Object.fromEntries(['canvas', 'hud', 'back', 'where', 'status', 'date', 'now', 'slider', 'play', 'speed',
     'offset', 'sun', 'earth', 'next', 'note'].map((k) => [k, $(`v3-${k}`)]));
   els.status.hidden = false;
