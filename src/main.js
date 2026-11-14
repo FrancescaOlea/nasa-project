@@ -11,6 +11,10 @@ import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
+import { createRoutePlanner, routeEvents } from './route/planner.js';
+import { createView3D } from './terrain3d/view3d.js';
+
+let view3d = null; // the 3D terrain view, made the first time it's opened
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -261,6 +265,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
   let analogCount = parseCount(params.get('an'));
   let available = {};                          // data layers for this body (from index.json)
+  let planner = null;                          // Mars route planner (src/route/), when open
   let describe = () => {};
   function selectView(v) {
     view = v;
@@ -283,6 +288,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
     if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
+    planner?.query(q);
     if (key !== 'earth' && Object.keys(weights).length) q.set('w', formatWeights(weights));
     if (key !== 'earth' && Object.keys(analogWeights).length) {
       q.set('aw', formatWeights(analogWeights));
@@ -523,6 +529,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
   map.on('click', (e) => {
     if (analog) return; // paused while analog results are shown
+    if (planner?.isOpen()) { planner.click(e.latlng); return; } // route planner picks A and B
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -584,6 +591,42 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   $('find-similar').onclick = async () => {
     if (await chooseWeights('similar')) $('toast').hidden = false; // search not built yet
   };
+
+  // ---- Route planner (Mars only): A to B, with the dangers on the way
+  $('plan-route').hidden = key !== 'mars';
+  if (key === 'mars') {
+    const showRoutePanels = (open) => {
+      $('select-panel').hidden = open;
+      if (open) $('area-panel').hidden = true; else updateSummary();
+    };
+    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); });
+    $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
+    // 3D terrain: opens on the route (if any) or on the area the 2D map shows
+    const btn3d = $('btn-3d');
+    btn3d.hidden = false;
+    const set3dButton = (on) => {
+      btn3d.setAttribute('aria-pressed', on);
+      btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
+    };
+    set3dButton(false);
+    btn3d.onclick = () => {
+      view3d ??= createView3D({ routeEvents });
+      if (view3d.isOpen()) { view3d.close(); return; }
+      if (shapes) clear();
+      set3dButton(true);
+      view3d.open({
+        planner,
+        onClose: () => set3dButton(false),
+        getLeafletView: () => {
+          const c = map.getCenter();
+          const b = map.getBounds();
+          const wKm = viewWidthKm(body);
+          const hKm = Math.min(180, b.getNorth() - b.getSouth()) * (Math.PI / 180) * body.radiusKm;
+          return { lat: c.lat, lon: c.lng, wKm, hKm };
+        },
+      });
+    };
+  }
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
@@ -760,7 +803,9 @@ function setUpWorldSwitch(key, params) {
 }
 
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world']) $(id).hidden = true;
+  if (view3d?.isOpen()) view3d.close();
+  $('btn-3d').hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'route-panel']) $(id).hidden = true;
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
   $('select-info').hidden = true;
