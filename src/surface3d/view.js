@@ -710,5 +710,6 @@ export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onT
     rockGeos.forEach((g) => g.dispose());
     for (let i = 0; i < 4; i++) uniforms[`uH${i}`].value?.dispose();
     renderer.dispose();
+    renderer.forceContextLoss(); // hand the WebGL context back (browsers allow only ~16 at once)
   };
 }
