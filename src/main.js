@@ -608,6 +608,23 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   const lon = parseFloat(params.get('lon'));
   if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: analog ? undefined : 'always' });
   appHooks.selectPoint = (lat, lon) => select(lat, lon, { fit: 'always' });
+  // tutorial: start from the whole planet, nothing selected
+  appHooks.zoomOut = () => {
+    clear();
+    map.setView(proj.center, map.getMinZoom(), { animate: false });
+  };
+  // tutorial: select the spot under a screen point, as a normal map click would
+  appHooks.selectAt = (clientX, clientY) => {
+    const p = map.mouseEventToContainerPoint({ clientX, clientY });
+    if (proj.inside) {
+      const n = 256 * 2 ** map.getZoom();
+      const raw = map.containerPointToLayerPoint(p).add(map.getPixelOrigin());
+      if (!proj.inside(raw.x / n, raw.y / n)) return false;
+    }
+    const ll = map.containerPointToLatLng(p);
+    select(ll.lat, ll.lng);
+    return true;
+  };
   return { select, clear, current: () => current, saveToUrl };
 }
 
@@ -785,6 +802,8 @@ const appHooks = {
   currentBody: () => location.hash.replace(/^#\/?/, '').split('?')[0],
   openMenu: () => {},
   selectPoint: () => {},
+  zoomOut: () => {},
+  selectAt: () => false,
   bodyName: () => 'Mars',
 };
 

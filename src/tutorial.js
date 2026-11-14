@@ -74,8 +74,9 @@ async function runTour(app) {
   const here = app.currentBody?.();
   if (here !== 'moon' && here !== 'mars') app.openBody('mars');
   await until(() => visible($('menu-btn')));
+  await wait(300);
+  app.zoomOut(); // every tour starts from the whole planet, nothing selected
   await wait(400);
-  const onMoon = app.currentBody?.() === 'moon';
 
   const steps = [
     { target: () => [$('menu-btn')], text: '<strong>Click the View button.</strong> This is the View area.' },
@@ -85,18 +86,17 @@ async function runTour(app) {
       text: 'You can explore planet data and adjust the map projection.',
       after: () => app.openMenu(false),
     },
+    // waits for a real click on the map (clicks on buttons and panels are ignored)
+    { mapClick: true, target: () => [], text: '<strong>Click a point on the map</strong> to select an area.' },
     {
       before: async () => {
-        if (onMoon) app.selectPoint(0.674, 23.473); // Apollo 11 landing site
-        else app.selectPoint(18.4, 77.5); // Jezero crater, Perseverance's landing site
         await until(() => visible($('area-panel')));
         const panel = $('area-panel');
         if (panel.classList.contains('collapsed')) $('area-collapse').click(); // phones
         await wait(500);
       },
       target: () => [$('area-panel'), document.querySelector('.radius-row')],
-      text: '<strong>Click a point</strong> on the map. These are all the parameters around a selected area. '
-        + 'You can select the radius manually.',
+      text: 'These are all the parameters around the selected area. You can select the radius manually.',
     },
     { target: () => [$('ruler-btn')], text: 'This is the <strong>ruler</strong> tool, meant to measure distance.' },
     // shown once the route planner exists (a button with id "plan-route")
@@ -155,7 +155,10 @@ async function runTour(app) {
       layer.append(b);
       boxes.push(b);
     });
-    layer.querySelector('.tut-shade').style.clipPath = `path(evenodd, '${path}')`;
+    const shade = layer.querySelector('.tut-shade');
+    shade.style.clipPath = `path(evenodd, '${path}')`;
+    shade.hidden = !!step.mapClick;
+    layer.classList.toggle('tut-pick', !!step.mapClick);
     // card: the spot nearest the highlighted element that covers no window, button or panel
     // (scanned over the whole screen); if none is free (small phones), the one covering least.
     const W = window.innerWidth; const H = window.innerHeight;
@@ -178,7 +181,10 @@ async function runTour(app) {
     // covering the highlighted element counts far more than covering another window
     const covered = (x, y) => obstacles.reduce((sum, o) => sum + overlap(x, y, o.r) * (!o.el ? 50 : o.keep ? 10 : 1), 0);
     const t = targets[0]?.getBoundingClientRect();
-    const cx = t ? t.left + t.width / 2 : W / 2; const cy = t ? t.top + t.height / 2 : H / 2;
+    // with nothing highlighted: the middle of the screen, except when asking for a map click,
+    // where the card goes up top so the map stays open
+    const cx = t ? t.left + t.width / 2 : W / 2;
+    const cy = t ? t.top + t.height / 2 : step.mapClick ? 0 : H / 2;
     let best = null;
     const tryAt = (x, y) => {
       x = Math.min(Math.max(M, x), W - cw - M); y = Math.min(Math.max(M, y), H - ch - M);
@@ -220,8 +226,22 @@ async function runTour(app) {
   }
 
   // every click anywhere moves on (the layer covers the page, so nothing underneath reacts)
+  // Is this screen point on the map itself (not on a button, panel or control)?
+  function onMap(x, y) {
+    layer.style.pointerEvents = 'none';
+    const el = document.elementFromPoint(x, y);
+    layer.style.pointerEvents = '';
+    return !!el?.closest('#map') && !el.closest('.leaflet-control, .zoom-bar, .panel, .leaflet-marker-icon');
+  }
+
   layer.addEventListener('click', (e) => {
     if (e.target.closest('.tut-skip')) { steps[index]?.after?.(); end(); return; }
+    if (steps[index]?.mapClick) {
+      // only a click on the map counts here; it selects the point, then the tour goes on
+      if (busy || e.target.closest('.tut-card') || !onMap(e.clientX, e.clientY)) return;
+      if (app.selectAt(e.clientX, e.clientY)) go(index + 1);
+      return;
+    }
     go(index + 1);
   });
   window.addEventListener('resize', place);
