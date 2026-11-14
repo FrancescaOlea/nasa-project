@@ -4,15 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Planet Maps</title>
-    <!-- Show nothing but black until the app has loaded (see reveal in src/main.js) -->
+    <!-- Until the app has loaded (see reveal in src/main.js) only a black page with a
+         loading message shows; it's styled here so it appears before anything else loads. -->
     <style>
       html, body { margin: 0; background: #000; }
-      body { opacity: 0; }
-      body.ready { opacity: 1; transition: opacity .45s ease; }
+      body > :not(#loader) { opacity: 0; }
+      body.ready > :not(#loader) { opacity: 1; transition: opacity .45s ease; }
+      #loader { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center;
+        justify-content: center; padding: 1rem; background: #000; color: #fff; text-align: center;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-weight: 200;
+        letter-spacing: .3em; text-transform: uppercase; font-size: clamp(1rem, 3vw, 1.6rem);
+        transition: opacity .45s ease; }
+      #loader span { animation: loader-pulse 1.6s ease-in-out infinite; }
+      @keyframes loader-pulse { 50% { opacity: .45; } }
+      body.ready #loader { opacity: 0; pointer-events: none; }
     </style>
-    <noscript><style>body { opacity: 1; }</style></noscript>
+    <noscript><style>body > :not(#loader) { opacity: 1; } #loader { display: none; }</style></noscript>
   </head>
   <body>
+    <div id="loader" role="status"><span>Site is loading, please wait…</span></div>
     <main id="home" class="home">
       <canvas id="stars" class="stars" aria-hidden="true"></canvas>
       <h1>Choose a landing site</h1>

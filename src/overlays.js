@@ -92,17 +92,45 @@ function lutFor(meta) {
 
 // Decoded data tiles, shared between zoom levels (small cache).
 const images = new Map();
+// Tile servers (NASA Trek especially) sometimes fail or time out on a single tile: try
+// again a few times, waiting a little longer each time. A failure is not remembered, so
+// the next request for that tile tries afresh instead of leaving a permanent hole.
+const RETRY_DELAYS_MS = [600, 1500, 4000];
+function fetchImage(url, attempt = 0) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = (e) => {
+      if (attempt >= RETRY_DELAYS_MS.length) { reject(e); return; }
+      setTimeout(() => fetchImage(url, attempt + 1).then(resolve, reject), RETRY_DELAYS_MS[attempt]);
+    };
+    img.src = url;
+  });
+}
 export function loadImage(url) {
   if (!images.has(url)) {
     if (images.size > 400) images.delete(images.keys().next().value);
-    images.set(url, new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = url;
-    }));
+    const p = fetchImage(url);
+    p.catch(() => { if (images.get(url) === p) images.delete(url); });
+    images.set(url, p);
   }
   return images.get(url);
+}
+
+/** Make a Leaflet tile layer retry tiles that fail to load (same delays as loadImage). */
+export function retryFailedTiles(layer) {
+  layer.on('tileerror', ({ tile }) => {
+    const tries = Number(tile.dataset.tries ?? 0);
+    if (tries >= RETRY_DELAYS_MS.length) return;
+    tile.dataset.tries = tries + 1;
+    const src = tile.src;
+    setTimeout(() => {
+      if (!tile.isConnected) return; // scrolled away meanwhile
+      tile.src = '';
+      tile.src = src;
+    }, RETRY_DELAYS_MS[tries]);
+  });
+  return layer;
 }
 
 const DataTiles = L.GridLayer.extend({

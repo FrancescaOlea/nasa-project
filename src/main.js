@@ -5,7 +5,7 @@ import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe, globesReady } from './globes.js';
 import { drawStarfield } from './starfield.js';
-import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss } from './overlays.js';
+import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss, retryFailedTiles } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
@@ -156,7 +156,7 @@ function openMap(key, params) {
     el.style.zIndex = 200 + i;
     if (layer.filter) el.style.filter = layer.filter;
     if (proj.id === native) {
-      L.tileLayer(layer.url, {
+      retryFailedTiles(L.tileLayer(layer.url, {
         pane,
         attribution: layer.attribution,
         tileSize: layer.tileSize ?? 256,
@@ -166,7 +166,7 @@ function openMap(key, params) {
         maxZoom: 30,
         noWrap: true, // show the map once, never repeated side by side
         bounds: layer.bounds ?? MAP_BOUNDS[body.crs],
-      }).addTo(map);
+      })).addTo(map);
       return;
     }
     // Another projection: same source tiles, warped in the browser.
@@ -745,5 +745,8 @@ route();
 // Reveal the page only when it's ready: styles applied, globe images loaded and the
 // first frame drawn. Never wait more than 4 s, so a slow image can't leave it blank.
 Promise.race([globesReady(), new Promise((r) => setTimeout(r, 4000))]).then(() => {
-  requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.add('ready')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.body.classList.add('ready');
+    setTimeout(() => document.getElementById('loader')?.remove(), 600); // after its fade-out
+  }));
 });
