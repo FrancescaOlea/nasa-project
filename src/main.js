@@ -188,6 +188,7 @@ function openMap(key, params) {
     root: mapView,
     radiusKm: body.radiusKm,
     cylindrical: proj.cylindrical, // flat maps: the line is split at the 180° edge
+    toWorld: proj.toWorld, // to find where the line would jump across the map
     // polar maps: ignore clicks in the empty corners outside the world disc
     inside: proj.inside ? (e) => {
       const n = 256 * 2 ** map.getZoom();

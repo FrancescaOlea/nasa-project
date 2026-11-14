@@ -25,7 +25,7 @@ function distanceKm(R, a, b) {
 
 // Points along the great circle from a to b (longitudes kept continuous, so the line
 // doesn't jump across the map at 180 deg)
-function greatCircle(a, b, n = 64) {
+function greatCircle(a, b, n = 256) {
   const v = (p) => [Math.cos(rad(p.lat)) * Math.cos(rad(p.lng)), Math.cos(rad(p.lat)) * Math.sin(rad(p.lng)), Math.sin(rad(p.lat))];
   const A = v(a); const B = v(b);
   const omega = Math.acos(Math.min(1, Math.max(-1, A[0] * B[0] + A[1] * B[1] + A[2] * B[2])));
@@ -46,17 +46,25 @@ function greatCircle(a, b, n = 64) {
   return pts;
 }
 
-// On flat (cylindrical) maps the 180° meridian is the map's edge: split the line there and
-// continue it from the opposite edge, instead of running off the map into empty space.
-function splitAtDateline(pts) {
-  const segs = [[]];
+// Split the line where it crosses an edge of the map, so it continues where the map continues
+// instead of being drawn straight across the map, the long way round:
+//  * flat (cylindrical) maps, at 180° longitude: cut exactly at the edge and continued from
+//    the opposite edge;
+//  * anywhere two neighbouring points of the line land far apart on the map - a pole that is
+//    an edge (top/bottom of flat maps, the outer rim of polar maps, where the opposite pole
+//    is stretched into a circle): the line is broken there. Passing through the pole in the
+//    middle of a polar map keeps the points close together, so that stays one line.
+// toWorld(lat, lon): position on the whole map, 0..1.
+function splitAtEdges(pts, { cylindrical, toWorld }) {
   const norm = (lon) => ((((lon + 180) % 360) + 360) % 360) - 180;
+  // 1. flat maps: cut exactly at the 180° meridian
+  let segs = [[]];
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
-    if (i > 0) {
+    if (i > 0 && cylindrical) {
       const q = pts[i - 1];
       const k0 = Math.floor((q.lng + 180) / 360); const k1 = Math.floor((p.lng + 180) / 360);
-      if (k0 !== k1) { // crossed a ±180° line between q and p
+      if (k0 !== k1 && Math.abs(p.lng - q.lng) < 90) { // crossed a ±180° line (not over a pole)
         const edge = (Math.max(k0, k1) * 360) - 180;
         const f = (edge - q.lng) / (p.lng - q.lng);
         const lat = q.lat + f * (p.lat - q.lat);
@@ -67,7 +75,20 @@ function splitAtDateline(pts) {
     }
     segs[segs.length - 1].push(L.latLng(p.lat, norm(p.lng)));
   }
-  return segs.filter((s) => s.length > 1);
+  // 2. any remaining jump across the map (over a pole that is an edge of the map)
+  const out = [];
+  for (const seg of segs) {
+    let cur = [seg[0]];
+    let prev = toWorld(seg[0].lat, seg[0].lng);
+    for (let i = 1; i < seg.length; i++) {
+      const w = toWorld(seg[i].lat, seg[i].lng);
+      if (Math.hypot(w[0] - prev[0], w[1] - prev[1]) > 0.08) { out.push(cur); cur = []; }
+      cur.push(seg[i]);
+      prev = w;
+    }
+    out.push(cur);
+  }
+  return out.filter((s) => s.length > 1);
 }
 
 export function formatDistance(km) {
@@ -82,7 +103,7 @@ export function formatDistance(km) {
  * `measuring` class (it greys out and disables everything else via CSS), `radiusKm` the
  * body's radius, `inside(e)` optionally rejects clicks off the planet (polar maps).
  */
-export function addRuler(map, { button, panel, root, radiusKm, inside, cylindrical = true }) {
+export function addRuler(map, { button, panel, root, radiusKm, inside, cylindrical = true, toWorld }) {
   const text = panel.querySelector('.ruler-text');
   const group = L.layerGroup();
   let start = null;
@@ -91,8 +112,7 @@ export function addRuler(map, { button, panel, root, radiusKm, inside, cylindric
 
   const say = (html) => { text.innerHTML = html; };
   const draw = (a, b) => {
-    let pts = greatCircle(a, b);
-    if (cylindrical) pts = splitAtDateline(pts);
+    const pts = splitAtEdges(greatCircle(a, b), { cylindrical, toWorld });
     if (line) line.setLatLngs(pts);
     else line = L.polyline(pts, { className: 'ruler-line', interactive: false }).addTo(group);
   };
