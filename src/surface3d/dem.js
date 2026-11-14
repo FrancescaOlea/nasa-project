@@ -441,6 +441,46 @@ async function loadTerrarium(world, lat, lon, halfM, pxM) {
   };
 }
 
+/** Where Earth heights come from at a box of ±halfM around a point (for credits). */
+export function earthDemSource(world, lat, lon, halfM) {
+  const b = box(world.radius, lat, lon, halfM);
+  return b.s < NASADEM_LAT[0] || b.n > NASADEM_LAT[1] ? 'terrarium' : 'nasadem';
+}
+
+/**
+ * Satellite image of a lat/lon box (south..north, west..east; west may be < -180 or east > 180),
+ * as W x H RGBA bytes with rows evenly spaced in latitude and columns in longitude (row 0 = north).
+ * Used by the bird's-eye 3D terrain view (src/terrain3d/).
+ */
+export async function boxImage(world, south, north, west, east, W, H) {
+  const im = world.imagery;
+  const R = world.radius;
+  const lat = (south + north) / 2; const lon = (west + east) / 2;
+  const cos = Math.cos((lat * Math.PI) / 180);
+  const halfM = Math.max(((north - south) / 2) * (Math.PI / 180) * R, ((east - west) / 2) * (Math.PI / 180) * R * cos);
+  const pxM = ((east - west) * (Math.PI / 180) * R * cos) / W;
+  const m = await mosaic(im.url, R, lat, lon, halfM, pxM, im.maxZoom, 5);
+  const xy = mosaicXY(m);
+  const out = new Uint8ClampedArray(W * H * 4);
+  const { rgba } = m;
+  for (let r = 0; r < H; r++) {
+    const la = north - ((r + 0.5) / H) * (north - south);
+    for (let c = 0; c < W; c++) {
+      const lo = west + ((c + 0.5) / W) * (east - west);
+      const [fx0, fy0] = xy(la, ((((lo + 180) % 360) + 360) % 360) - 180);
+      const fx = Math.min(m.W - 1.001, Math.max(0, fx0)); const fy = Math.min(m.H - 1.001, Math.max(0, fy0));
+      const i = Math.floor(fx); const j = Math.floor(fy); const ax = fx - i; const ay = fy - j;
+      const k = (j * m.W + i) * 4; const o = (r * W + c) * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        out[o + ch] = (rgba[k + ch] * (1 - ax) + rgba[k + 4 + ch] * ax) * (1 - ay) +
+          (rgba[k + m.W * 4 + ch] * (1 - ax) + rgba[k + m.W * 4 + 4 + ch] * ax) * ay;
+      }
+      out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+
 /**
  * Satellite image of the square ±half metres around the observer, in the local frame
  * (`proj`: local x east, y north -> [lat, lon]), as `size` x `size` RGBA bytes (row 0 = north).

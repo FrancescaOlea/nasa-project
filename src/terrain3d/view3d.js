@@ -7,15 +7,22 @@
 // when drawn), so big craters and canyons show their real shape but small craters (< ~10 km)
 // are blurred. The surface is drawn flat (no planet curvature) around the area's centre.
 // Heights can be exaggerated to read the shape better; the factor is always shown.
+//
+// Earth (open({ world: 'earth', region })): an analog area from the Earth map, with heights
+// from NASA NASADEM (~30 m; polar regions: AWS Terrain Tiles) and the satellite image draped
+// on the area's tile (both loaded by src/surface3d/dem.js); the area is marked by a ring.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { loadIndex } from '../overlays.js';
 import { layerSampler, MARS_R } from '../route/grid.js';
 import { BODIES } from '../bodies.js';
 import { formatLatLon } from '../geo.js';
+// Earth (analog areas): NASADEM heights and satellite images, as in the Earth "Stand here in 3D"
+import { WORLDS } from '../surface3d/worlds.js';
+import { loadDetail, boxImage, earthDemSource } from '../surface3d/dem.js';
 
 const DEG = Math.PI / 180;
-const KM_PER_DEG = MARS_R * DEG;
+let KM_PER_DEG = MARS_R * DEG; // of the world shown (set when the view opens)
 const MAX_SIDE = 420;          // mesh vertices along the longer side
 const MAX_REGION_KM = 1000;    // biggest middle tile (the whole model is 3 x 3 tiles)
 const MIN_REGION_KM = 12;
@@ -32,6 +39,27 @@ const fmtM = (km) => `${Math.round(km * 1000).toLocaleString()} m`;
 const ELEV_STOPS = [
   [0.0, [66, 22, 13]], [0.3, [104, 34, 18]], [0.55, [140, 48, 25]], [0.8, [166, 64, 34]], [1.0, [186, 84, 48]],
 ];
+// Earth: green lowland -> tan -> brown -> grey-white peaks (used around the satellite image)
+const EARTH_ELEV_STOPS = [
+  [0.0, [72, 104, 60]], [0.3, [150, 140, 92]], [0.6, [160, 118, 78]], [0.85, [128, 104, 90]], [1.0, [220, 216, 210]],
+];
+// What differs between the worlds
+const STYLE = {
+  mars: {
+    title: '3D terrain · Mars',
+    help: 'Drag to rotate · right-drag (or Ctrl/⌘-drag) to pan · scroll or pinch to zoom · click the ground to set A and B.',
+    sky: ['#060609', '#120e11', FOG], hemi: [0xffe0cc, 0x2a100a], skirt: 0x3a140b,
+    elevStops: null, // ELEV_STOPS
+    colours: [['elevation', 'Elevation'], ['slope', 'Slope']], exag: [5, 10], exag0: 5,
+  },
+  earth: {
+    title: '3D terrain · Earth',
+    help: 'Drag to rotate · right-drag (or Ctrl/⌘-drag) to pan · scroll or pinch to zoom. The orange ring is the analog area.',
+    sky: ['#0d2547', '#4f86c0', '#b9d2e8'], hemi: [0xe4f0ff, 0x4a3c2c], skirt: 0x4a3a2a,
+    elevStops: EARTH_ELEV_STOPS,
+    colours: [['imagery', 'Satellite'], ['elevation', 'Elevation'], ['slope', 'Slope']], exag: [1, 2, 5], exag0: 2,
+  },
+};
 // slope colours: green (gentle) -> amber -> red (steep)
 const SLOPE_STOPS = [[0, [76, 160, 110]], [0.33, [215, 190, 90]], [0.6, [230, 130, 60]], [1, [200, 50, 50]]];
 function ramp(stops, t) {
@@ -63,6 +91,12 @@ export function createView3D({ routeEvents }) {
   let exaggeration = 5;
   let userExaggeration = false; // the user picked one: don't change it automatically
   let colourMode = 'elevation';
+  let world = 'mars';     // 'mars' (route planner) or 'earth' (analog areas)
+  let style = STYLE.mars;
+  const elevStops = () => style.elevStops ?? ELEV_STOPS;
+  // elevation colour of a height (km); on Earth the sea (NASADEM stores it as exactly 0 m) is blue
+  const SEA = [0.16, 0.3, 0.45];
+  const elevColour = (h, lo, span) => (world === 'earth' && Math.abs(h) < 0.0005 ? SEA : ramp(elevStops(), (h - lo) / span));
   // One continuous mesh to the horizon: vertices packed densely around the chosen area and
   // spread out further away (a sinh-shaped spacing), so there is no square edge anywhere.
   let animId = 0;
@@ -71,6 +105,31 @@ export function createView3D({ routeEvents }) {
   const raycaster = new THREE.Raycaster();
 
   function setStatus(t) { $('terrain3d-status').textContent = t; }
+
+  // Sky, light, panel texts and buttons of the world shown. Mars: dusky sky, dark overhead,
+  // a faint butterscotch glow at the horizon. Earth: blue sky, paler towards the horizon.
+  function setWorld(w) {
+    world = w;
+    style = STYLE[w];
+    KM_PER_DEG = (w === 'earth' ? WORLDS.earth.radius / 1000 : MARS_R) * DEG;
+    const sky = document.createElement('canvas');
+    sky.width = 2; sky.height = 256;
+    const sc = sky.getContext('2d');
+    const sg = sc.createLinearGradient(0, 0, 0, 256);
+    sg.addColorStop(0, style.sky[0]); sg.addColorStop(0.55, style.sky[1]); sg.addColorStop(0.8, style.sky[2]); sg.addColorStop(1, style.sky[2]);
+    sc.fillStyle = sg; sc.fillRect(0, 0, 2, 256);
+    scene.background?.dispose?.();
+    scene.background = new THREE.CanvasTexture(sky);
+    scene.background.colorSpace = THREE.SRGBColorSpace;
+    scene.userData.hemi.color.setHex(style.hemi[0]);
+    scene.userData.hemi.groundColor.setHex(style.hemi[1]);
+    $('terrain3d-title').textContent = style.title;
+    $('terrain3d-help').textContent = style.help;
+    exaggeration = style.exag0;
+    userExaggeration = false;
+    colourMode = style.colours[0][0];
+    makeButtons();
+  }
   const imgH = () => Math.max(258, Math.round(((IMG_W - 2) * terrain.hKm) / terrain.wKm) + 2);
 
   // ---- three.js setup (once)
@@ -84,16 +143,9 @@ export function createView3D({ routeEvents }) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     canvasHost.appendChild(renderer.domElement);
     scene = new THREE.Scene();
-    // dusky Mars sky: dark overhead, a faint butterscotch glow at the horizon
-    const sky = document.createElement('canvas');
-    sky.width = 2; sky.height = 256;
-    const sg = sky.getContext('2d').createLinearGradient(0, 0, 0, 256);
-    sg.addColorStop(0, '#060609'); sg.addColorStop(0.55, '#120e11'); sg.addColorStop(0.8, FOG); sg.addColorStop(1, FOG);
-    const sc = sky.getContext('2d'); sc.fillStyle = sg; sc.fillRect(0, 0, 2, 256);
-    scene.background = new THREE.CanvasTexture(sky);
-    scene.background.colorSpace = THREE.SRGBColorSpace;
     camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1e5);
-    scene.add(new THREE.HemisphereLight(0xffe0cc, 0x2a100a, 0.6));
+    scene.userData.hemi = new THREE.HemisphereLight(0xffe0cc, 0x2a100a, 0.6);
+    scene.add(scene.userData.hemi);
     const sun = new THREE.DirectionalLight(0xffeedd, 2.2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
@@ -227,7 +279,7 @@ export function createView3D({ routeEvents }) {
   // ---- building the terrain
   async function build(region) {
     const my = ++building;
-    setStatus('Reading NASA elevation data…');
+    setStatus(world === 'earth' ? 'Reading NASA elevation data (NASADEM)…' : 'Reading NASA elevation data…');
     root.classList.add('busy');
     const wKm = Math.min(MAX_REGION_KM, Math.max(MIN_REGION_KM, region.wKm));
     const hKm = Math.min(MAX_REGION_KM, Math.max(MIN_REGION_KM, region.hKm));
@@ -236,53 +288,82 @@ export function createView3D({ routeEvents }) {
     const kx = KM_PER_DEG * Math.max(0.05, Math.cos(lat0 * DEG));
     const dLat = hKm / 2 / KM_PER_DEG;
     const dLon = wKm / 2 / kx;
-    const index = await loadIndex();
-    const metas = index.mars;
     const size = Math.max(wKm, hKm);
     // the model: 3 x 3 tiles of the area's size, the area (route) in the middle tile
     const ex = wKm * TILES;
     const ez = Math.min(hKm * TILES, 2 * (89.5 - Math.abs(lat0)) * KM_PER_DEG + hKm);
     const ax = makeAxis(ex); const az = makeAxis(ez);
-    // the most detailed elevation, slope and surface tiles over the whole model
-    const box = [Math.max(-89.9, lat0 - ez / 2 / KM_PER_DEG), Math.min(89.9, lat0 + ez / 2 / KM_PER_DEG),
-      lon0 - Math.min(179, ex / 2 / kx), lon0 + Math.min(179, ex / 2 / kx)];
-    const [fe, fs, fu] = await Promise.all([
-      layerSampler('elevation', metas.elevation, ...box),
-      layerSampler('slope', metas.slope, ...box),
-      layerSampler('surface', metas.surface, ...box),
-    ]);
-    if (my !== building) return;
-    setStatus('Removing the storage steps from the elevation data…');
-    await new Promise((r) => setTimeout(r, 0));
-    const dem = dequantizedGrid(fe, metas.elevation, box);
     const rows = GRID; const cols = GRID;
     const n = rows * cols;
     const raw = new Float32Array(n);
     const slopes = new Float32Array(n);
-    const surface = new Float32Array(n); // TES thermal inertia: low = dust, high = rock
+    const surface = new Float32Array(n).fill(NaN); // Mars: TES thermal inertia: low = dust, high = rock
     const fine = new Float32Array(n).fill(1);
     let missing = 0;
-    for (let r = 0; r < rows; r++) {
-      const z = az.pos[r];
-      const lat = Math.max(-89.9, Math.min(89.9, lat0 - z / KM_PER_DEG));
-      for (let c = 0; c < cols; c++) {
-        const x = ax.pos[c];
-        const lon = ((((lon0 + x / kx) + 180) % 360) + 360) % 360 - 180;
-        const i = r * cols + c;
-        let h = dem.at(lat, lon);
-        if (Number.isNaN(h)) { h = 0; missing++; }
-        raw[i] = h;
-        slopes[i] = fs.smooth(lat, lon);
-        surface[i] = fu.smooth(lat, lon);
+    let pxKm; let demSource = 'mola';
+    const latOf = (r) => Math.max(-89.9, Math.min(89.9, lat0 - az.pos[r] / KM_PER_DEG));
+    const lonOf = (c) => ((((lon0 + ax.pos[c] / kx) + 180) % 360) + 360) % 360 - 180;
+    if (world === 'earth') {
+      // NASADEM (~30 m), read at the step that just covers the mesh's spacing (~ex / 768)
+      const W = WORLDS.earth;
+      const cellM = (Math.max(ex, ez) * 1000) / (GRID - 1);
+      const step = Math.max(1, Math.min(32, 2 ** Math.floor(Math.log2(Math.max(1, cellM / 30)))));
+      const halfM = (Math.max(ex, ez) / 2) * 1000 * 1.02;
+      demSource = earthDemSource(W, lat0, lon0, halfM);
+      const dem = await loadDetail(W, lat0, lon0, halfM, step,
+        (d, t) => setStatus(`Reading NASA elevation data (NASADEM)… ${Math.round((100 * d) / t)}%`));
+      if (my !== building) return;
+      for (let r = 0; r < rows; r++) {
+        const lat = latOf(r);
+        for (let c = 0; c < cols; c++) raw[r * cols + c] = dem.get(lat, lonOf(c)) / 1000; // km
       }
+      // slope from the heights themselves (degrees)
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const r0 = Math.max(0, r - 1); const r1 = Math.min(rows - 1, r + 1);
+          const c0 = Math.max(0, c - 1); const c1 = Math.min(cols - 1, c + 1);
+          const gx = (raw[r * cols + c1] - raw[r * cols + c0]) / (ax.pos[c1] - ax.pos[c0]);
+          const gz = (raw[r1 * cols + c] - raw[r0 * cols + c]) / (az.pos[r1] - az.pos[r0]);
+          slopes[r * cols + c] = Math.atan(Math.hypot(gx, gz)) / DEG;
+        }
+      }
+      pxKm = demSource === 'nasadem' ? 0.03 * step : 0.04;
+    } else {
+      const index = await loadIndex();
+      const metas = index.mars;
+      // the most detailed elevation, slope and surface tiles over the whole model
+      const box = [Math.max(-89.9, lat0 - ez / 2 / KM_PER_DEG), Math.min(89.9, lat0 + ez / 2 / KM_PER_DEG),
+        lon0 - Math.min(179, ex / 2 / kx), lon0 + Math.min(179, ex / 2 / kx)];
+      const [fe, fs, fu] = await Promise.all([
+        layerSampler('elevation', metas.elevation, ...box),
+        layerSampler('slope', metas.slope, ...box),
+        layerSampler('surface', metas.surface, ...box),
+      ]);
+      if (my !== building) return;
+      setStatus('Removing the storage steps from the elevation data…');
+      await new Promise((r) => setTimeout(r, 0));
+      const dem = dequantizedGrid(fe, metas.elevation, box);
+      for (let r = 0; r < rows; r++) {
+        const lat = latOf(r);
+        for (let c = 0; c < cols; c++) {
+          const lon = lonOf(c);
+          const i = r * cols + c;
+          let h = dem.at(lat, lon);
+          if (Number.isNaN(h)) { h = 0; missing++; }
+          raw[i] = h;
+          slopes[i] = fs.smooth(lat, lon);
+          surface[i] = fu.smooth(lat, lon);
+        }
+      }
+      // no extra blur: the dequantized grid is already free of the storage steps
+      pxKm = (180 / (256 * 2 ** metas.elevation.max_zoom)) * KM_PER_DEG;
     }
-    // no extra blur: the dequantized grid is already free of the storage steps
-    const pxKm = (180 / (256 * 2 ** metas.elevation.max_zoom)) * KM_PER_DEG;
     const heights = raw;
     const cellKm = ax.step[(cols - 1) / 2];
     terrain?.mesh.geometry.dispose();
     if (terrain) scene.remove(terrain.mesh);
-    terrain = { rows, cols, wKm, hKm, ex, ez, ax, az, lat0, lon0, kx, heights, slopes, surface, fine, cellKm, pxKm, missing, size };
+    terrain = { rows, cols, wKm, hKm, ex, ez, ax, az, lat0, lon0, kx, heights, slopes, surface, fine, cellKm, pxKm, missing, size,
+      demSource, ringKm: region.ringKm ?? 0 };
     // heights x5 unless x10 was chosen
     refreshButtons();
     makeMesh();
@@ -467,7 +548,7 @@ export function createView3D({ routeEvents }) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.computeVertexNormals();
-    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x3a140b, roughness: 1, side: THREE.DoubleSide }));
+    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: style.skirt, roughness: 1, side: THREE.DoubleSide }));
     scene.add(skirt);
   }
 
@@ -525,15 +606,19 @@ export function createView3D({ routeEvents }) {
       const tex = readyTexture ?? await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null);
       if (tex) {
         // images inside the area; elevation colours outside (multiplied by the white border)
+        const { ax, az, cols, wKm, hKm } = terrain;
         for (let i = 0; i < col.count; i++) {
-          if (fine[i] > 0.99) { col.setXYZ(i, 1, 1, 1); continue; }
-          const c = ramp(ELEV_STOPS, (heights[i] - lo) / span);
+          const inTile = Math.abs(ax.pos[i % cols]) <= wKm / 2 && Math.abs(az.pos[Math.floor(i / cols)]) <= hKm / 2;
+          if (inTile && fine[i] > 0.99) { col.setXYZ(i, 1, 1, 1); continue; }
+          const c = elevColour(heights[i], lo, span);
           col.setXYZ(i, c[0], c[1], c[2]);
         }
         mesh.material.map = tex;
         col.needsUpdate = true;
         mesh.material.needsUpdate = true;
-        $('terrain3d-legend').textContent = 'Colour: spacecraft images (Viking, CTX) draped on the terrain';
+        $('terrain3d-legend').textContent = world === 'earth'
+          ? 'Colour: satellite image (Esri, Maxar, Earthstar Geographics) in the middle tile; elevation colours around it'
+          : 'Colour: spacecraft images (Viking, CTX) draped on the terrain';
         return;
       }
       colourMode = 'elevation';
@@ -545,7 +630,7 @@ export function createView3D({ routeEvents }) {
       if (colourMode === 'slope') {
         c = Number.isNaN(slopes[i]) ? [0.5, 0.5, 0.5] : ramp(SLOPE_STOPS, slopes[i] / 25);
       } else {
-        c = ramp(ELEV_STOPS, (heights[i] - lo) / span);
+        c = elevColour(heights[i], lo, span);
         // real surface type (TES thermal inertia): fine bright dust lighter, rock and bedrock darker
         const ti = surface[i];
         if (!Number.isNaN(ti)) {
@@ -559,8 +644,10 @@ export function createView3D({ routeEvents }) {
     col.needsUpdate = true;
     mesh.material.needsUpdate = true;
     $('terrain3d-legend').innerHTML = colourMode === 'slope'
-      ? 'Colour: slope (MOLA) · <span style="color:#4ca06e">■</span> flat · <span style="color:#d7be5a">■</span> 8° · <span style="color:#e6823c">■</span> 15° · <span style="color:#c83232">■</span> 25°+'
-      : `Colour: elevation (dark = ${fmtM(lo)}, pale = ${fmtM(hi)}), lighter where the ground is dusty and darker where it's rocky (TES thermal inertia)`;
+      ? `Colour: slope (${world === 'earth' ? 'from NASADEM' : 'MOLA'}) · <span style="color:#4ca06e">■</span> flat · <span style="color:#d7be5a">■</span> 8° · <span style="color:#e6823c">■</span> 15° · <span style="color:#c83232">■</span> 25°+`
+      : world === 'earth'
+        ? `Colour: elevation (green = ${fmtM(lo)}, brown to white = ${fmtM(hi)})`
+        : `Colour: elevation (dark = ${fmtM(lo)}, pale = ${fmtM(hi)}), lighter where the ground is dusty and darker where it's rocky (TES thermal inertia)`;
   }
 
   // Spacecraft images for the texture, read from the same tile servers as the 2D map.
@@ -577,7 +664,13 @@ export function createView3D({ routeEvents }) {
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.translate(1, 1); // keep a 1-pixel white border (used outside the area)
     let drawn = 0;
-    for (const layer of BODIES.mars.layers) {
+    if (world === 'earth') {
+      // Esri World Imagery, resampled onto the area's lat/lon box (as the Earth 3D view's ground)
+      const px = await boxImage(WORLDS.earth, south, north, west, east, W, H);
+      ctx.putImageData(new ImageData(px, W, H), 1, 1); // (putImageData ignores the translate)
+      drawn = 1;
+    }
+    for (const layer of world === 'earth' ? [] : BODIES.mars.layers) {
       const tile = layer.tileSize ?? 256;
       const worldPxNeeded = (W / (east - west)) * 360;
       let z = Math.ceil(Math.log2(worldPxNeeded / 512));
@@ -688,6 +781,19 @@ export function createView3D({ routeEvents }) {
     markerGroup = new THREE.Group();
     scene.add(routeGroup, markerGroup);
     hoverDot = null;
+    if (terrain.ringKm) {
+      // the analog area (Earth): an orange ring lying on the ground
+      const size0 = Math.max(terrain.wKm, terrain.hKm);
+      const ring = [];
+      for (let k = 0; k < 180; k++) {
+        const a = (k / 180) * 2 * Math.PI;
+        const x = terrain.ringKm * Math.sin(a); const z = -terrain.ringKm * Math.cos(a);
+        ring.push(new THREE.Vector3(x, heightAt(x, z) * exaggeration + size0 * 0.0015 + 0.01, z));
+      }
+      const curve = new THREE.CatmullRomCurve3(ring, true, 'centripetal');
+      routeGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 360, size0 * 0.0016, 8, true),
+        new THREE.MeshBasicMaterial({ color: 0xffb347 })));
+    }
     const state = planner?.result();
     if (!state) return;
     const size = Math.max(terrain.wKm, terrain.hKm);
@@ -827,8 +933,16 @@ export function createView3D({ routeEvents }) {
 
   function updateInfo() {
     const pxKm = terrain ? terrain.pxKm : 2.6;
+    const scale = `heights <strong>×${exaggeration}</strong>${exaggeration > 1 ? ' (exaggerated to show the shape)' : ' (true scale)'} · drawn flat, without the planet's curvature.`;
+    if (world === 'earth') {
+      const src = terrain?.demSource === 'terrarium'
+        ? '<strong>Elevation</strong> (AWS Terrain Tiles, from SRTM and other sources; NASADEM stops at 60° N / 56° S)'
+        : '<strong>Real NASA elevation</strong> (NASADEM, from the Space Shuttle’s radar)';
+      $('terrain3d-info').innerHTML = `${src} · ~${Math.round(pxKm * 1000)} m per data pixel · ${scale}`;
+      return;
+    }
     $('terrain3d-info').innerHTML = `<strong>Real NASA elevation</strong> (MGS MOLA) · ~${pxKm.toFixed(1)} km per data pixel, smoothed ·
-      heights <strong>×${exaggeration}</strong>${exaggeration > 1 ? ' (exaggerated to show the shape)' : ' (true scale)'} · drawn flat, without the planet's curvature.
+      ${scale}
       Craters smaller than ~10 km are blurred at this data resolution.`;
   }
 
@@ -837,20 +951,24 @@ export function createView3D({ routeEvents }) {
     for (const b of root.querySelectorAll('[data-exag]')) b.setAttribute('aria-checked', Number(b.dataset.exag) === exaggeration);
     for (const b of root.querySelectorAll('[data-colour]')) b.setAttribute('aria-checked', b.dataset.colour === colourMode);
   }
-  $('terrain3d-exag').replaceChildren(...EXAGGERATIONS.map((x) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.textContent = `×${x}`; b.dataset.exag = x; b.setAttribute('role', 'radio');
-    b.title = `Heights exaggerated ${x} times`;
-    b.onclick = () => { userExaggeration = true; setExaggeration(x); refreshButtons(); };
-    return b;
-  }));
-  $('terrain3d-colour').replaceChildren(...[['elevation', 'Elevation'], ['slope', 'Slope']].map(([k, label]) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.textContent = label; b.dataset.colour = k; b.setAttribute('role', 'radio');
-    b.onclick = async () => { colourMode = k; triedImagery = true; refreshButtons(); if (terrain) await applyColours(); };
-    return b;
-  }));
-  refreshButtons();
+  // the height and colour choices of the world shown (made again when the world changes)
+  function makeButtons() {
+    $('terrain3d-exag').replaceChildren(...style.exag.map((x) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = `×${x}`; b.dataset.exag = x; b.setAttribute('role', 'radio');
+      b.title = x === 1 ? 'Heights at true scale' : `Heights exaggerated ${x} times`;
+      b.onclick = () => { userExaggeration = true; setExaggeration(x); refreshButtons(); };
+      return b;
+    }));
+    $('terrain3d-colour').replaceChildren(...style.colours.map(([k, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label; b.dataset.colour = k; b.setAttribute('role', 'radio');
+      b.onclick = async () => { colourMode = k; triedImagery = true; refreshButtons(); if (terrain) await applyColours(); };
+      return b;
+    }));
+    refreshButtons();
+  }
+  makeButtons();
   $('terrain3d-reset').onclick = () => terrain && resetCamera();
   $('terrain3d-top').onclick = () => terrain && topView();
   $('terrain3d-close').onclick = () => close();
@@ -869,6 +987,10 @@ export function createView3D({ routeEvents }) {
   routeEvents?.addEventListener('hover', ({ detail }) => { if (isOpen) showHover(detail.k); });
   routeEvents?.addEventListener('focus', ({ detail }) => { if (isOpen) focusOn(detail.k); });
 
+  /**
+   * opts: world ('mars' default, or 'earth'); region { lat, lon, wKm, hKm, ringKm?, name? } to
+   * show (else the route, else the 2D map's view); planner; getLeafletView; onClose.
+   */
   function open(opts = {}) {
     if (opts.getLeafletView) getLeafletView = opts.getLeafletView;
     planner = opts.planner ?? null;
@@ -880,6 +1002,7 @@ export function createView3D({ routeEvents }) {
         return;
       }
     }
+    setWorld(opts.world ?? 'mars');
     isOpen = true;
     root.hidden = false;
     document.body.classList.add('in-3d');
@@ -887,7 +1010,7 @@ export function createView3D({ routeEvents }) {
     cancelAnimationFrame(animId);
     loop();
     const state = planner?.result();
-    let reg = regionFromRoute(state);
+    let reg = opts.region ?? regionFromRoute(state);
     if (!reg) {
       const v = getLeafletView();
       reg = v.wKm > MAX_REGION_KM

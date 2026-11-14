@@ -1026,7 +1026,10 @@ function showAnalogResults(params, selection) {
       return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
     });
     const box = $('analog-compare');
-    box.innerHTML = `<button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
+    box.innerHTML = `<div class="analog-3d-row">
+        <button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
+        <button type="button" class="view-3d-btn analog-terrain">⛰ 3D terrain</button>
+      </div>
       <p class="c-title">Area ${i + 1} compared with the site</p>
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
@@ -1035,6 +1038,12 @@ function showAnalogResults(params, selection) {
     // detailed 3D landscape of this area's centre, loaded only on request
     box.querySelector('.analog-3d').onclick = () => {
       location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
+    };
+    // bird's-eye 3D model of the area and its surroundings (src/terrain3d/, as on Mars):
+    // the area's tile is 4 radii wide, with the ring of the area on it
+    box.querySelector('.analog-terrain').onclick = () => {
+      terrainView ??= createView3D({ routeEvents });
+      terrainView.open({ world: 'earth', region: { lat: res.lat, lon: res.lon, wKm: 4 * r, hKm: 4 * r, ringKm: r, name: `Area ${i + 1}` } });
     };
     box.hidden = false;
   }
