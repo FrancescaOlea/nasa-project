@@ -91,6 +91,7 @@
             <button id="find-analogs" class="primary">Find Earth analogs</button>
             <button id="find-similar">Find similar spots</button>
           </div>
+          <button id="view-3d" class="view-3d-btn" hidden>Stand here in 3D &rarr;</button>
         </div>
         <div class="radius-row">
           <div class="radius-head">
@@ -127,6 +128,38 @@
           <button id="back-to-site">&larr; Back to this site</button>
           <button id="exit-results">Exit results</button>
         </div>
+      </aside>
+    </section>
+
+    <!-- Moon: standing on the surface in 3D (src/moon3d) -->
+    <section id="view3d" class="view3d" hidden>
+      <canvas id="v3-canvas" class="v3-canvas" tabindex="0" aria-label="3D view: drag to look around, scroll to zoom"></canvas>
+      <canvas id="v3-hud" class="v3-hud" aria-hidden="true"></canvas>
+      <div class="v3-top">
+        <button id="v3-back" class="map-btn">&larr; Back to map</button>
+        <span id="v3-where" class="v3-where"></span>
+      </div>
+      <p id="v3-status" class="v3-status" role="status" hidden></p>
+      <aside class="panel v3-panel" aria-label="Time and sky">
+        <div class="v3-time">
+          <label class="eyebrow" for="v3-date">Time (your clock)</label>
+          <div class="v3-date-row">
+            <input id="v3-date" type="datetime-local">
+            <button id="v3-now" type="button">Now</button>
+          </div>
+          <input id="v3-slider" type="range" min="-360" max="360" step="1" value="0" aria-label="Move time, up to 15 days either way">
+          <div class="v3-play-row">
+            <button id="v3-play" type="button">&#9654; Play</button>
+            <button id="v3-speed" type="button" title="Speed: simulated hours per second">1 h/s</button>
+            <span id="v3-offset" class="sub"></span>
+          </div>
+        </div>
+        <p id="v3-sun" class="v3-info"></p>
+        <p id="v3-earth" class="v3-info"></p>
+        <p id="v3-next" class="sub"></p>
+        <p class="v3-note">Drag to look around, scroll to zoom. Hills and craters larger than ~120 m are real
+          (NASA LOLA laser altimeter); smaller craters, rocks and the ground texture are made up. Stars, planets
+          and a real map of Earth are coming.</p>
       </aside>
     </section>
 

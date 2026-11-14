@@ -29,6 +29,11 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   `LRO-L-LOLA-4-GDR-V1.0`, PDS Geosciences. Used for elevation, slope and relief.
 - **LOLA polar elevation models** (LRO), 75°–90° N and S, 240 m, polar stereographic, same data
   set, PDS Geosciences. Used for crater and mountain shadows in Moon sunlight.
+- **LOLA LDEM 16 px/deg** (same data set, PDS Geosciences), averaged to 8 px/deg: far terrain in the
+  Moon 3D view (`public/moon3d/ldem_8ppd.bin`).
+- **LOLA global DEM 118 m** (`Lunar_LRO_LOLA_Global_LDEM_118m_Mar2014.tif`, USGS Astrogeology
+  Science Center, from LRO LOLA data), read on demand by the browser: near and middle terrain in the
+  Moon 3D view.
 - **Diviner Global Cumulative Product** (Diviner Lunar Radiometer, LRO): surface temperature for
   96 times of day, 0.5 deg. Used for temperature, daily swing, and max./min. temperature.
 - **Diviner global high-resolution mosaic, bolometric temperature at slope-adjusted midnight**
@@ -49,6 +54,7 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 **Services**
 - **NASA Mars Trek** and **NASA Moon Trek** (Solar System Treks, NASA JPL): map tile services.
 - **NASA Planetary Data System, Geosciences Node** (Washington University in St. Louis): downloads.
+- **USGS Astrogeology Science Center** (Planetary Maps / Annex): the 118 m Moon DEM, served to the browser.
 
 ## Partner data
 
@@ -61,5 +67,6 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 
 ## Software
 
-- Leaflet (maps), three.js (3D globes), Vite (build); Python with NumPy, SciPy, Numba, Pillow and
-  tifffile for data processing.
+- Leaflet (maps), three.js (3D globes and the Moon 3D view), astronomy-engine (Sun, Earth and Moon
+  positions), geotiff.js (reading the Moon DEM), Vite (build); Python with NumPy, SciPy, Numba,
+  Pillow and tifffile for data processing.

@@ -204,6 +204,48 @@ Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antar
 Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
 Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
 
+### Moon 3D view: standing on the surface
+
+On the Moon, select a point and click **Stand here in 3D**: you stand there with your eyes 1.8 m above
+the ground (`#/moon3d?lat=..&lon=..&t=..`). Drag to look around, scroll or pinch to zoom (arrow keys and
++/− work too). The time panel sets the date and time (default: now); the slider moves ±15 days and
+**Play** runs time at 1, 6 or 24 hours per second, so you can watch a sunrise or a whole lunar day.
+The panel says whether it's day or night, where the Sun and Earth are, how much of the Earth is lit,
+and when the next sunrise or sunset is. A compass strip along the top marks the Sun and Earth.
+
+How it works (`src/moon3d/`, loaded only when opened):
+- **Terrain** (`dem.js`, `terrain.js`): four nested square heightfields around you, including the Moon's
+  curvature (a 1.8 m person's horizon is only ~2.5 km away; beyond it only higher ground shows):
+
+  | Ring | Size | Grid | Source |
+  |---|---|---|---|
+  | foot | ±100 m | 1 m | 'near' + made-up small craters (0.6-25 m), rocks and regolith texture |
+  | near | ±5 km | 20 m | LOLA 118 m + made-up craters 70-600 m |
+  | mid | ±40 km | 250 m | LOLA 118 m, every 4th sample (~470 m) |
+  | far | ±250 km | 2 km | LOLA 8 px/deg (~3.8 km), bundled: `public/moon3d/ldem_8ppd.bin` |
+
+  The 118 m LOLA DEM is read straight from the USGS Astrogeology server: the file stores one image row
+  per strip, so the browser asks for just the bytes it needs of each row (HTTP range requests, 6 at a
+  time, `cache: 'no-store'` so Chrome doesn't queue them one by one). About 90 + 175 small requests;
+  ~5-10 s. The coarse landscape shows first, the detail fills in. Each ring fades its made-up detail
+  out and blends into the next coarser ring towards its edge.
+  Made-up detail is seeded by the location, so a place always looks the same.
+- **Sun and Earth** (`sky.js`): `astronomy-engine` gives the Sun, Earth and the Moon's rotation (IAU
+  model) for any time; from these come their directions in the observer's sky (Earth with parallax,
+  its size and lit fraction). Checked: at Apollo 11's landing (20 July 1969, 20:17 UTC) the Sun was
+  10.7° up in the east (historically ~10.8°); full and new moon put the sub-solar point at 0° / 180°.
+- **Shadows**: the terrain shader marches from each pixel towards the Sun through the four heightfields
+  (up to 250 km), with a soft edge the size of the Sun's disc, so a crater rim or a distant mountain
+  shades you correctly at any time. Rocks also cast shadow-mapped shadows within ~100 m.
+- **Light**: no air, so the sky is black and shadows are dark (a little light bounced from sunlit ground).
+  At night the ground is lit by earthshine, brightest at "full Earth" (lunar midnight on the near side);
+  the exposure adapts like eyes would. On the far side the Earth never rises.
+- Not yet: stars and planets, a real map of the Earth (it's a cloudy blue stand-in), the 5 m south-pole
+  DEM. Very close to the poles (above ~88°) the LOLA rows are read at full width, so loading is slower.
+
+`tools/build_moon_far_dem.mjs` makes the far-terrain file from PDS `ldem_16.img` (downloaded to
+`data/raw/`).
+
 ### Moon thermal inertia: from Diviner's midnight temperatures
 
 Both worlds show thermal inertia, made the same way: ground with a high thermal inertia (rocks,
