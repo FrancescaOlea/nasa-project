@@ -144,11 +144,13 @@ otherwise the area the 2D map shows (up to 1,600 km).
   to pan, scroll or pinch to zoom (towards the cursor). **Top view**, **Reset**, **Rebuild here**
   (rebuilds the terrain around where you're looking, as wide as the view) and **Fit route**.
   Near and far clipping follow the camera, so you can zoom right in.
-- **Surroundings**: the same real elevation at lower detail fills the view around the area (5×
-  its size) and fades into haze, so the area doesn't float on its own.
+- **No square edge**: the terrain is one continuous landscape reaching 8× the area's size (up to
+  7,000 km), with vertices packed densely around the area and spread out further away (sinh-shaped
+  spacing). Near the area it uses the detailed elevation tiles, further out coarser ones (~10 km),
+  blended smoothly; the far landscape fades into haze at the horizon.
 - If the 2D map shows the whole planet, 3D opens on **Gale Crater** and says how to pick another place.
 - **Heights ×1, ×2, ×3, ×5, ×10**: vertical exaggeration, picked automatically so the tallest
-  features are ~7% of the area's width, always shown, and you can change it. ×1 is true scale.
+  features are ~7% of the area's width (automatically at most ×5), always shown, and you can change it. ×1 is true scale.
 - Colours: elevation, lighter where TES thermal inertia says the ground is dusty and darker where
   it's rocky (real data). Spacecraft images are tried in the background and used if the servers allow.
 - **Colour by**: elevation, slope, or spacecraft **Images** (Viking / CTX, only if the image
