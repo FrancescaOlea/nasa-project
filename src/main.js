@@ -837,9 +837,8 @@ function route() {
 
 window.addEventListener('hashchange', route);
 
-// "?" buttons: show the tutorial any time (map pages: top left; home page: top right)
+// "?" button on the map pages (top left): show the tutorial any time
 $('help-btn').onclick = () => startTour(appHooks);
-$('home-help').onclick = () => startTour(appHooks);
 route();
 
 // Reveal the page only when it's ready: styles applied, globe images loaded and the

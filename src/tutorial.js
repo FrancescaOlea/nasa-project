@@ -24,7 +24,7 @@ async function until(test, ms = 8000) {
 }
 // Windows, panels and buttons the tutorial card must not cover
 const OBSTACLES = ['.top-buttons > *', '.zoom-bar', '#switch-world', '#menu', '#select-panel', '#area-panel',
-  '#analog-banner', '#ruler-panel', '.legend', '.map-settings', '.zoom-readout', '.leaflet-control-attribution', '.home-help'];
+  '#analog-banner', '#ruler-panel', '.legend', '.map-settings', '.zoom-readout', '.leaflet-control-attribution'];
 const visible = (el) => el && !el.hidden && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
 
 /**

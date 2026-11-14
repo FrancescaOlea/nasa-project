@@ -50,7 +50,7 @@ Or by hand: `npm install`, then `npm run dev`.
 - **Tutorial**: on the first visit a welcome card offers a short guided tour of the main tools (View, area
   summary and radius, ruler, route planner once it exists, Find Earth analogs, Find similar spots). A click
   anywhere moves to the next step. It's shown once per browser, and any time from the **?** button (top left on
-  the maps, **? Tutorial** at the top right of the home page).
+  the maps).
 - Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** searches Earth for
   the 5 places most like the selected area (see *Earth analog search* below); **Find similar spots** is
   still a placeholder.
