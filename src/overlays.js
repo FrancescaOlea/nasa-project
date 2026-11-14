@@ -26,6 +26,7 @@ export const VIEWS = {
   temp_min: { name: 'Minimum temperature', short: 'Min. temperature' },
   dryness: { name: 'Dryness (yearly rainfall)', short: 'Dryness' },
   uv: { name: 'UV radiation', short: 'UV radiation' },
+  sunlight: { name: 'Sunlight', short: 'Sunlight' },
 };
 
 let indexPromise = null;

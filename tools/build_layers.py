@@ -389,7 +389,7 @@ def power_grid(param, how):
     for r0 in range(0, h, 600):  # in strips, to keep memory modest
         LA, LO = np.meshgrid(lat_t[r0:r0 + 600], lon_t, indexing='ij')
         out[r0:r0 + 600] = interp(np.stack([LA, LO], axis=-1))
-    if param in ('TS_RANGE', 'PRECTOTCORR', 'ALLSKY_SFC_UV_INDEX'):
+    if param in ('TS_RANGE', 'PRECTOTCORR', 'ALLSKY_SFC_UV_INDEX', 'ALLSKY_SFC_SW_DWN'):
         out = np.maximum(out, 0)  # can't be negative (interpolation can undershoot slightly)
     return np.where(land, out, np.nan), 0.5
 
@@ -489,6 +489,12 @@ def write_tiles(encoded, folder, max_zoom, lat_range=(-90, 90)):
 
 SLOPE = dict(unit='°', log=True, min=0.1, max=30)
 RELIEF = dict(unit='km', log=True, min=0.005, max=0.5)
+
+
+def sunlight_module():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import sunlight
+    return sunlight
 
 
 def catalogue():
@@ -598,6 +604,21 @@ def catalogue():
         ('mars', 'temp_min'): (lambda: mars_temp('tmin'), dict(unit='°C', log=False, min=-127, max=-85), 2,
                                'Coldest month\'s average night minimum (a sliding 1/12 of the Mars year), as for '
                                'Earth. Calculated with a thermal model from TES and MOLA data.'),
+        # Sunlight: average solar power on flat ground over day, night and the year (W/m2).
+        # Earth measured (NASA POWER, from CERES satellites); Moon and Mars calculated
+        # (tools/sunlight.py). Each world has its own colour range.
+        ('earth', 'sunlight'): (lambda: (power_grid('ALLSKY_SFC_SW_DWN', 'mean')[0] * 1000 / 24, 0.5),
+                                dict(unit='W/m²', log=False, min=80, max=290), 5,
+                                'Sunlight reaching the ground, averaged over day, night and the year, '
+                                'including clouds (NASA POWER, from CERES satellite data).'),
+        ('mars', 'sunlight'): (lambda: sunlight_module().mars_sunlight(RAW), dict(unit='W/m²', log=False, min=50, max=155), 3,
+                               'Sunlight reaching flat ground, averaged over day, night and the Mars year. '
+                               'Calculated from Mars\'s orbit, dimmed by typical dust (more air and dust '
+                               'over low ground, MOLA). No dust storms.'),
+        ('moon', 'sunlight'): (lambda: sunlight_module().moon_sunlight(RAW), dict(unit='W/m²', log=False, min=0, max=435), 3,
+                               'Sunlight reaching flat ground, averaged over the lunar day and night. '
+                               'Calculated from the Sun\'s path; near the poles (beyond 75°) with mountain '
+                               'and crater shadows from LOLA terrain, so permanently shadowed craters are 0.'),
         # Mars temperatures are calculated (no global measured product exists), with
         # their own ranges: Mars is far milder than the Moon.
         ('mars', 'temperature'): (lambda: mars_temp('mean'), dict(unit='°C', log=False, min=-120, max=-45), 2,

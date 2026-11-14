@@ -21,7 +21,7 @@ import urllib.request
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, 'data', 'raw', 'power')
 API = 'https://power.larc.nasa.gov/api/temporal/climatology/regional'
-PARAMS = ['TS_MAX', 'TS_MIN', 'TS_RANGE', 'PRECTOTCORR', 'ALLSKY_SFC_UV_INDEX']
+PARAMS = ['TS_MAX', 'TS_MIN', 'TS_RANGE', 'PRECTOTCORR', 'ALLSKY_SFC_UV_INDEX', 'ALLSKY_SFC_SW_DWN']
 
 
 def box(param, lat0, lon0):

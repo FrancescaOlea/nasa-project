@@ -77,6 +77,7 @@ both share one colour range, so the same colour means the same value on each.
 | Underground ice | *no global map product found* | Mars Odyssey averaged neutron data (~12 Mars years): % fewer epithermal neutrons than the driest ground (hydrogen, mostly ice near the poles), ~300 km | linear |
 | Temperature | Diviner: average over a full lunar day, ~15 km | **Calculated** (see below): average over a Mars year, ~60 km | linear |
 | Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | **Calculated**: typical day-night swing | linear |
+| Sunlight | **Calculated**: average solar power on flat ground over day, night and the year, from the Sun's path; beyond 75° with crater and mountain shadows from the LOLA polar terrain models (permanently shadowed craters = 0) | **Calculated**: Mars's orbit, dimmed by typical dust (optical depth 0.3 at 610 Pa, scaled with pressure from MOLA elevation); no dust storms | linear; own range per body |
 | Yearly temperature range | *not added* | **Calculated**: hottest minus coldest moment of the year | linear |
 | Maximum temperature | Diviner: hottest time of a typical day, ~15 km | **Calculated**: hottest month's average afternoon maximum | linear |
 | Minimum temperature | Diviner: coldest time of a typical night, ~15 km | **Calculated**: coldest month's average night minimum | linear |
@@ -118,6 +119,7 @@ a pole soft. The Moon's LRO WAC mosaic also has no data in the last ~1-2 deg aro
 | Max. / min. temperature, daily swing | NASA POWER `TS_MAX`, `TS_MIN`, `TS_RANGE`: **ground-surface** ("skin") temperature, long-term monthly averages. Max = hottest month's average daily maximum, min = coldest month's average daily minimum, swing = yearly mean | ~50 km |
 | Dryness | NASA POWER `PRECTOTCORR` (MERRA-2 / GPM), yearly total; colour scale reversed so red = driest | ~50 km |
 | UV radiation | NASA POWER `ALLSKY_SFC_UV_INDEX` (CERES), UV index averaged over day and night incl. clouds | ~100 km |
+| Sunlight | NASA POWER `ALLSKY_SFC_SW_DWN` (CERES), solar power reaching the ground incl. clouds, yearly average, W/m² (same quantity as the Moon and Mars maps) | ~50 km |
 
 Surface (not air) temperatures are used so Earth compares with the Moon and Mars surface maps.
 The land mask comes from ETOPO: below-sea-level areas count as water only if bigger than

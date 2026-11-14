@@ -9,7 +9,7 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 **Mars**
 - **MOLA elevation** (Mars Orbiter Laser Altimeter, Mars Global Surveyor): MEGDR 32 px/deg,
   `MGS-M-MOLA-5-MEGDR-L3-V1.0`, NASA Planetary Data System (PDS) Geosciences Node.
-  Used for elevation, slope, relief and the thermal model.
+  Used for elevation, slope, relief, the thermal model and Mars sunlight (dust column).
 - **TES thermal inertia** (Thermal Emission Spectrometer, Mars Global Surveyor): global night map
   2007 (N. Putzig, SwRI), `MGS-M-TES-5-TIMAP-V1.0`, PDS Geosciences. Used for "Dusty or rocky
   terrain" and the thermal model.
@@ -27,6 +27,8 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 **Moon**
 - **LOLA elevation** (Lunar Orbiter Laser Altimeter, Lunar Reconnaissance Orbiter): LDEM 64 px/deg,
   `LRO-L-LOLA-4-GDR-V1.0`, PDS Geosciences. Used for elevation, slope and relief.
+- **LOLA polar elevation models** (LRO), 75°–90° N and S, 240 m, polar stereographic, same data
+  set, PDS Geosciences. Used for crater and mountain shadows in Moon sunlight.
 - **Diviner Global Cumulative Product** (Diviner Lunar Radiometer, LRO): surface temperature for
   96 times of day, 0.5 deg. Used for temperature, daily swing, and max./min. temperature.
 - **Diviner rock abundance** (LRO), gridded data record, `LRO-L-DLRE-5-GDR-V1.0`, PDS Geosciences. Used for "Dusty or rocky terrain".
@@ -38,8 +40,9 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 **Earth**
 - **NASA POWER** (Prediction Of Worldwide Energy Resources, NASA Langley Research Center),
   long-term monthly climatology: `TS_MAX`, `TS_MIN`, `TS_RANGE` (ground-surface temperature),
-  `PRECTOTCORR` (rainfall; from MERRA-2 / GPM), `ALLSKY_SFC_UV_INDEX` (UV; from CERES).
-  Used for Earth's temperature, dryness and UV layers and the analog search.
+  `PRECTOTCORR` (rainfall; from MERRA-2 / GPM), `ALLSKY_SFC_UV_INDEX` (UV; from CERES),
+  `ALLSKY_SFC_SW_DWN` (sunlight reaching the ground; from CERES).
+  Used for Earth's temperature, dryness, UV and sunlight layers and the analog search.
 
 **Services**
 - **NASA Mars Trek** and **NASA Moon Trek** (Solar System Treks, NASA JPL): map tile services.
