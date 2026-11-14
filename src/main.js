@@ -11,6 +11,8 @@ import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
+import { addRuler, isMeasuring } from './ruler.js';
+import { maybeStartTutorial } from './tutorial.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -160,6 +162,30 @@ function openMap(key, params) {
   const zoomEl = zoom.getContainer();
   zoomEl.classList.add('zoom-bar');
   map.getContainer().appendChild(zoomEl); // out of Leaflet's corner, positioned by CSS
+
+  // Ruler (measure a distance): a third button in the zoom bar
+  const rulerBtn = L.DomUtil.create('a', 'ruler-btn', zoomEl);
+  rulerBtn.href = '#';
+  rulerBtn.setAttribute('role', 'button');
+  rulerBtn.setAttribute('aria-pressed', 'false');
+  rulerBtn.title = 'Measure distance';
+  rulerBtn.setAttribute('aria-label', 'Measure distance');
+  rulerBtn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none"
+    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="8" width="19" height="8" rx="1.5"
+    transform="rotate(-35 12 12)"/><path d="M7.3 9.9l1.2 1.7M10 8l1.8 2.6M12.6 6.2l1.2 1.7M15.3 4.3l1.8 2.6"
+    transform="translate(-1.2 3.2)"/></g></svg>`;
+  addRuler(map, {
+    button: rulerBtn,
+    panel: $('ruler-panel'),
+    root: mapView,
+    radiusKm: body.radiusKm,
+    // polar maps: ignore clicks in the empty corners outside the world disc
+    inside: proj.inside ? (e) => {
+      const n = 256 * 2 ** map.getZoom();
+      const raw = map.containerPointToLayerPoint(e.containerPoint).add(map.getPixelOrigin());
+      return proj.inside(raw.x / n, raw.y / n);
+    } : null,
+  });
   body.layers.forEach((layer, i) => {
     // Each layer gets its own pane so it can have its own blend/filter.
     const pane = `layer${i}`;
@@ -307,6 +333,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     $('menu-btn').setAttribute('aria-expanded', open);
   };
   $('menu-btn').onclick = () => openMenu(menu.hidden);
+  appHooks.openMenu = openMenu;
+  appHooks.bodyName = () => body.name;
   if (keepViewPanelOpen) { openMenu(true); keepViewPanelOpen = false; }
   $('menu-close').onclick = () => openMenu(false);
   map.on('keydown', (e) => { if (e.originalEvent.key === 'Escape') openMenu(false); });
@@ -523,6 +551,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
   map.on('click', (e) => {
     if (analog) return; // paused while analog results are shown
+    if (isMeasuring()) return; // the ruler has the clicks
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -588,6 +617,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
   if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: analog ? undefined : 'always' });
+  appHooks.selectPoint = (lat, lon) => select(lat, lon, { fit: 'always' });
   return { select, clear, current: () => current, saveToUrl };
 }
 
@@ -759,8 +789,17 @@ function setUpWorldSwitch(key, params) {
   btn.hidden = false;
 }
 
+// Hooks the first-visit tutorial uses to drive the app (filled in when a map opens)
+const appHooks = {
+  openBody: (key) => { location.hash = `#/${key}`; },
+  openMenu: () => {},
+  selectPoint: () => {},
+  bodyName: () => 'Mars',
+};
+
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world']) $(id).hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel']) $(id).hidden = true;
+  mapView.classList.remove('measuring');
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
   $('select-info').hidden = true;
@@ -795,5 +834,7 @@ Promise.race([globesReady(), new Promise((r) => setTimeout(r, 4000))]).then(() =
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.body.classList.add('ready');
     setTimeout(() => document.getElementById('loader')?.remove(), 600); // after its fade-out
+    // first visit, arriving on the home page: offer the tutorial
+    if (!location.hash.replace(/^#\/?/, '')) setTimeout(() => maybeStartTutorial(appHooks), 700);
   }));
 });

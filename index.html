@@ -51,6 +51,12 @@
       </div>
       <div id="map"></div>
 
+      <!-- Ruler: shown while measuring a distance; the X ends measuring -->
+      <div id="ruler-panel" class="panel ruler-panel" role="status" hidden>
+        <span class="ruler-text"></span>
+        <button type="button" class="ruler-close icon-btn" aria-label="Stop measuring">&times;</button>
+      </div>
+
       <!-- Switch between Earth and the Moon / Mars (top right, next to the zoom buttons) -->
       <button id="switch-world" class="switch-world" hidden>
         <img alt="" width="34" height="34" />
