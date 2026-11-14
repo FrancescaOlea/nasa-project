@@ -76,24 +76,233 @@ export const LANDMARKS = {
   ],
 };
 
+const MISSION_DETAILS = {
+  'Apollo 11': {
+    year: 1969,
+    organization: 'NASA (United States)',
+    type: 'Crewed lunar landing',
+    crew: 'Neil Armstrong and Buzz Aldrin',
+    keyFact: 'First crewed landing on the Moon; Michael Collins remained in lunar orbit.',
+    intro: 'The first Apollo landing party explored Mare Tranquillitatis.',
+    source: 'https://www.nasa.gov/mission/apollo-11/',
+  },
+  'Apollo 12': {
+    year: 1969,
+    organization: 'NASA (United States)',
+    type: 'Crewed lunar landing',
+    crew: 'Charles Conrad and Alan Bean',
+    keyFact: 'Landed near the earlier Surveyor 3 robotic spacecraft.',
+    intro: 'Apollo 12 made the second crewed lunar landing in Oceanus Procellarum.',
+    source: 'https://www.nasa.gov/mission/apollo-12/',
+  },
+  'Apollo 14': {
+    year: 1971,
+    organization: 'NASA (United States)',
+    type: 'Crewed lunar landing',
+    crew: 'Alan Shepard and Edgar Mitchell',
+    keyFact: 'Explored the Fra Mauro highlands; Stuart Roosa stayed in lunar orbit.',
+    intro: 'Apollo 14 was the third crewed lunar landing.',
+    source: 'https://www.nasa.gov/mission/apollo-14/',
+  },
+  'Apollo 15': {
+    year: 1971,
+    organization: 'NASA (United States)',
+    type: 'Crewed lunar landing',
+    crew: 'David Scott and James Irwin',
+    keyFact: 'First Apollo mission to use a lunar rover; Alfred Worden stayed in orbit.',
+    intro: 'Apollo 15 explored the Hadley-Apennine region.',
+    source: 'https://www.nasa.gov/mission/apollo-15/',
+  },
+  'Apollo 16': {
+    year: 1972,
+    organization: 'NASA (United States)',
+    type: 'Crewed lunar landing',
+    crew: 'John Young and Charles Duke',
+    keyFact: 'Explored the Descartes highlands using a lunar rover; Ken Mattingly stayed in orbit.',
+    intro: 'Apollo 16 was the first crewed landing in the Moon’s rugged highlands.',
+    source: 'https://www.nasa.gov/mission/apollo-16/',
+  },
+  'Apollo 17': {
+    year: 1972,
+    organization: 'NASA (United States)',
+    type: 'Crewed lunar landing',
+    crew: 'Eugene Cernan and Harrison Schmitt',
+    keyFact: 'The last crewed lunar landing; Schmitt was a geologist and the mission used a rover.',
+    intro: 'Apollo 17 explored the Taurus-Littrow valley.',
+    source: 'https://www.nasa.gov/mission/apollo-17/',
+  },
+  "Chang'e 4": {
+    year: 2019,
+    organization: 'China National Space Administration (CNSA)',
+    type: 'Robotic lander and rover',
+    keyFact: 'First soft landing on the lunar far side; Queqiao relayed communications to Earth.',
+    intro: 'The lander and rover reached Von Karman crater on the Moon’s far side.',
+  },
+  "Chang'e 5": {
+    year: 2020,
+    organization: 'China National Space Administration (CNSA)',
+    type: 'Robotic sample-return mission',
+    keyFact: 'Collected lunar material and returned it to Earth.',
+    intro: 'Chang’e 5 landed in Oceanus Procellarum and brought lunar samples home.',
+  },
+  'Curiosity · Gale crater': {
+    year: 2012,
+    organization: 'NASA / Jet Propulsion Laboratory',
+    type: 'Robotic rover',
+    keyFact: 'Studies whether Gale crater once had conditions that could support microbial life.',
+    intro: 'Curiosity is a mobile science laboratory exploring Gale crater and Mount Sharp.',
+    source: 'https://science.nasa.gov/mission/msl-curiosity/',
+  },
+  'Perseverance · Jezero': {
+    year: 2021,
+    organization: 'NASA / Jet Propulsion Laboratory',
+    type: 'Robotic rover',
+    keyFact: 'Searches for signs of ancient life and collects rock and soil samples.',
+    intro: 'Perseverance landed in Jezero crater, the site of an ancient lake and river delta.',
+    source: 'https://science.nasa.gov/mission/mars-2020-perseverance/',
+  },
+  'Viking 1': {
+    year: 1976,
+    organization: 'NASA (United States)',
+    type: 'Orbiter and lander',
+    keyFact: 'First truly successful Mars landing and the first images from the surface.',
+    intro: 'Viking 1 began NASA’s first long-running in-place study of the Martian surface.',
+    source: 'https://science.nasa.gov/mission/viking-1/',
+  },
+  'Viking 2': {
+    year: 1976,
+    organization: 'NASA (United States)',
+    type: 'Orbiter and lander',
+    keyFact: 'Studied the Martian surface and atmosphere at Utopia Planitia.',
+    intro: 'Viking 2 was the second NASA Viking lander to operate on Mars.',
+    source: 'https://science.nasa.gov/mission/viking-2/',
+  },
+  'Pathfinder': {
+    year: 1997,
+    organization: 'NASA / Jet Propulsion Laboratory',
+    type: 'Lander and rover',
+    keyFact: 'Demonstrated a new landing system and delivered the first rover to Mars.',
+    intro: 'Pathfinder landed at Ares Vallis and deployed the small Sojourner rover.',
+    source: 'https://science.nasa.gov/mission/mars-pathfinder/',
+  },
+  'Spirit': {
+    year: 2004,
+    organization: 'NASA / Jet Propulsion Laboratory',
+    type: 'Robotic rover',
+    keyFact: 'Explored Gusev crater for evidence of past water; its mission ended in 2010.',
+    intro: 'Spirit was one of NASA’s twin Mars Exploration Rovers.',
+    source: 'https://science.nasa.gov/mission/mars-exploration-rovers-spirit-and-opportunity/',
+  },
+  'Opportunity': {
+    year: 2004,
+    organization: 'NASA / Jet Propulsion Laboratory',
+    type: 'Robotic rover',
+    keyFact: 'Found evidence of past water and continued operating until 2018.',
+    intro: 'Opportunity was one of NASA’s twin Mars Exploration Rovers.',
+    source: 'https://science.nasa.gov/mission/mars-exploration-rovers-spirit-and-opportunity/',
+  },
+  'Phoenix': {
+    year: 2008,
+    organization: 'NASA / University of Arizona',
+    type: 'Stationary lander',
+    keyFact: 'Studied the Martian Arctic and confirmed water ice in the soil.',
+    intro: 'Phoenix investigated the icy plains of Mars’s northern polar region.',
+    source: 'https://science.nasa.gov/mission/mars-phoenix/',
+  },
+  'InSight': {
+    year: 2018,
+    organization: 'NASA / Jet Propulsion Laboratory',
+    type: 'Stationary lander',
+    keyFact: 'Measured marsquakes to investigate the planet’s interior.',
+    intro: 'InSight studied Mars’s internal structure, heat flow, and seismic activity.',
+    source: 'https://science.nasa.gov/mission/insight/',
+  },
+  'Zhurong': {
+    year: 2021,
+    organization: 'China National Space Administration (CNSA)',
+    type: 'Robotic rover',
+    keyFact: 'First Chinese rover on Mars; landed in Utopia Planitia.',
+    intro: 'Zhurong explored the Martian plains as part of China’s Tianwen-1 mission.',
+  },
+};
+
 const ICON = { human: '◆', robotic: '●', peak: '▲', feature: '' };
+
+function missionPopup(name, details) {
+  const content = document.createElement('article');
+  content.className = 'mission-popup';
+
+  const heading = document.createElement('h3');
+  heading.textContent = name;
+  content.append(heading);
+
+  const intro = document.createElement('p');
+  intro.textContent = details.intro;
+  content.append(intro);
+
+  const list = document.createElement('ul');
+  for (const [label, value] of [
+    ['Year', details.year],
+    ['Organization', details.organization],
+    ['Mission', details.type],
+    ...(details.crew ? [['Crew', details.crew]] : []),
+    ['Key fact', details.keyFact],
+  ]) {
+    const item = document.createElement('li');
+    const term = document.createElement('strong');
+    term.textContent = `${label}: `;
+    item.append(term, document.createTextNode(value));
+    list.append(item);
+  }
+  content.append(list);
+
+  if (details.source) {
+    const source = document.createElement('a');
+    source.href = details.source;
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
+    source.textContent = 'Mission information';
+    content.append(source);
+  }
+  return content;
+}
 
 /** Adds the labels to `map`; returns a function that shows/hides them. */
 export function addLandmarks(map, body) {
   map.createPane('labels').style.zIndex = 450; // above data overlays and selection
   const tiers = [L.layerGroup(), L.layerGroup(), L.layerGroup()];
   for (const [name, lat, lon, type, tier, note] of LANDMARKS[body] ?? []) {
+    const mission = MISSION_DETAILS[name];
     const icon = L.divIcon({
-      className: `landmark landmark-${type}`,
+      className: `landmark landmark-${type}${mission ? ' landmark-mission' : ''}`,
       html: `<div class="lm"><span class="lm-icon">${ICON[type]}</span><span class="lm-text"></span></div>`,
       iconSize: null,
     });
-    const marker = L.marker([lat, lon], { icon, interactive: false, keyboard: false, pane: 'labels' });
+    const marker = L.marker([lat, lon], {
+      icon,
+      interactive: Boolean(mission),
+      keyboard: Boolean(mission),
+      pane: 'labels',
+      title: mission ? `${name} - open mission information` : name,
+    });
     marker.on('add', () => {
       const el = marker.getElement();
       el.querySelector('.lm-text').textContent = name;
-      if (note) el.title = `${name}: ${note}`;
+      if (mission) {
+        el.setAttribute('aria-label', `${name}, ${mission.year}, ${mission.organization}. Open mission information.`);
+      } else if (note) {
+        el.title = `${name}: ${note}`;
+      }
     });
+    if (mission) {
+      marker.bindPopup(missionPopup(name, mission), {
+        className: 'mission-popup-shell',
+        minWidth: 200,
+        maxWidth: 280,
+        maxHeight: 320,
+        autoPanPadding: [16, 16],
+      });
+    }
     tiers[tier].addLayer(marker);
   }
   let visible = true;
