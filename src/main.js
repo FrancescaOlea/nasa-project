@@ -15,6 +15,8 @@ import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILA
 import { addLandmarks } from './landmarks.js';
 import { addRuler, isMeasuring } from './ruler.js';
 import { maybeStartTutorial, startTour } from './tutorial.js';
+import { createRoutePlanner, routeEvents } from './route/planner.js';
+import { createView3D } from './terrain3d/view3d.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -24,6 +26,8 @@ import marsPhoto from './assets/mars.png';
 import iconMoon from './assets/icon-moon.png';
 import iconMars from './assets/icon-mars.png';
 import marsTexture from './assets/mars-texture.jpg';
+
+let terrainView = null; // Mars 3D terrain view (src/terrain3d/), made the first time it's opened
 
 const home = document.getElementById('home');
 const mapView = document.getElementById('map-view');
@@ -293,6 +297,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // During an analog search the results replace the selection panel, and clicking the
   // map doesn't select anything until 'Exit results'.
   $('select-panel').hidden = analog;
+  $('results-analogs').hidden = true; // shown only with 'Find similar spots' results
   $('menu-btn').hidden = false;
   let shapes = null;
   let current = null; // { lat, lon } of the selected point
@@ -307,6 +312,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
   let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
+  let planner = null;                          // Mars route planner (src/route/), when open
   let describe = () => {};
   function selectView(v) {
     view = v;
@@ -329,6 +335,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
     if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
+    planner?.query(q);
     if (key !== 'earth' && Object.keys(weights).length) {
       q.set('w', formatWeights(weights));
       q.set('sn', similarCount);
@@ -343,7 +350,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   const saveToUrl = () => {
     const q = query();
     history.replaceState(null, '', `#/${key}${q ? `?${q}` : ''}`);
-    if (key !== 'earth') lastPage[key] = location.hash; // so 'Back to Mars view' restores it
+    lastPage[key] = location.hash; // so 'Back to Mars view' (and leaving the 3D view) restores it
   };
   saveToUrl();
   // No analog search from Earth itself
@@ -584,6 +591,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   map.on('click', (e) => {
     if (analog || similarShown) return; // paused while search results are shown
     if (isMeasuring()) return; // the ruler has the clicks
+    if (planner?.isOpen()) { planner.click(e.latlng); return; } // route planner picks A and B
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -652,10 +660,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     saveToUrl();
     return true;
   }
-  $('find-analogs').onclick = async () => {
+  $('find-analogs').onclick = () => findEarthAnalogs(current);
+  // Ask for the weights, then open Earth to search for analogs of an area around 'at'
+  async function findEarthAnalogs(at) {
     const chosen = await askWeights({
       heading: 'Find Earth analogs',
-      subheading: `${body.name} · ${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius`,
+      subheading: `${body.name} · ${formatLatLon(at.lat, at.lon)} · ${radiusKm} km radius`,
       action: 'Find Earth analogs →',
       items: Object.entries(PARAMS).map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
       steps: WEIGHT_STEPS,
@@ -681,10 +691,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     delete chosen.count;
     analogWeights = chosen;
     saveToUrl();
-    const site = new URLSearchParams({ from: key, site: `${current.lat.toFixed(4)},${current.lon.toFixed(4)}`,
+    const site = new URLSearchParams({ from: key, site: `${at.lat.toFixed(4)},${at.lon.toFixed(4)}`,
       sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
     location.hash = `#/earth?${site}`;
-  };
+  }
   $('find-similar').onclick = async () => {
     if (!Object.keys(available).length || !(await chooseWeights())) return;
     showSimilarResults();
@@ -702,6 +712,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     similarGroup?.remove();
     similarGroup = null;
     $('analog-banner').hidden = true;
+    $('results-analogs').hidden = true;
     $('select-panel').hidden = false;
   }
   function showSimilarResults() {
@@ -726,6 +737,11 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
         { padding: [60, 60], duration: 0.8 });
     };
     $('exit-results').onclick = exitSimilar;
+    // Earth analogs of the site, or of a spot once one is picked (see pick())
+    const toEarth = $('results-analogs');
+    toEarth.textContent = 'Find Earth analogs for this site';
+    toEarth.onclick = () => findEarthAnalogs(site);
+    toEarth.hidden = false;
 
     const thisMap = map;
     const still = () => map === thisMap && similarShown;
@@ -787,7 +803,50 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
         <p class="sub" style="margin-top:.4rem">Averages over each area, from the map data at ~${Math.round(cellKm(body.radiusKm))} km
         detail, so they can differ a little from the area summary (top right), which shows the selected site's medians.</p>`;
       box.hidden = false;
+      $('results-analogs').textContent = `Find Earth analogs for spot ${i + 1}`;
+      $('results-analogs').onclick = () => findEarthAnalogs(res);
     }
+  }
+
+  // ---- Route planner (Mars only): A to B, with the dangers on the way
+  $('plan-route').hidden = key !== 'mars';
+  if (key === 'mars') {
+    const showRoutePanels = (open) => {
+      $('select-panel').hidden = open;
+      if (open) $('area-panel').hidden = true; else updateSummary();
+    };
+    // 3D terrain of the route: the button shows once A and B are set (and stays while the
+    // 3D view is open, as its way back to the 2D map)
+    const btn3d = $('btn-3d');
+    const update3dButton = () => {
+      const r = planner?.result();
+      btn3d.hidden = !((r?.open && r.a && r.b) || terrainView?.isOpen());
+    };
+    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); update3dButton(); });
+    update3dButton(); // (a route restored from the address)
+    $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
+    const set3dButton = (on) => {
+      btn3d.setAttribute('aria-pressed', on);
+      btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
+    };
+    set3dButton(false);
+    btn3d.onclick = () => {
+      terrainView ??= createView3D({ routeEvents });
+      if (terrainView.isOpen()) { terrainView.close(); return; }
+      if (shapes) clear();
+      set3dButton(true);
+      terrainView.open({
+        planner,
+        onClose: () => { set3dButton(false); update3dButton(); },
+        getLeafletView: () => {
+          const c = map.getCenter();
+          const b = map.getBounds();
+          const wKm = viewWidthKm(body);
+          const hKm = Math.min(180, b.getNorth() - b.getSouth()) * (Math.PI / 180) * body.radiusKm;
+          return { lat: c.lat, lon: c.lng, wKm, hKm };
+        },
+      });
+    };
   }
 
   const lat = parseFloat(params.get('lat'));
@@ -871,6 +930,7 @@ function showAnalogResults(params, selection) {
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
   const count = parseCount(params.get('n'));
 
+  $('results-analogs').hidden = true;
   $('analog-heading').textContent = 'Earth analogs for';
   $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
   $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}`;
@@ -966,11 +1026,25 @@ function showAnalogResults(params, selection) {
       return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
     });
     const box = $('analog-compare');
-    box.innerHTML = `<p class="c-title">Area ${i + 1} compared with the site</p>
+    box.innerHTML = `<div class="analog-3d-row">
+        <button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
+        <button type="button" class="view-3d-btn analog-terrain">⛰ 3D terrain</button>
+      </div>
+      <p class="c-title">Area ${i + 1} compared with the site</p>
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
       as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
       (top right) shows this Earth area's typical values from the map data.</p>`;
+    // detailed 3D landscape of this area's centre, loaded only on request
+    box.querySelector('.analog-3d').onclick = () => {
+      location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
+    };
+    // bird's-eye 3D model of the area and its surroundings (src/terrain3d/, as on Mars):
+    // the area's tile is 4 radii wide, with the ring of the area on it
+    box.querySelector('.analog-terrain').onclick = () => {
+      terrainView ??= createView3D({ routeEvents });
+      terrainView.open({ world: 'earth', region: { lat: res.lat, lon: res.lon, wKm: 4 * r, hKm: 4 * r, ringKm: r, name: `Area ${i + 1}` } });
+    };
     box.hidden = false;
   }
 }
@@ -1009,7 +1083,9 @@ const appHooks = {
 };
 
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel']) $(id).hidden = true;
+  if (terrainView?.isOpen()) terrainView.close();
+  $('btn-3d').hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel', 'route-panel']) $(id).hidden = true;
   mapView.classList.remove('measuring');
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
@@ -1029,8 +1105,8 @@ function showHome() {
 //   #/earth?from=mars                     Earth map, opened from Mars (switch button goes back)
 //   #/earth?from=mars&site=lat,lon&sr=10&w=..  Earth map, looking for analogs of a Mars area
 //   (Earth's own selection and view use lat/lon/r/view like the other maps)
-//   #/moon3d?lat=..&lon=..&t=ISO           standing on the Moon in 3D at that time (#/mars3d: Mars)
-const WORLDS_3D = ['moon', 'mars'];
+//   #/moon3d?lat=..&lon=..&t=ISO           standing on the Moon in 3D at that time (#/mars3d, #/earth3d)
+const WORLDS_3D = ['moon', 'mars', 'earth'];
 function route() {
   const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   if (map) { map.remove(); map = null; }
@@ -1043,7 +1119,7 @@ function route() {
   else showHome();
 }
 
-// ---- Moon / Mars: stand on the surface in 3D (code loaded only when opened) ---------------
+// ---- Moon / Mars / Earth: stand on the surface in 3D (code loaded only when opened) ---------------
 let close3D = null;
 function open3DPage(world, params) {
   const lat = parseFloat(params.get('lat'));
@@ -1054,6 +1130,10 @@ function open3DPage(world, params) {
   mapView.hidden = true;
   $('view3d').hidden = false;
   document.title = `${BODIES[world].name} 3D · Planet Maps`;
+  // a fresh canvas each time: closing the last view gave its WebGL context back (forceContextLoss),
+  // which leaves that canvas unable to draw again
+  const oldCanvas = $('v3-canvas');
+  oldCanvas.replaceWith(oldCanvas.cloneNode(false));
   const els = Object.fromEntries(['canvas', 'hud', 'back', 'where', 'status', 'date', 'now', 'slider', 'play', 'speed',
     'offset', 'sun', 'earth', 'next', 'note'].map((k) => [k, $(`v3-${k}`)]));
   els.status.hidden = false;

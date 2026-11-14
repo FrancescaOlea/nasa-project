@@ -1,5 +1,5 @@
 // Where the Sun, Earth and (on Mars) Phobos and Deimos are in the sky of a point on the
-// Moon or Mars, at a given time.
+// Moon or Mars, at a given time; on Earth, the Sun and the Moon.
 //
 // astronomy-engine gives positions in the J2000 equatorial frame (EQJ) and each world's IAU
 // orientation (pole direction + spin angle of the prime meridian). From these we build the
@@ -102,6 +102,7 @@ function marsMoon(m, t) {
  *   moons: [{ name, dir, km, radiusDeg, lit, sunDir }] (Mars), solarTime (local hours 0-24)
  */
 export function skyAt(world, radiusM, date, lat, lon) {
+  if (world === 'earth') return earthSky(date, lat, lon);
   const t = A.MakeTime(date);
   const B = bodyAxes(world, t);
   const L = localAxes(lat, lon);
@@ -146,6 +147,30 @@ export function skyAt(world, radiusM, date, lat, lon) {
     earth: { dir: local(earthV), km: earthKm, lit: earthLit, sunDir: local(earthToSun), radiusDeg: deg(Math.asin(EARTH_RADIUS_KM / earthKm)) },
     moons,
     solarTime,
+  };
+}
+
+// Earth: astronomy-engine's own observer functions (true equator of date, Earth's rotation,
+// atmospheric refraction). Same result shape, with `earth: null` and the Moon as the one moon.
+const MOON_RADIUS_KM = 1737.4;
+function earthSky(date, lat, lon) {
+  const t = A.MakeTime(date);
+  const obs = new A.Observer(lat, lon, 0);
+  const look = (body) => {
+    const eq = A.Equator(body, t, obs, true, true);
+    const h = A.Horizon(t, obs, eq.ra, eq.dec, 'normal');
+    const az = rad(h.azimuth); const el = rad(h.altitude);
+    return { dir: { x: Math.cos(el) * Math.sin(az), y: Math.cos(el) * Math.cos(az), z: Math.sin(el) }, km: eq.dist * KM_PER_AU };
+  };
+  const sun = look(A.Body.Sun);
+  const moon = look(A.Body.Moon);
+  return {
+    sun: { dir: sun.dir, radiusDeg: deg(Math.asin(SUN_RADIUS_KM / sun.km)), km: sun.km },
+    earth: null,
+    moons: [{ name: 'Moon', dir: moon.dir, km: moon.km, radiusDeg: deg(Math.asin(MOON_RADIUS_KM / moon.km)),
+      lit: A.Illumination(A.Body.Moon, t).phase_fraction, sunDir: sun.dir }],
+    // hour angle 0 = the Sun on the meridian = 12:00 local solar time
+    solarTime: (A.HourAngle(A.Body.Sun, t, obs) + 12) % 24,
   };
 }
 

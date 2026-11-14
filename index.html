@@ -50,6 +50,7 @@
         <button id="menu-btn" class="map-btn" aria-expanded="false" aria-controls="menu" hidden>&#9776; View</button>
         <button id="ruler-btn" class="map-btn ruler-btn" aria-pressed="false" title="Measure distance"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="8" width="19" height="8" rx="1.5" transform="rotate(-35 12 12)"/><path d="M7.3 9.9l1.2 1.7M10 8l1.8 2.6M12.6 6.2l1.2 1.7M15.3 4.3l1.8 2.6" transform="translate(-1.2 3.2)"/></g></svg><span class="btn-label">Ruler</span></button>
         <button id="help-btn" class="map-btn help-btn" title="Tutorial" aria-label="Show the tutorial">?</button>
+        <button id="btn-3d" class="map-btn" aria-pressed="false" hidden>⛰ 3D terrain</button>
       </div>
       <div id="map"></div>
 
@@ -57,6 +58,30 @@
       <div id="ruler-panel" class="panel ruler-panel" role="status" hidden>
         <span class="ruler-text"></span>
         <button type="button" class="ruler-close icon-btn" aria-label="Stop measuring">&times;</button>
+      </div>
+
+      <!-- 3D terrain view (src/terrain3d/), drawn over the map -->
+      <div id="terrain3d" class="terrain3d" hidden>
+        <div id="terrain3d-canvas" class="terrain3d-canvas"></div>
+        <div class="panel terrain3d-bar" aria-label="3D view controls">
+          <div class="panel-head">
+            <span id="terrain3d-title" class="eyebrow">3D terrain · Mars</span>
+            <button id="terrain3d-close" class="icon-btn" aria-label="Back to the 2D map" title="Back to the 2D map">&times;</button>
+          </div>
+          <p id="terrain3d-help" class="sub t3-help">Drag to rotate · right-drag (or Ctrl/⌘-drag) to pan · scroll or pinch to zoom · click the ground to set A and B.</p>
+          <div class="t3-row">
+            <button id="terrain3d-top" type="button">⬇ Top view</button>
+            <button id="terrain3d-reset" type="button">⟲ Reset</button>
+          </div>
+          <span class="eyebrow">Heights</span>
+          <div id="terrain3d-exag" class="chips" role="radiogroup" aria-label="Vertical exaggeration"></div>
+          <span class="eyebrow">Colour by</span>
+          <div id="terrain3d-colour" class="chips" role="radiogroup" aria-label="Colour the terrain by"></div>
+          <p id="terrain3d-legend" class="sub t3-legend"></p>
+          <p id="terrain3d-status" class="sub t3-status"></p>
+          <p id="terrain3d-cursor" class="sub t3-cursor"></p>
+          <p id="terrain3d-info" class="t3-info"></p>
+        </div>
       </div>
 
       <!-- Switch between Earth and the Moon / Mars (top right, next to the zoom buttons) -->
@@ -88,6 +113,7 @@
       <!-- Area selection panel (Moon and Mars) -->
       <aside id="select-panel" class="panel" hidden>
         <p id="select-hint" class="hint">Click anywhere on the map to select an area.</p>
+        <button id="plan-route" class="primary route-open" type="button" hidden>🧭 Plan a route from A to B</button>
         <div id="select-info" hidden>
           <div class="panel-head">
             <span class="eyebrow">Selected area</span>
@@ -111,6 +137,47 @@
         </div>
       </aside>
 
+      <!-- Mars route planner: A to B, shortest / easiest / safest (src/route/) -->
+      <aside id="route-panel" class="panel route-panel" hidden aria-label="Route planner" aria-live="polite">
+        <div class="panel-head">
+          <span class="eyebrow">Route planner · Mars</span>
+          <button id="route-close" class="icon-btn" aria-label="Close route planner">&times;</button>
+        </div>
+        <p id="route-hint" class="hint"></p>
+        <div class="route-ab-row">
+          <p id="route-ab" class="route-ab"></p>
+          <label class="season-pick">
+            <span class="eyebrow">Season</span>
+            <select id="route-season" aria-label="Season (dust storms depend on it)"></select>
+          </label>
+        </div>
+        <div class="route-opts">
+          <span class="eyebrow">Who travels</span>
+          <div id="route-traveller" class="traveller-grid" role="radiogroup" aria-label="Who travels"></div>
+          <div id="route-rover" class="route-rover"></div>
+        </div>
+        <p id="route-status" class="sub route-status"></p>
+        <div id="route-results" hidden>
+          <div id="route-tabs" class="route-tabs"></div>
+          <p id="route-about" class="sub route-about"></p>
+          <div id="route-explain" class="route-explain"></div>
+          <div id="route-stats"></div>
+          <canvas id="route-profile" class="route-profile" height="90"></canvas>
+          <p id="route-profile-note" class="sub"></p>
+          <span class="eyebrow">Dangers on the way</span>
+          <ol id="route-dangers" class="route-dangers"></ol>
+          <p id="route-no-dangers" class="sub" hidden>No major hazards found at this map scale.</p>
+          <p class="route-note">Measured = spacecraft data (MOLA, TES); catalog = Robbins crater database;
+            observed = dust storms mapped from orbit (MDAD); model / estimate = calculated here from assumptions
+            (rover limits and weights: src/route/rovers.js). The data is 2–300 km per pixel,
+            so this compares corridors; it can't see single boulders or small cliffs.</p>
+        </div>
+        <div class="actions">
+          <button id="route-swap" type="button">⇅ Swap A and B</button>
+          <button id="route-clear" type="button">Start over</button>
+        </div>
+      </aside>
+
       <!-- Typical values of every characteristic over the selected area -->
       <aside id="area-panel" class="panel area-panel" hidden aria-live="polite">
         <div class="panel-head">
@@ -131,6 +198,8 @@
         <p id="analog-weights" class="sub"></p>
         <p id="analog-status" class="sub"></p>
         <ol id="analog-results" class="analog-results"></ol>
+        <!-- similar spots only: look for Earth analogs of the site or the picked spot -->
+        <button id="results-analogs" class="primary results-analogs" hidden>Find Earth analogs for this site</button>
         <div id="analog-compare" class="analog-compare" hidden></div>
         <div class="analog-actions">
           <button id="back-to-site">&larr; Back to this site</button>
