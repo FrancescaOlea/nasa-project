@@ -1,11 +1,11 @@
-// Route planner for Mars: pick who travels (an astronaut or one of NASA's rovers), click a
+// Route planner for Mars and the Moon: pick who travels (an astronaut or a rover), click a
 // start (A) and a destination (B), and get three routes: the shortest, the easiest and the
 // safest, each with what makes it dangerous and why it goes the way it does.
 // The terrain grid comes from grid.js, the search runs in search.worker.js, the rovers'
 // specs and the model's assumptions about them are in rovers.js.
 import L from 'leaflet';
 import { buildGrid, cellOf, cellLatLon, craterDepthKm, haversineKm, MAX_LAT } from './grid.js';
-import { ROVERS, travellerModel, travellerName, roverIcon } from './rovers.js';
+import { ROVERS, MOON_ROVERS, roverOf, travellerModel, travellerName, roverIcon } from './rovers.js';
 import { formatLatLon } from '../geo.js';
 
 // Mars seasons by solar longitude (Ls); northern-hemisphere names. Ls 180-360 is the
@@ -17,12 +17,51 @@ export const SEASONS = [
   { name: 'Northern winter (dust season)', short: 'N. winter', ls: 'Ls 270–360°' },
 ];
 export const KINDS = {
-  safest: { name: 'Safest', colour: '#ffb02e', about: 'Avoids steep ground, crater rims, rough, rocky and loose terrain and dust-storm areas, as far as this traveller needs to, even if that takes longer.' },
+  safest: { name: 'Safest', colour: '#ffb02e', about: 'Avoids steep ground, crater rims, rough, rocky and loose terrain and dust-storm areas, as far as this traveller needs to, even if that takes longer.',
+    aboutMoon: 'Avoids steep ground, crater rims, rough, rocky and loose terrain, as far as this traveller needs to, even if that takes longer.' },
   easiest: { name: 'Easiest', colour: '#4cd387', about: 'Least effort: as little climbing as possible.' },
   shortest: { name: 'Shortest', colour: '#6ec6ff', about: 'Fewest kilometres while staying under the slope limit.' },
 };
-const TRAVELLER_KEYS = ['walk', ...Object.keys(ROVERS)];
-const RECORD_KM = 45.16; // Opportunity, the longest drive on another world
+
+// What differs between the worlds: who can travel, which data the hazards come from and
+// how the surface (thermal inertia) values read. Mars TES values run ~30-1000 TIU; the
+// Moon's (from Diviner) ~25-60, so "loose" and "rocky" are the ends of each world's range.
+const WORLD_CFG = {
+  mars: {
+    name: 'Mars',
+    travellers: ['walk', ...Object.keys(ROVERS)],
+    traveller: 'curiosity',
+    seasons: true,
+    ti: { softHi: 150, softSpan: 100, rockLo: 600, rockSpan: 900 },
+    record: { km: 45.16, text: 'longer than any rover has ever driven (Opportunity\'s record: 45.16 km in 14 years)' },
+    slopeSrc: 'MOLA',
+    dust: 'Very low thermal inertia: fine dust or sand where wheels sink and slip (MGS TES, measured). Spirit got stuck in soft sand in 2009; Curiosity once hit 98.7% wheel slip.',
+    crater: (c, measured) => `${measured ? 'Rim-to-floor depth measured from MOLA' : 'Depth estimated (~1/5 of the width); not measured'} (Robbins & Hynek crater catalog).`
+      + `${measured && c.d < 10 ? ' MOLA depths of craters under 10 km are only rough.' : ''}`,
+    coldSrc: 'model',
+    note: `Measured = spacecraft data (MOLA, TES); catalog = Robbins crater database;
+      observed = dust storms mapped from orbit (MDAD); model / estimate = calculated here from assumptions
+      (rover limits and weights: src/route/rovers.js). The data is 2–300 km per pixel,
+      so this compares corridors; it can't see single boulders or small cliffs.`,
+  },
+  moon: {
+    name: 'Moon',
+    travellers: ['walk', ...Object.keys(MOON_ROVERS)],
+    traveller: 'lrv',
+    seasons: false, // no seasons and no weather on the Moon
+    ti: { softHi: 34, softSpan: 8, rockLo: 50, rockSpan: 20 },
+    record: { km: 42, text: 'longer than any rover has ever driven on the Moon (Lunokhod 2: ~42 km in 4 months, 1973)' },
+    slopeSrc: 'LOLA',
+    dust: 'Unusually low thermal inertia: especially fine, fluffy soil where wheels and boots sink deeper (LRO Diviner, measured). The whole Moon is covered in loose dust; this marks the loosest.',
+    crater: (c, measured) => `${measured ? 'Rim-to-floor depth measured here from LRO LOLA heights' : 'Depth estimated from its width (Pike 1977, fresh lunar craters); not measured'} (Robbins lunar crater catalog).`
+      + `${measured && c.d < 30 ? ' LOLA depths of craters under ~30 km are only rough.' : ''}`,
+    coldSrc: 'measured',
+    note: `Measured = spacecraft data (LRO LOLA heights, Diviner temperatures and thermal inertia); catalog = Robbins
+      lunar crater database; model / estimate = calculated here from assumptions (rover limits and weights:
+      src/route/rovers.js). The data is ~2–15 km per pixel, so this compares corridors; it can't see single
+      boulders or small craters.`,
+  },
+};
 
 /** Fires 'update' whenever the route (or its endpoints) change; the 3D view listens. */
 export const routeEvents = new EventTarget();
@@ -44,7 +83,7 @@ function runSearch(grid, opts, start, goal) {
   worker ??= new Worker(new URL('./search.worker.js', import.meta.url), { type: 'module' });
   const id = Math.random();
   const transfer = {
-    rows: grid.rows, cols: grid.cols, dLat: grid.dLat, dLon: grid.dLon, latMax: grid.latMax,
+    R: grid.R, rows: grid.rows, cols: grid.cols, dLat: grid.dLat, dLon: grid.dLon, latMax: grid.latMax,
     elev: grid.elev, slopeMax: grid.slopeMax, relief: grid.relief, ti: grid.ti, storm: grid.storm,
     crater: grid.crater, valid: grid.valid,
   };
@@ -60,19 +99,19 @@ function runSearch(grid, opts, start, goal) {
   });
 }
 
-/** Planner options for a traveller (see rovers.js). */
-export function optsFor(traveller) {
+/** Planner options for a traveller (see rovers.js) on 'mars' or 'moon'. */
+export function optsFor(traveller, world = 'mars') {
   const m = travellerModel(traveller);
-  return { traveller, noGoDeg: m.noGoDeg, cautionDeg: m.cautionDeg, weights: m.weights };
+  return { traveller, world, noGoDeg: m.noGoDeg, cautionDeg: m.cautionDeg, weights: m.weights, ti: WORLD_CFG[world].ti };
 }
 
 /**
  * Builds the grid and finds the three routes for one traveller. Kept separate from the UI so
  * two rovers can later be compared on the same A and B (call it twice, reuse the grid).
  */
-export async function computeRoutes(a, b, season, traveller, onProgress = () => {}, grid = null) {
-  const opts = optsFor(traveller);
-  const g = grid ?? await buildGrid(a, b, season, onProgress);
+export async function computeRoutes(a, b, season, traveller, onProgress = () => {}, grid = null, world = 'mars') {
+  const opts = optsFor(traveller, world);
+  const g = grid ?? await buildGrid(a, b, season, onProgress, world);
   onProgress(`Searching ${(g.rows * g.cols).toLocaleString()} terrain cells (${g.cellKm.toFixed(1)} km each)…`);
   const start = cellOf(g, a.lat, a.lon);
   const goal = cellOf(g, b.lat, b.lon);
@@ -94,6 +133,7 @@ export async function computeRoutes(a, b, season, traveller, onProgress = () => 
 
 function describe(g, path, a, opts, res) {
   const { soft, rocky, z } = res;
+  const cfg = WORLD_CFG[g.world];
   const pts = path.map((i) => cellLatLon(g, i));
   pts[0] = [a.lat, a.lon];
   const seg = [0];
@@ -117,7 +157,7 @@ function describe(g, path, a, opts, res) {
     const isCrater = g.craterId[i] >= 0 && g.crater[i] > 0.15;
     hard[k] = isSteep || isCrater || soft[i] > 0.5 || rocky[i] > 0.5 ? 1 : 0;
     if (k > 0) {
-      const L0 = haversineKm(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1]);
+      const L0 = haversineKm(pts[k - 1][0], pts[k - 1][1], pts[k][0], pts[k][1], g.R);
       dist += L0;
       const dz = z[i] - z[path[k - 1]];
       if (dz > 0) up += dz; else down -= dz;
@@ -141,7 +181,7 @@ function describe(g, path, a, opts, res) {
       const len = seg[k] - seg[softStart];
       if (len >= 5) {
         dangers.push({ type: 'dust', k: softStart, title: `Loose dust for ${fmtKm(len)}`,
-          text: 'Very low thermal inertia: fine dust or sand where wheels sink and slip (MGS TES, measured). Spirit got stuck in soft sand in 2009; Curiosity once hit 98.7% wheel slip.' });
+          text: cfg.dust });
       }
       softStart = -1;
     }
@@ -149,16 +189,15 @@ function describe(g, path, a, opts, res) {
   if (maxSlope > 0) {
     const level = maxSlope > opts.cautionDeg ? 'Steep' : 'Steepest point';
     dangers.push({ type: 'slope', k: maxSlopeAt, title: `${level}: ${maxSlope.toFixed(1)}° slope`,
-      text: `Steepest ground on this route, averaged over ~2 km (MOLA, measured). Local slopes, e.g. on a crater wall or boulder field, can be much steeper. Limit used for ${travellerName(opts.traveller)}: ${opts.noGoDeg}°.` });
+      text: `Steepest ground on this route, averaged over ~2 km (${cfg.slopeSrc}, measured). Local slopes, e.g. on a crater wall or boulder field, can be much steeper. Limit used for ${travellerName(opts.traveller)}: ${opts.noGoDeg}°.` });
   }
   const craters = [...craterHits.entries()].map(([idx, k]) => ({ c: g.craters[idx], k }))
-    .sort((p, q) => craterDepthKm(q.c) - craterDepthKm(p.c));
+    .sort((p, q) => craterDepthKm(q.c, g.world) - craterDepthKm(p.c, g.world));
   for (const { c, k } of craters.slice(0, 6)) {
     const measured = c.depthKm != null;
-    dangers.push({ type: 'crater', k, title: `Crater rim: ${c.d.toFixed(c.d < 10 ? 1 : 0)} km wide, ${measured ? '' : '~'}${fmtM(craterDepthKm(c))} deep`,
-      text: `${measured ? 'Rim-to-floor depth measured from MOLA' : 'Depth estimated (~1/5 of the width); not measured'} (Robbins & Hynek crater catalog).` +
-        `${c.rimKm != null ? ` Rim stands ${fmtM(c.rimKm)} above the plains.` : ''}${c.degradation ? ` Preservation: ${['', 'heavily eroded', 'eroded', 'fairly fresh', 'fresh'][c.degradation]}.` : ''}` +
-        `${measured && c.d < 10 ? ' MOLA depths of craters under 10 km are only rough.' : ''}` });
+    dangers.push({ type: 'crater', k, title: `Crater rim: ${c.d.toFixed(c.d < 10 ? 1 : 0)} km wide, ${measured ? '' : '~'}${fmtM(craterDepthKm(c, g.world))} deep`,
+      text: cfg.crater(c, measured) +
+        `${c.rimKm != null ? ` Rim stands ${fmtM(c.rimKm)} above the plains.` : ''}${c.degradation ? ` Preservation: ${['', 'heavily eroded', 'eroded', 'fairly fresh', 'fresh'][c.degradation]}.` : ''}` });
   }
   if (maxStorm >= 0.05) {
     dangers.push({ type: 'storm', k: maxStormAt, title: `Dust storms on ${pct(maxStorm)} of sols here`,
@@ -184,7 +223,12 @@ function travelTime(r, traveller) {
       src: 'model',
     };
   }
-  const pace = ROVERS[traveller].model.pace;
+  const pace = roverOf(traveller).model.pace;
+  if (pace?.kmh) { // a crewed car (Apollo LRV): hours of driving
+    const h = r.dist / pace.kmh;
+    const t = h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(h < 10 ? 1 : 0)} h`;
+    return { short: `${t} drive`, long: `~${t} driving at ${pace.text}`, src: 'estimate' };
+  }
   if (pace) {
     const sols = Math.max(1, Math.ceil((r.dist * 1000) / pace.mPerSol));
     return { short: `${sols.toLocaleString()} sols`, long: `~${sols.toLocaleString()} sols at ${pace.text}`, src: 'estimate' };
@@ -194,7 +238,9 @@ function travelTime(r, traveller) {
 
 /** Plain-language reasons: why this route, what it avoids, where it's hard, can it be done. */
 function explain(result, kind) {
-  const { routes, opts, traveller } = result;
+  const { routes, opts, traveller, g } = result;
+  const cfg = WORLD_CFG[g.world];
+  const cell = `~${g.cellKm.toFixed(1)} km`;
   const r = routes[kind];
   const s = routes.shortest;
   const name = travellerName(traveller);
@@ -202,7 +248,7 @@ function explain(result, kind) {
   const out = { why: [], avoided: [], difficult: [], verdict: null, warnings: [] };
 
   if (kind === 'shortest' || !s) {
-    out.why.push(`The most direct line that keeps every ~2.6 km cell below ${name}'s ${opts.noGoDeg}° slope limit.`);
+    out.why.push(`The most direct line that keeps every ${cell} cell below ${name}'s ${opts.noGoDeg}° slope limit.`);
   } else {
     const extra = r.dist - s.dist;
     out.why.push(kind === 'safest'
@@ -221,7 +267,7 @@ function explain(result, kind) {
     if (!out.avoided.length) out.avoided.push('Nothing major: the direct line is already about as safe as it gets at this map scale.');
   }
   if (r.steepKm > 0) out.difficult.push(`${fmtKm(r.steepKm)} of slopes over ${opts.cautionDeg}° (steepest ${r.maxSlope.toFixed(1)}°)`);
-  if (r.craters.length) out.difficult.push(`${r.craters.length} crater rim${r.craters.length > 1 ? 's' : ''} (deepest ~${fmtM(craterDepthKm(r.craters[0].c))})`);
+  if (r.craters.length) out.difficult.push(`${r.craters.length} crater rim${r.craters.length > 1 ? 's' : ''} (deepest ~${fmtM(craterDepthKm(r.craters[0].c, g.world))})`);
   if (r.softKm > 0) out.difficult.push(`${fmtKm(r.softKm)} of loose dust or sand`);
   if (r.rockyKm > 0) out.difficult.push(`${fmtKm(r.rockyKm)} of rocky ground (high thermal inertia)`);
   if (r.maxStorm >= 0.05) out.difficult.push(`dust storms on up to ${pct(r.maxStorm)} of sols this season`);
@@ -232,10 +278,10 @@ function explain(result, kind) {
     ok: !tooFar,
     text: tooFar
       ? `Beyond ${name}'s capabilities: ${fmtKm(r.dist)} is far more than it could manage (${model.rangeWhy}). The route is shown only to compare terrain.`
-      : `Passable under this model: every ~2.6 km cell is below ${name}'s ${opts.noGoDeg}° limit (steepest ${r.maxSlope.toFixed(1)}°). Not checked: single rocks, small scarps and sand ripples, which are too small for this data.`,
+      : `Passable under this model: every ${cell} cell is below ${name}'s ${opts.noGoDeg}° limit (steepest ${r.maxSlope.toFixed(1)}°). Not checked: single rocks, small scarps and sand ripples, which are too small for this data.`,
   };
-  if (traveller !== 'walk' && r.dist > RECORD_KM && !tooFar) {
-    out.warnings.push(`At ${fmtKm(r.dist)}, this is longer than any rover has ever driven (Opportunity's record: 45.16 km in 14 years).`);
+  if (traveller !== 'walk' && r.dist > cfg.record.km && !tooFar) {
+    out.warnings.push(`At ${fmtKm(r.dist)}, this is ${cfg.record.text}.`);
   }
   return out;
 }
@@ -243,15 +289,17 @@ function explain(result, kind) {
 // ---- The planner ---------------------------------------------------------------------
 
 /**
- * Sets up the route planner on a Mars map. Returns { open, close, isOpen, click, query, result }.
+ * Sets up the route planner on a Mars or Moon map. Returns { open, close, isOpen, click, query, result }.
  * `onChange` is called when the route's endpoints/options change (to save them in the URL).
  */
-export function createRoutePlanner(map, params, onChange) {
+export function createRoutePlanner(map, params, onChange, world = 'mars') {
+  const cfg = WORLD_CFG[world];
+  const TRAVELLER_KEYS = cfg.travellers;
   const state = {
     open: false,
     a: null, b: null,
-    traveller: TRAVELLER_KEYS.includes(params.get('tr')) ? params.get('tr') : 'curiosity',
-    season: Math.min(3, Math.max(0, parseInt(params.get('ss'), 10) || 0)),
+    traveller: TRAVELLER_KEYS.includes(params.get('tr')) ? params.get('tr') : cfg.traveller,
+    season: cfg.seasons ? Math.min(3, Math.max(0, parseInt(params.get('ss'), 10) || 0)) : 0,
     kind: KINDS[params.get('rk')] ? params.get('rk') : 'safest',
     result: null,
     busy: false,
@@ -265,8 +313,11 @@ export function createRoutePlanner(map, params, onChange) {
   let token = 0;
   const emit = () => routeEvents.dispatchEvent(new CustomEvent('update', { detail: api.result() }));
 
-  // ---- panel: who travels
+  // ---- panel: which world, who travels
   const panel = $('route-panel');
+  $('route-world').textContent = cfg.name;
+  $('route-note').innerHTML = cfg.note;
+  panel.querySelector('.season-pick').hidden = !cfg.seasons;
   $('route-traveller').replaceChildren(...TRAVELLER_KEYS.map((k) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -275,7 +326,7 @@ export function createRoutePlanner(map, params, onChange) {
     b.dataset.group = 'traveller';
     b.setAttribute('role', 'radio');
     b.title = travellerName(k);
-    b.innerHTML = `<span class="t-icon">${roverIcon(k, 34)}</span><span class="t-label">${k === 'walk' ? 'On foot' : esc(ROVERS[k].name)}</span>`;
+    b.innerHTML = `<span class="t-icon">${roverIcon(k, 34)}</span><span class="t-label">${k === 'walk' ? 'On foot' : esc(roverOf(k).name)}</span>`;
     b.onclick = () => { state.traveller = k; refreshChips(); plan(); };
     return b;
   }));
@@ -308,7 +359,7 @@ export function createRoutePlanner(map, params, onChange) {
         ${modelHtml}</details>`;
       return;
     }
-    const r = ROVERS[state.traveller];
+    const r = roverOf(state.traveller);
     const rows = Object.entries({ Mass: r.specs.mass, Size: r.specs.size, Wheels: r.specs.wheels, Obstacles: r.specs.obstacles,
       Speed: r.specs.speed, Navigation: r.specs.navigation, Record: r.specs.distance })
       .map(([label, v]) => `<tr><td>${label}</td><td>${esc(v.text)}${v.src.length ? ` <span class="src-dot" title="Source: ${esc(v.src.join('; '))}">ⓘ</span>` : ''}</td></tr>`).join('');
@@ -385,7 +436,7 @@ export function createRoutePlanner(map, params, onChange) {
       const prev = state.result;
       // same points and season: reuse the terrain grid, only the search changes
       const reuse = prev && prev.a === state.a && prev.b === state.b && prev.season === state.season ? prev.g : null;
-      const res = await computeRoutes(state.a, state.b, state.season, state.traveller, (s) => { if (my === token) status(s); }, reuse);
+      const res = await computeRoutes(state.a, state.b, state.season, state.traveller, (s) => { if (my === token) status(s); }, reuse, world);
       if (my !== token) return;
       state.result = { ...res, a: state.a, b: state.b };
       render();
@@ -473,7 +524,7 @@ export function createRoutePlanner(map, params, onChange) {
       return b;
     }));
     const r = routes[state.kind];
-    $('route-about').textContent = KINDS[state.kind].about;
+    $('route-about').textContent = (world === 'moon' && KINDS[state.kind].aboutMoon) || KINDS[state.kind].about;
     renderExplanation(explain(state.result, state.kind));
     $('route-stats').innerHTML = statsHtml(r, opts, traveller);
     drawProfile(r, opts);
@@ -524,11 +575,11 @@ export function createRoutePlanner(map, params, onChange) {
       ${row('Climb / descent', `↑ ${fmtM(r.up)} · ↓ ${fmtM(r.down)}`, 'measured')}
       ${row('Elevation', `${fmtM(r.lo)} to ${fmtM(r.hi)}`, 'measured')}
       ${row('Steepest slope', `${r.maxSlope.toFixed(1)}°${r.steepKm > 0 ? ` · ${fmtKm(r.steepKm)} over ${opts.cautionDeg}°` : ''}`, 'measured')}
-      ${row('Crater rims crossed', r.craters.length ? `${r.craters.length}${deepest ? ` · deepest ${craterDepthKm(deepest.c) >= 1 ? `${craterDepthKm(deepest.c).toFixed(1)} km` : fmtM(craterDepthKm(deepest.c))}` : ''}` : 'none', 'catalog')}
-      ${row('Loose dust / sand', r.softKm > 0 ? fmtKm(r.softKm) : 'none', 'measured')}
+      ${row('Crater rims crossed', r.craters.length ? `${r.craters.length}${deepest ? ` · deepest ${craterDepthKm(deepest.c, world) >= 1 ? `${craterDepthKm(deepest.c, world).toFixed(1)} km` : fmtM(craterDepthKm(deepest.c, world))}` : ''}` : 'none', 'catalog')}
+      ${row(world === 'moon' ? 'Loose dust' : 'Loose dust / sand', r.softKm > 0 ? fmtKm(r.softKm) : 'none', 'measured')}
       ${row('Rocky ground', r.rockyKm > 0 ? fmtKm(r.rockyKm) : 'none', 'measured')}
-      ${row('Dust storms (season)', storm, 'observed')}
-      ${row('Coldest night', Number.isFinite(r.coldest) ? `${Math.round(r.coldest)} °C` : '–', 'model')}
+      ${cfg.seasons ? row('Dust storms (season)', storm, 'observed') : ''}
+      ${row('Coldest night', Number.isFinite(r.coldest) ? `${Math.round(r.coldest)} °C` : '–', cfg.coldSrc)}
     </tbody></table>`;
   }
 
@@ -618,7 +669,7 @@ export function createRoutePlanner(map, params, onChange) {
       if (!state.open) return;
       const f = (p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
       q.set('route', [state.a, state.b].filter(Boolean).map(f).join(';'));
-      if (state.traveller !== 'curiosity') q.set('tr', state.traveller);
+      if (state.traveller !== cfg.traveller) q.set('tr', state.traveller);
       if (state.season) q.set('ss', state.season);
       if (state.kind !== 'safest') q.set('rk', state.kind);
     },
@@ -629,7 +680,7 @@ export function createRoutePlanner(map, params, onChange) {
   if (params.has('route')) {
     if (saved[0]?.length === 2 && saved[0].every(Number.isFinite)) state.a = { lat: saved[0][0], lon: saved[0][1] };
     if (saved[1]?.length === 2 && saved[1].every(Number.isFinite)) state.b = { lat: saved[1][0], lon: saved[1][1] };
-    if (params.get('tr') === 'rover') state.traveller = 'curiosity'; // links from the first version
+    if (world === 'mars' && params.get('tr') === 'rover') state.traveller = 'curiosity'; // links from the first version
     open();
     placeMarkers();
     if (state.a && state.b) {

@@ -67,9 +67,9 @@ Or by hand: `npm install`, then `npm run dev`.
   Change the speed with `MARS_SECONDS_PER_TURN` in `src/main.js`. The Earth map is reached via
   **Find Earth analogs**.
 
-## Mars route planner (A to B)
+## Route planner (A to B), Mars and Moon
 
-On the Mars map, **🧭 Plan a route from A to B** (selection panel) opens the route planner.
+On the Mars map (and the Moon map, see *On the Moon* below), **🧭 Plan a route from A to B** (selection panel) opens the route planner.
 Click the start (A), then the destination (B); drag either pin to change the route. As soon as
 the route is calculated, the map zooms so the whole route fills the space next to the panel (in 3D,
 the camera flies to a tilted view of the route, centred between the panels). It finds
@@ -117,6 +117,27 @@ models (NASA Ames Mars GCM, Mars Climate Database).
 Data for the planner is built with `python3 tools/build_route_data.py` (inputs in `data/raw/`, see
 the script): the Robbins crater catalog into `public/route/craters/` (30° blocks, loaded only
 where a route goes) and the dust-storm database into `public/route/storms.bin`.
+
+### On the Moon
+
+The same planner works on the **Moon map** (same button, same three routes, same 3D terrain button
+once A and B are set). What differs:
+
+- **Data**: slope, elevation and roughness from LRO **LOLA**, loose dust and rocky ground from
+  **Diviner** thermal inertia (on the Moon it only spans ~25–60 TIU, so "loose" is below ~30 and
+  "rocky" above ~60, the ends of the Moon's own range), coldest night measured by Diviner.
+- **Craters**: the Robbins (2019) lunar crater catalog, 910,000 craters ≥ 1.3 km in
+  `public/route/moon/craters/` (same 12-byte format). It has no depths, so
+  `node tools/build_moon_route_data.mjs` measures the rim-to-floor depth of every crater ≥ 15 km
+  from LOLA (`data/raw/ldem_16.img`; e.g. Tycho 4.7 km, Copernicus 3.7 km). Smaller craters use
+  Pike's (1977) depth–diameter relation for fresh lunar craters (0.196 × D below 15 km). The giant
+  impact basins (> 300 km, e.g. Imbrium) are not counted as crater rims: their rims are mountain
+  rings hundreds of km wide, which the slope data already shows.
+- **No seasons, no dust storms** (no weather): the season dropdown is hidden.
+- **Who travels**: an astronaut on foot (20°, as on Mars), the **Apollo Lunar Roving Vehicle**
+  (25° design limit; time at ~8 km/h, the Apollo 15–17 average; 92 km battery range), and
+  **Lunokhod 1** and **Lunokhod 2** (20°, an assumption: no published limit found). Routes longer
+  than Lunokhod 2's ~42 km, the longest drive on the Moon, get a warning.
 
 ### Rovers: who travels changes the route
 

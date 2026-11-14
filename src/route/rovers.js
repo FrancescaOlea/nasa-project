@@ -1,4 +1,5 @@
-// Who can travel a route: an astronaut on foot or one of NASA's five Mars rovers.
+// Who can travel a route: an astronaut on foot or one of NASA's five Mars rovers; on the
+// Moon, an astronaut, the Apollo Lunar Roving Vehicle or one of the two Lunokhods.
 //
 // Two kinds of numbers live here, kept apart on purpose:
 //   specs - published facts about each rover, with their source
@@ -147,6 +148,92 @@ export const ROVERS = {
   },
 };
 
+// ---- The Moon ------------------------------------------------------------------------
+
+const MSRC = {
+  lrvNssdc: 'NASA NSSDC, "The Apollo Lunar Roving Vehicle" (nssdc.gsfc.nasa.gov/planetary/lunar/apollo_lrv.html)',
+  lrvHandbook: 'Boeing, "Lunar Roving Vehicle Operations Handbook" (NASA contract NAS8-25145, 1971)',
+  alsj: 'Apollo Lunar Surface Journal (NASA): LRV traverse distances and driving times of Apollo 15, 16 and 17',
+  luna17: 'NASA NSSDC, Luna 17 / Lunokhod 1 (NSSDCA ID 1970-095A)',
+  luna21: 'NASA NSSDC, Luna 21 / Lunokhod 2 (NSSDCA ID 1973-001A)',
+  lroc42: 'LROC (Arizona State University), "Lunokhod 2 tracks": 42 km measured on LRO images (2013)',
+};
+
+export const MOON_ROVERS = {
+  lrv: {
+    name: 'Apollo LRV',
+    mission: 'Lunar Roving Vehicle · Apollo 15, 16, 17',
+    period: 'Driven Jul 1971 – Dec 1972 · 3 rovers, all left on the Moon',
+    status: 'Mission complete',
+    specs: {
+      mass: { text: '210 kg empty; carried up to 490 kg (two astronauts, tools, samples)', src: [MSRC.lrvNssdc] },
+      size: { text: '3.1 m long, 2.3 m wheelbase, 1.14 m high', src: [MSRC.lrvNssdc] },
+      wheels: { text: '4 wheels, 81.8 cm diameter, 23 cm wide; woven zinc-coated steel wire with titanium treads; 4-wheel steering', src: [MSRC.lrvNssdc] },
+      obstacles: { text: 'Steps up to 30 cm, crevasses up to 70 cm wide; slopes up to 25°', src: [MSRC.lrvHandbook, MSRC.lrvNssdc] },
+      speed: { text: 'About 13 km/h top speed (18 km/h downhill on Apollo 17)', src: [MSRC.lrvNssdc] },
+      navigation: { text: 'Driven by the astronauts; a gyro and wheel odometers showed heading and the way back to the lunar module', src: [MSRC.lrvNssdc] },
+      distance: { text: 'Apollo 15: 27.8 km · Apollo 16: 26.7 km · Apollo 17: 35.9 km in total', src: [MSRC.alsj] },
+    },
+    wheelCm: 81.8,
+    model: {
+      noGoDeg: 25, noGoWhy: 'its design slope limit',
+      cautionDeg: 15,
+      weights: { slope: 2.5, crater: 2, rough: 2, soft: 0.5, rocky: 1.5, storm: 0 },
+      why: 'A fast, open car with two astronauts aboard: rough, blocky ground and crater rims count most (bouncing at speed). Its wire-mesh wheels coped well with the loose lunar soil. Apollo rules kept every drive within walking distance of the lunar module, in case the rover broke down.',
+      rangeKm: 92, rangeWhy: 'its two batteries were sized for ~92 km in total',
+      pace: { kmh: 8, text: '~8 km/h, the average Apollo 15–17 driving speed' },
+    },
+  },
+  lunokhod1: {
+    name: 'Lunokhod 1',
+    mission: 'Luna 17 (Soviet Union)',
+    period: 'Landed 17 Nov 1970 · last contact 14 Sep 1971',
+    status: 'Mission complete',
+    specs: {
+      mass: { text: '756 kg', src: [MSRC.luna17] },
+      size: { text: 'A tub on wheels, ~1.35 m high, 2.15 m wide (lid open: 4.42 m long)', src: [MSRC.luna17] },
+      wheels: { text: '8 wheels, 51 cm diameter, 20 cm wide, each with its own motor', src: [MSRC.luna17] },
+      obstacles: { text: 'No published figure found', src: [] },
+      speed: { text: '1 or 2 km/h', src: [MSRC.luna17] },
+      navigation: { text: 'Driven remotely by a five-person crew on Earth from TV images', src: [MSRC.luna17] },
+      distance: { text: '10.5 km in 11 lunar days', src: [MSRC.luna17] },
+    },
+    wheelCm: 51,
+    model: {
+      noGoDeg: 20, noGoWhy: 'no published slope limit found (assumption)',
+      cautionDeg: 12,
+      weights: { slope: 3, crater: 2, rough: 2, soft: 1, rocky: 2, storm: 0 },
+      why: 'Remote-driven with a delay of seconds from Earth, so steep ground and crater rims are avoided wherever possible.',
+      rangeKm: null,
+      pace: null,
+    },
+  },
+  lunokhod2: {
+    name: 'Lunokhod 2',
+    mission: 'Luna 21 (Soviet Union)',
+    period: 'Landed 15 Jan 1973 · last contact May 1973',
+    status: 'Mission complete',
+    specs: {
+      mass: { text: '840 kg', src: [MSRC.luna21] },
+      size: { text: 'Same design as Lunokhod 1, with a third TV camera at driver\'s eye height', src: [MSRC.luna21] },
+      wheels: { text: '8 wheels, 51 cm diameter, 20 cm wide, each with its own motor', src: [MSRC.luna21] },
+      obstacles: { text: 'No published figure found', src: [] },
+      speed: { text: '1 or 2 km/h', src: [MSRC.luna21] },
+      navigation: { text: 'Driven remotely from Earth from TV images', src: [MSRC.luna21] },
+      distance: { text: '37 km reported in 1973; 42 km measured from LRO images (the longest drive on the Moon)', src: [MSRC.luna21, MSRC.lroc42] },
+    },
+    wheelCm: 51,
+    model: {
+      noGoDeg: 20, noGoWhy: 'no published slope limit found (assumption)',
+      cautionDeg: 12,
+      weights: { slope: 3, crater: 2, rough: 2, soft: 1, rocky: 2, storm: 0 },
+      why: 'Remote-driven with a delay of seconds from Earth, so steep ground and crater rims are avoided wherever possible. It ended its mission after driving into a crater and covering itself in dust.',
+      rangeKm: null,
+      pace: null,
+    },
+  },
+};
+
 // On foot. NASA xEVA spacesuit concept of operations (EVA-EXP-0042): walking on slopes up
 // to 20°; Apollo walking traverses stayed under ~15°.
 export const ASTRONAUT = {
@@ -155,21 +242,36 @@ export const ASTRONAUT = {
     noGoDeg: 20, noGoWhy: 'NASA\'s xEVA spacesuit requirement: walking on slopes up to 20°',
     cautionDeg: 15,
     weights: { slope: 3, crater: 1.5, rough: 1.5, soft: 1, rocky: 0.5, storm: 1 },
-    why: 'Walking: steep ground and dust storms (visibility) matter most.',
+    why: 'Walking: steep ground matters most (and on Mars, dust storms for visibility).',
     rangeKm: null,
   },
 };
 
-export const travellerModel = (key) => (key === 'walk' ? ASTRONAUT.model : ROVERS[key].model);
-export const travellerName = (key) => (key === 'walk' ? ASTRONAUT.name : ROVERS[key].name);
+/** Any rover, Mars or Moon, by its key. */
+export const roverOf = (key) => ROVERS[key] ?? MOON_ROVERS[key];
+export const travellerModel = (key) => (key === 'walk' ? ASTRONAUT.model : roverOf(key).model);
+export const travellerName = (key) => (key === 'walk' ? ASTRONAUT.name : roverOf(key).name);
 
 // Small side-view silhouette, scaled by wheel diameter (the one size all five share a source for).
 export function roverIcon(key, px = 48) {
   if (key === 'walk') {
     return `<svg viewBox="0 0 40 40" width="${px * 0.6}" height="${px * 0.6}" aria-hidden="true"><circle cx="20" cy="8" r="5" fill="currentColor"/><path d="M20 14v12M12 20h16M20 26l-6 11M20 26l6 11" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none"/></svg>`;
   }
-  const r = ROVERS[key];
-  const s = Math.max(0.28, r.wheelCm / 52.5); // relative to Perseverance
+  const r = roverOf(key);
+  const s = Math.min(1.3, Math.max(0.28, r.wheelCm / 52.5)); // relative to Perseverance (the LRV capped)
+  if (key === 'lrv') {
+    // open car: two seats, a high-gain dish, 4 wire wheels
+    return `<svg viewBox="0 0 50 32" width="${px * s}" height="${px * s * 0.64}" aria-hidden="true" fill="currentColor">
+      <rect x="4" y="16" width="42" height="3" rx="1"/><rect x="15" y="9" width="3" height="7"/><rect x="25" y="9" width="3" height="7"/>
+      <rect x="13" y="12" width="17" height="2"/><rect x="40" y="4" width="1.6" height="12"/><path d="M36 4 Q41 0 46 4 Z"/>
+      <circle cx="11" cy="24" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="39" cy="24" r="6" fill="none" stroke="currentColor" stroke-width="2.4"/></svg>`;
+  }
+  if (key.startsWith('lunokhod')) {
+    // a tub with a hinged lid (solar panel), on 4 visible wheels of its 8
+    return `<svg viewBox="0 0 50 32" width="${px * s}" height="${px * s * 0.64}" aria-hidden="true" fill="currentColor">
+      <path d="M8 11 H42 L39 21 H11 Z"/><path d="M8 10 L22 2 L24 4 L10 11 Z"/><rect x="38" y="6" width="2" height="5"/>
+      <circle cx="11" cy="25" r="4.5"/><circle cx="20.5" cy="25" r="4.5"/><circle cx="30" cy="25" r="4.5"/><circle cx="39.5" cy="25" r="4.5"/></svg>`;
+  }
   const big = r.wheelCm >= 50;
   const body = big
     ? '<rect x="8" y="10" width="34" height="9" rx="1.5"/><rect x="34" y="1" width="2.5" height="10"/><rect x="31" y="0" width="8" height="3.5" rx="1"/><rect x="5" y="12" width="5" height="5" rx="1"/>'
