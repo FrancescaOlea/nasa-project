@@ -469,8 +469,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     }
   }
 
+  let zoomedIn = false; // has the current area already been zoomed to (second click)?
   function select(lat, lon, opts) {
     current = { lat, lon };
+    zoomedIn = false;
     $('select-hint').hidden = true;
     $('select-info').hidden = false;
     $('select-coords').textContent = formatLatLon(lat, lon);
@@ -481,6 +483,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   }
 
   function clear() {
+    zoomedIn = false;
     if (shapes) shapes.remove();
     shapes = null;
     current = null;
@@ -531,7 +534,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       if (!proj.inside(raw.x / n, raw.y / n)) return;
     }
     // a click on the area that's already selected zooms to it; anywhere else selects a new area
-    if (current && insideSelection(e.containerPoint)) { zoomToSelection(); return; }
+    // the second click on the selected area zooms to it, once; after that, clicks inside it do
+    // nothing (no zooming again), until a new area is selected by clicking outside it
+    if (current && insideSelection(e.containerPoint)) {
+      if (!zoomedIn) { zoomedIn = true; zoomToSelection(); }
+      return;
+    }
     select(e.latlng.lat, e.latlng.lng);
   });
   $('clear-selection').onclick = clear;
@@ -555,7 +563,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     const xs = pts.map((q) => q.x); const ys = pts.map((q) => q.y);
     const bw = Math.max(1, Math.max(...xs) - Math.min(...xs));
     const bh = Math.max(1, Math.max(...ys) - Math.min(...ys));
-    const { paddingTopLeft: [pl, pt], paddingBottomRight: [pr, pb] } = freeScreenPadding();
+    const { paddingTopLeft: [pl, pt], paddingBottomRight: [pr, pb] } = freeScreenPadding(6);
     const size = map.getSize();
     const freeW = size.x - pl - pr; const freeH = size.y - pt - pb;
     const z = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), z0 + Math.log2(Math.min(freeW / bw, freeH / bh))));
@@ -635,14 +643,13 @@ function parseCount(text) {
 // Padding for fitting something into the part of the map not covered by panels: the
 // results panel (left on wide screens, bottom on phones), the area summary (top right),
 // the top buttons and the bottom-left map controls.
-function freeScreenPadding() {
+function freeScreenPadding(gap = 24) {
   const W = window.innerWidth;
   const H = window.innerHeight;
   const box = (id) => { const el = $(id); return el && !el.hidden ? el.getBoundingClientRect() : null; };
   const left = box('analog-banner');
   const summary = box('area-panel');
   const selectPanel = box('select-panel');
-  const gap = 24;
   let pl = gap; let pr = gap; let pt = 70 + gap; let pb = gap;
   if (W > 600) {
     if (left) pl = Math.max(pl, left.right + gap);
