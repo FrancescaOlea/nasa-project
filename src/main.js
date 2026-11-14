@@ -16,7 +16,6 @@ import { addLandmarks } from './landmarks.js';
 import { addRuler, isMeasuring } from './ruler.js';
 import { maybeStartTutorial, startTour } from './tutorial.js';
 import { createRoutePlanner, routeEvents } from './route/planner.js';
-import { createView3D } from './terrain3d/view3d.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -27,7 +26,14 @@ import iconMoon from './assets/icon-moon.png';
 import iconMars from './assets/icon-mars.png';
 import marsTexture from './assets/mars-texture.jpg';
 
-let terrainView = null; // Mars 3D terrain view (src/terrain3d/), made the first time it's opened
+let terrainView = null; // 3D terrain view (src/terrain3d/), loaded and made the first time it's opened
+async function getTerrainView() {
+  if (!terrainView) {
+    const { createView3D } = await import('./terrain3d/view3d.js');
+    terrainView ??= createView3D({ routeEvents });
+  }
+  return terrainView;
+}
 
 const home = document.getElementById('home');
 const mapView = document.getElementById('map-view');
@@ -830,8 +836,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
     };
     set3dButton(false);
-    btn3d.onclick = () => {
-      terrainView ??= createView3D({ routeEvents });
+    btn3d.onclick = async () => {
+      await getTerrainView();
       if (terrainView.isOpen()) { terrainView.close(); return; }
       if (shapes) clear();
       set3dButton(true);
@@ -1041,8 +1047,8 @@ function showAnalogResults(params, selection) {
     };
     // bird's-eye 3D model of the area and its surroundings (src/terrain3d/, as on Mars):
     // the area's tile is 4 radii wide, with the ring of the area on it
-    box.querySelector('.analog-terrain').onclick = () => {
-      terrainView ??= createView3D({ routeEvents });
+    box.querySelector('.analog-terrain').onclick = async () => {
+      await getTerrainView();
       terrainView.open({ world: 'earth', region: { lat: res.lat, lon: res.lon, wKm: 4 * r, hKm: 4 * r, ringKm: r, name: `Area ${i + 1}` } });
     };
     box.hidden = false;
