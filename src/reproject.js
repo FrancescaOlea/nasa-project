@@ -93,8 +93,10 @@ function drawTriangle(ctx, m, d, images) {
  * Resolves with the number of triangles drawn (0 = nothing to show).
  */
 export async function warpTile(ctx, coords, proj, src, opts) {
-  const n = 256 * 2 ** coords.z;
-  const at = (px, py) => proj.fromWorld((coords.x * 256 + px) / n, (coords.y * 256 + py) / n);
+  // whole map in px at this zoom (equirectangular is twice as wide as tall)
+  const nx = proj.world[0] * 2 ** coords.z;
+  const ny = proj.world[1] * 2 ** coords.z;
+  const at = (px, py) => proj.fromWorld((coords.x * 256 + px) / nx, (coords.y * 256 + py) / ny);
 
   // Layers shown only when zoomed in: decide once per zoom level for the whole map,
   // so neighbouring tiles always agree.

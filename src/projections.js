@@ -10,6 +10,8 @@
 //   bounds              lat/lon limits for Leaflet's maxBounds (null = clamp manually)
 //   center              default centre
 //   cylindrical         true for equirectangular / Mercator
+//   world               [width, height] of the whole map in px at zoom 0 (equirectangular is
+//                       twice as wide as it is tall; the others are square)
 //
 // The map sources (NASA Trek, Esri, our data tiles) are never changed; when a
 // projection differs from a source's own, the tiles are warped in the browser
@@ -41,6 +43,7 @@ const equirect = {
   id: 'equirect',
   crs: L.CRS.EPSG4326, // 360 x 180 degrees -> 512 x 256 px at zoom 0
   cylindrical: true,
+  world: [512, 256],
   toWorld: (lat, lon) => [(lon + 180) / 360, (90 - lat) / 180],
   fromWorld: (u, v) => [90 - v * 180, u * 360 - 180],
   kmPerPxAtZoom0: (R) => (2 * Math.PI * R) / 512,
@@ -53,6 +56,7 @@ const mercator = {
   id: 'mercator',
   crs: L.CRS.EPSG3857, // square world, 256 px at zoom 0
   cylindrical: true,
+  world: [256, 256],
   toWorld: (lat, lon) => [(lon + 180) / 360, mercV(lat)],
   fromWorld: (u, v) => [mercLat(v), u * 360 - 180],
   kmPerPxAtZoom0: (R) => (2 * Math.PI * R) / 256,
@@ -104,6 +108,7 @@ function polar(north) {
     id: north ? 'north' : 'south',
     crs,
     cylindrical: false,
+    world: [256, 256],
     toWorld: (lat, lon) => {
       const [x, y] = polarXY(north, lat, lon);
       return [x / (2 * RHO_MAX) + 0.5, y / (2 * RHO_MAX) + 0.5];

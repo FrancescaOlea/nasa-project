@@ -184,7 +184,8 @@ const WarpedData = L.GridLayer.extend({
       if (!drawn) { done(null, tile); return; }
       const data = ctx.getImageData(0, 0, 256, 256);
       const px = data.data;
-      const n = 256 * 2 ** coords.z;
+      const nx = proj.world[0] * 2 ** coords.z;
+      const ny = proj.world[1] * 2 ** coords.z;
       const clip = latMin > -90 || latMax < 90;
       for (let r = 0; r < 256; r++) {
         for (let c = 0; c < 256; c++) {
@@ -192,7 +193,7 @@ const WarpedData = L.GridLayer.extend({
           const a = px[i + 3];
           let v = a > 0 ? px[i] * 4 : 0;
           if (v && clip) {
-            const lat = proj.fromWorld((coords.x * 256 + c + 0.5) / n, (coords.y * 256 + r + 0.5) / n)[0];
+            const lat = proj.fromWorld((coords.x * 256 + c + 0.5) / nx, (coords.y * 256 + r + 0.5) / ny)[0];
             if (lat < latMin || lat > latMax) v = 0;
           }
           px[i] = LUT[v]; px[i + 1] = LUT[v + 1]; px[i + 2] = LUT[v + 2];
