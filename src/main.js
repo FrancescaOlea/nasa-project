@@ -293,6 +293,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // During an analog search the results replace the selection panel, and clicking the
   // map doesn't select anything until 'Exit results'.
   $('select-panel').hidden = analog;
+  $('results-analogs').hidden = true; // shown only with 'Find similar spots' results
   $('menu-btn').hidden = false;
   let shapes = null;
   let current = null; // { lat, lon } of the selected point
@@ -652,10 +653,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     saveToUrl();
     return true;
   }
-  $('find-analogs').onclick = async () => {
+  $('find-analogs').onclick = () => findEarthAnalogs(current);
+  // Ask for the weights, then open Earth to search for analogs of an area around 'at'
+  async function findEarthAnalogs(at) {
     const chosen = await askWeights({
       heading: 'Find Earth analogs',
-      subheading: `${body.name} · ${formatLatLon(current.lat, current.lon)} · ${radiusKm} km radius`,
+      subheading: `${body.name} · ${formatLatLon(at.lat, at.lon)} · ${radiusKm} km radius`,
       action: 'Find Earth analogs →',
       items: Object.entries(PARAMS).map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
       steps: WEIGHT_STEPS,
@@ -681,10 +684,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     delete chosen.count;
     analogWeights = chosen;
     saveToUrl();
-    const site = new URLSearchParams({ from: key, site: `${current.lat.toFixed(4)},${current.lon.toFixed(4)}`,
+    const site = new URLSearchParams({ from: key, site: `${at.lat.toFixed(4)},${at.lon.toFixed(4)}`,
       sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
     location.hash = `#/earth?${site}`;
-  };
+  }
   $('find-similar').onclick = async () => {
     if (!Object.keys(available).length || !(await chooseWeights())) return;
     showSimilarResults();
@@ -702,6 +705,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     similarGroup?.remove();
     similarGroup = null;
     $('analog-banner').hidden = true;
+    $('results-analogs').hidden = true;
     $('select-panel').hidden = false;
   }
   function showSimilarResults() {
@@ -726,6 +730,11 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
         { padding: [60, 60], duration: 0.8 });
     };
     $('exit-results').onclick = exitSimilar;
+    // Earth analogs of the site, or of a spot once one is picked (see pick())
+    const toEarth = $('results-analogs');
+    toEarth.textContent = 'Find Earth analogs for this site';
+    toEarth.onclick = () => findEarthAnalogs(site);
+    toEarth.hidden = false;
 
     const thisMap = map;
     const still = () => map === thisMap && similarShown;
@@ -787,6 +796,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
         <p class="sub" style="margin-top:.4rem">Averages over each area, from the map data at ~${Math.round(cellKm(body.radiusKm))} km
         detail, so they can differ a little from the area summary (top right), which shows the selected site's medians.</p>`;
       box.hidden = false;
+      $('results-analogs').textContent = `Find Earth analogs for spot ${i + 1}`;
+      $('results-analogs').onclick = () => findEarthAnalogs(res);
     }
   }
 
@@ -871,6 +882,7 @@ function showAnalogResults(params, selection) {
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
   const count = parseCount(params.get('n'));
 
+  $('results-analogs').hidden = true;
   $('analog-heading').textContent = 'Earth analogs for';
   $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
   $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}`;

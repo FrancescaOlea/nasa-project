@@ -261,6 +261,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .analog-compare td { padding: .25rem .3rem; text-align: right; border-top: 1px solid #26262c; }
 .analog-compare td.note { color: #888; font-size: .72rem; }
 .analog-compare .c-title { font-weight: 600; margin-bottom: .3rem !important; }
+.results-analogs { width: 100%; margin-top: .8rem; }
 .analog-actions { display: flex; gap: .5rem; margin-top: .8rem; }
 .analog-actions button { flex: 1; }
 .analog-marker { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
