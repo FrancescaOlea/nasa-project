@@ -105,9 +105,22 @@ export async function warpTile(ctx, coords, proj, src, opts) {
   const pts = [];
   for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) pts.push(at(i * CELL, j * CELL));
   const P = (i, j) => pts[j * (N + 1) + i];
-  const mid = P(N / 2, N / 2);
-  const kmPerPx = Math.max(haversineKm(opts.radiusKm, mid, P(N / 2 + 1, N / 2)),
-    haversineKm(opts.radiusKm, mid, P(N / 2, N / 2 + 1))) / CELL;
+  // Measure the scale at the tile's centre - or, where the centre is off the planet (the
+  // corners of a polar map, outside the world disc), at the nearest grid point that's on it.
+  // (Measuring at a point off the planet gave NaN and the whole tile stayed black.)
+  const ok = (p) => Number.isFinite(p[0]) && Number.isFinite(p[1]);
+  let probe = null;
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      if (!ok(P(i, j)) || !ok(P(i + 1, j)) || !ok(P(i, j + 1))) continue;
+      const d = Math.hypot(i + 0.5 - N / 2, j + 0.5 - N / 2);
+      if (!probe || d < probe.d) probe = { i, j, d };
+    }
+  }
+  if (!probe) return 0; // the whole tile is off the planet
+  const mid = P(probe.i, probe.j);
+  const kmPerPx = Math.max(haversineKm(opts.radiusKm, mid, P(probe.i + 1, probe.j)),
+    haversineKm(opts.radiusKm, mid, P(probe.i, probe.j + 1))) / CELL;
 
   // source level whose pixels are about as fine as the screen's
   const C = 2 * Math.PI * opts.radiusKm;
