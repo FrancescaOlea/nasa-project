@@ -296,11 +296,10 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   font-size: 9.5px; line-height: 1.4; padding: 0 5px; border-top-left-radius: 4px; }
 .leaflet-container .leaflet-control-attribution a { color: rgba(255,255,255,.65); }
 
-/* ---- Earth landmarks: oceans, seas, mountain ranges, deserts ---- */
-.landmark-ocean .lm, .landmark-sea .lm, .landmark-range .lm, .landmark-desert .lm {
+/* ---- Earth landmarks: seas, mountain ranges, deserts ---- */
+.landmark-sea .lm, .landmark-range .lm, .landmark-desert .lm {
   transform: translate(-50%, -50%); font-style: italic; }
-.landmark-ocean .lm-icon, .landmark-sea .lm-icon, .landmark-range .lm-icon, .landmark-desert .lm-icon { display: none; }
-.landmark-ocean .lm { color: #a9d8ff; font-size: 14px; letter-spacing: .28em; text-transform: uppercase; font-style: normal; }
+.landmark-sea .lm-icon, .landmark-range .lm-icon, .landmark-desert .lm-icon { display: none; }
 .landmark-sea .lm { color: #a9d8ff; font-size: 12px; letter-spacing: .04em; }
 .landmark-range .lm { color: #f1e7dc; font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; font-style: normal; }
 .landmark-desert .lm { color: #f5d9a0; font-size: 12px; letter-spacing: .06em; }

@@ -3,7 +3,7 @@
 //       'robotic' = robotic lander or rover
 //       'peak'    = mountain / volcano
 //       'feature' = basin, plain, canyon, crater, region
-//       Earth: 'ocean', 'sea', 'range' (mountain range), 'desert'
+//       Earth: 'sea', 'range' (mountain range), 'desert'
 // tier: 0 = always shown, 1 = from 2x zoom, 2 = from 4x zoom (keeps the map uncluttered)
 // Coordinates: planetocentric latitude, east longitude (-180..180).
 import L from 'leaflet';
@@ -76,13 +76,6 @@ export const LANDMARKS = {
     ['Planum Australe', -84.0, 160.0, 'feature', 1, 'South polar ice cap'],
   ],
   earth: [
-    // Oceans
-    ['Pacific Ocean', -8, -140, 'ocean', 0],
-    ['Pacific Ocean', 18, 165, 'ocean', 1],
-    ['Atlantic Ocean', 8, -32, 'ocean', 0],
-    ['Indian Ocean', -20, 78, 'ocean', 0],
-    ['Arctic Ocean', 80, -10, 'ocean', 0],
-    ['Southern Ocean', -60, 20, 'ocean', 0],
     // Seas, gulfs and bays
     ['Mediterranean Sea', 35, 18, 'sea', 1],
     ['Caribbean Sea', 15, -75, 'sea', 1],
@@ -132,7 +125,7 @@ export const LANDMARKS = {
     ['Transantarctic Mountains', -80, 160, 'range', 1],
     ['Tibetan Plateau', 33, 88, 'range', 1, 'Highest and largest plateau on Earth'],
     // Deserts
-    ['Sahara', 23, 12, 'desert', 0, 'Largest hot desert'],
+    ['Sahara Desert', 23, 12, 'desert', 0, 'Largest hot desert'],
     ['Arabian Desert', 22, 47, 'desert', 1],
     ['Gobi Desert', 43, 105, 'desert', 1],
     ['Taklamakan Desert', 38.8, 83, 'desert', 1],
@@ -149,11 +142,11 @@ export const LANDMARKS = {
     ['Sonoran Desert', 32, -112.5, 'desert', 2],
     ['Chihuahuan Desert', 29, -105, 'desert', 2],
     ['Patagonian Desert', -45, -69, 'desert', 2],
-    ['McMurdo Dry Valleys', -77.5, 162, 'desert', 2, 'Coldest, driest place: a Mars analog'],
+    ['McMurdo Dry Valleys Desert', -77.5, 162, 'desert', 2, 'Coldest, driest place: a Mars analog'],
   ],
 };
 
-const ICON = { human: '◆', robotic: '●', peak: '▲', feature: '', ocean: '', sea: '', range: '', desert: '' };
+const ICON = { human: '◆', robotic: '●', peak: '▲', feature: '', sea: '', range: '', desert: '' };
 
 /** Adds the labels to `map`; returns a function that shows/hides them. */
 export function addLandmarks(map, body) {
