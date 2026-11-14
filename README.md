@@ -204,6 +204,63 @@ Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antar
 Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
 Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
 
+### Moon and Mars 3D view: standing on the surface
+
+On the Moon or Mars, select a point and click **Stand here in 3D**: you stand there with your eyes
+1.8 m above the ground (`#/moon3d?lat=..&lon=..&t=..` or `#/mars3d?...`). Drag to look around, scroll
+or pinch to zoom (arrow keys and +/− work too). The time panel sets the date and time (default: now);
+the slider moves ±15 days on the Moon and ±3 sols on Mars, and **Play** runs time (Moon: 1, 6 or 24
+hours per second; Mars: 15 min, 1 h or 3 h per second), so you can watch a sunrise or a whole day.
+The panel says whether it's day or night, where the Sun, Earth (and on Mars, Phobos and Deimos) are,
+and when the next sunrise or sunset is. A compass strip along the top marks them.
+
+How it works (`src/surface3d/`, loaded only when opened; per-world settings in `worlds.js`):
+- **Terrain** (`dem.js`, `terrain.js`): four nested square heightfields around you, including the Moon's
+  curvature (a 1.8 m person's horizon is only ~2.5 km away; beyond it only higher ground shows):
+
+  | Ring | Size | Grid | Source |
+  |---|---|---|---|
+  | foot | ±100 m | 1 m | 'near' + made-up small craters (0.6-25 m), rocks and regolith texture |
+  | near | ±5 km | 20 m | LOLA 118 m + made-up craters 70-600 m |
+  | mid | ±40 km | 250 m | LOLA 118 m, every 4th sample (~470 m) |
+  | far | ±250 km | 2 km | LOLA 8 px/deg (~3.8 km), bundled: `public/surface3d/moon_8ppd.bin` |
+
+  On Mars the same rings use the HRSC + MOLA blended DEM (200 m; mid ring every 2nd sample) and MOLA
+  8 px/deg (`public/surface3d/mars_8ppd.bin`, far ring ±400 km), with made-up craters from 120 m.
+  The ground colour is a rust tone whose brightness follows the Viking colour mosaic (dark basalt sand
+  vs. bright dust).
+
+  The 118 m LOLA DEM is read straight from the USGS Astrogeology server: the file stores one image row
+  per strip, so the browser asks for just the bytes it needs of each row (HTTP range requests, 6 at a
+  time, `cache: 'no-store'` so Chrome doesn't queue them one by one). About 90 + 175 small requests;
+  ~5-10 s. The coarse landscape shows first, the detail fills in. Each ring fades its made-up detail
+  out and blends into the next coarser ring towards its edge.
+  Made-up detail is seeded by the location, so a place always looks the same.
+- **Sun and Earth** (`sky.js`): `astronomy-engine` gives the Sun, Earth and the Moon's rotation (IAU
+  model) for any time; from these come their directions in the observer's sky (Earth with parallax,
+  its size and lit fraction). Checked: at Apollo 11's landing (20 July 1969, 20:17 UTC) the Sun was
+  10.7° up in the east (historically ~10.8°); full and new moon put the sub-solar point at 0° / 180°.
+- **Shadows**: the terrain shader marches from each pixel towards the Sun through the four heightfields
+  (up to 250 km), with a soft edge the size of the Sun's disc, so a crater rim or a distant mountain
+  shades you correctly at any time. Rocks also cast shadow-mapped shadows within ~100 m.
+- **Light**: no air, so the sky is black and shadows are dark (a little light bounced from sunlit ground).
+  At night the ground is lit by earthshine, brightest at "full Earth" (lunar midnight on the near side);
+  the exposure adapts like eyes would. On the far side the Earth never rises.
+- **Mars sky**: a dusty atmosphere (optical depth 0.5): butterscotch sky by day, a blue glow round the
+  Sun at sunrise and sunset, sunlight dimmed and reddened near the horizon, haze over distance (~45 km).
+  The Sun is ~2/3 the size seen from Earth; Earth is a bright star. Mars's rotation comes from the IAU
+  model; checked: Curiosity's landing (6 Aug 2012, 05:17 UTC) gives mid-afternoon local solar time
+  (15:35), as reported.
+- **Phobos and Deimos** are drawn from mean orbital elements (JPL, with the precession of their orbits),
+  so their positions are approximate (a few degrees). Checked: on 2 April 2022 Phobos crosses the Sun
+  as seen from Jezero, the eclipse Perseverance filmed. Phobos rises in the west and sets in the east
+  twice a day; neither is visible from near the poles (above ~70° for Phobos).
+- Not yet: stars and planets, a real map of the Earth (it's a cloudy blue stand-in), the 5 m south-pole
+  DEM. Very close to the poles (above ~88°) the DEM rows are read at full width, so loading is slower.
+
+`tools/build_far_dem.mjs moon|mars` makes the far-terrain files from PDS `ldem_16.img` / MOLA
+`megt90n000eb.img` (downloaded to `data/raw/`).
+
 ### Moon thermal inertia: from Diviner's midnight temperatures
 
 Both worlds show thermal inertia, made the same way: ground with a high thermal inertia (rocks,

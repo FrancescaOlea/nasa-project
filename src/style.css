@@ -305,6 +305,32 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   font-variant-numeric: tabular-nums; }
 .radius-ticks span { position: absolute; transform: translateX(-50%); }
 
+/* ---- Moon / Mars: standing on the surface in 3D (src/surface3d) ---- */
+.panel .view-3d-btn { width: 100%; margin-top: .5rem; min-height: 40px; border-color: #ffb347; color: #ffd9a0; }
+.panel .view-3d-btn:hover { background: rgba(255,179,71,.14); }
+.view3d { position: fixed; inset: 0; background: #000; overflow: hidden; touch-action: none; }
+.v3-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; outline: none; }
+.v3-canvas:active { cursor: grabbing; }
+.v3-hud { position: absolute; left: 0; top: 0; width: 100%; height: 40px; pointer-events: none; }
+.v3-top { position: absolute; top: 52px; left: 12px; right: 12px; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.v3-where { color: #ccc; font-size: .82rem; background: rgba(0,0,0,.55); padding: .3rem .6rem; border-radius: 6px; }
+.v3-status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; padding: .7rem 1rem;
+  background: rgba(0,0,0,.72); color: #fff; border-radius: 8px; font-size: .9rem; text-align: center; max-width: calc(100% - 32px); }
+.panel.v3-panel { left: 12px; right: auto; bottom: 16px; width: min(360px, calc(100% - 24px)); max-height: calc(100% - 130px); overflow-y: auto; }
+.v3-time { display: flex; flex-direction: column; gap: .4rem; }
+.v3-date-row, .v3-play-row { display: flex; gap: .4rem; align-items: center; }
+.v3-date-row input { flex: 1; min-width: 0; font: inherit; font-size: .85rem; padding: .35rem .4rem; border-radius: 6px;
+  border: 1px solid #555; background: #1a1a20; color: #fff; color-scheme: dark; }
+.v3-time input[type="range"] { width: 100%; accent-color: #ffb347; }
+.v3-play-row button { padding: .35rem .7rem; }
+.v3-info { margin-top: .6rem !important; font-size: .85rem; line-height: 1.4; }
+.v3-info b { color: #ffd9a0; }
+.v3-note { margin-top: .6rem !important; color: #888; font-size: .72rem; line-height: 1.4; }
+@media (max-width: 600px) {
+  .panel.v3-panel { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 42vh; }
+  .v3-top { top: 46px; left: 8px; }
+}
+
 /* ---- Data credits (bottom right): small and quiet ---- */
 .leaflet-container .leaflet-control-attribution { background: rgba(0,0,0,.35); color: rgba(255,255,255,.55);
   font-size: 9.5px; line-height: 1.4; padding: 0 5px; border-top-left-radius: 4px; }
