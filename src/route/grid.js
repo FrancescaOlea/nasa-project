@@ -39,8 +39,8 @@ function tilePixels(url) {
 }
 
 /** Reads one layer's values (in real units) at its most detailed tile level. */
-export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax) {
-  const z = meta.max_zoom;
+export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax, zoom = meta.max_zoom) {
+  const z = Math.min(meta.max_zoom, zoom); // a coarser level reads fewer tiles for big areas
   const W = 512 * 2 ** z;
   const H = 256 * 2 ** z;
   const r0 = Math.max(0, Math.floor(((90 - latMax) / 180) * H));

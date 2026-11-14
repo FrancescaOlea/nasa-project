@@ -20,6 +20,10 @@ const MAX_SIDE = 420;          // mesh vertices along the longer side
 const MAX_REGION_KM = 1600;    // biggest area built at once
 const MIN_REGION_KM = 12;
 const EXAGGERATIONS = [1, 2, 3, 5, 10];
+const CONTEXT_FACTOR = 5;      // the surroundings reach this many times the area's size
+const CONTEXT_SIDE = 180;      // their mesh resolution (coarser: only for context)
+const FOG = '#2b1f19';         // haze colour at the horizon (matches the sky's lower edge)
+const SHOWCASE = { lat: -5.4, lon: 137.8, wKm: 320, hKm: 320, name: 'Gale Crater (Curiosity)' };
 const $ = (id) => document.getElementById(id);
 const fmtM = (km) => `${Math.round(km * 1000).toLocaleString()} m`;
 
@@ -56,7 +60,9 @@ export function createView3D({ routeEvents }) {
   let terrain = null;      // { mesh, heights, rows, cols, lat0, lon0, wKm, hKm, kx, slope }
   let routeGroup = null; let markerGroup = null; let hoverDot = null;
   let exaggeration = 3;
+  let userExaggeration = false; // the user picked one: don't change it automatically
   let colourMode = 'elevation';
+  let context = null;           // lower-detail surroundings, so the area isn't a floating square
   let animId = 0;
   let building = 0;
   let isOpen = false;
@@ -78,7 +84,7 @@ export function createView3D({ routeEvents }) {
     const sky = document.createElement('canvas');
     sky.width = 2; sky.height = 256;
     const sg = sky.getContext('2d').createLinearGradient(0, 0, 0, 256);
-    sg.addColorStop(0, '#07070a'); sg.addColorStop(0.62, '#141014'); sg.addColorStop(1, '#3b2a20');
+    sg.addColorStop(0, '#060609'); sg.addColorStop(0.55, '#120e11'); sg.addColorStop(0.8, FOG); sg.addColorStop(1, FOG);
     const sc = sky.getContext('2d'); sc.fillStyle = sg; sc.fillRect(0, 0, 2, 256);
     scene.background = new THREE.CanvasTexture(sky);
     scene.background.colorSpace = THREE.SRGBColorSpace;
@@ -193,9 +199,12 @@ export function createView3D({ routeEvents }) {
     const dLon = wKm / 2 / kx;
     const index = await loadIndex();
     const metas = index.mars;
-    const [elev, slope] = await Promise.all([
+    const cLat = Math.min(80, dLat * CONTEXT_FACTOR); const cLon = Math.min(179, dLon * CONTEXT_FACTOR);
+    const [elev, slope, surf, ctxElev] = await Promise.all([
       layerSampler('elevation', metas.elevation, lat0 - dLat, lat0 + dLat, lon0 - dLon, lon0 + dLon),
       layerSampler('slope', metas.slope, lat0 - dLat, lat0 + dLat, lon0 - dLon, lon0 + dLon),
+      layerSampler('surface', metas.surface, lat0 - dLat, lat0 + dLat, lon0 - dLon, lon0 + dLon),
+      layerSampler('elevation', metas.elevation, Math.max(-89, lat0 - cLat), Math.min(89, lat0 + cLat), lon0 - cLon, lon0 + cLon, 2),
     ]);
     if (my !== building) return;
     const cols = Math.round(wKm >= hKm ? MAX_SIDE : (MAX_SIDE * wKm) / hKm);
@@ -203,6 +212,7 @@ export function createView3D({ routeEvents }) {
     const n = rows * cols;
     const raw = new Float32Array(n);
     const slopes = new Float32Array(n);
+    const surface = new Float32Array(n); // TES thermal inertia: low = dust, high = rock
     let missing = 0;
     for (let r = 0; r < rows; r++) {
       const z = -hKm / 2 + (r / (rows - 1)) * hKm;
@@ -214,27 +224,110 @@ export function createView3D({ routeEvents }) {
         if (Number.isNaN(h)) { h = 0; missing++; }
         raw[r * cols + c] = h;
         slopes[r * cols + c] = slope.smooth(lat, lon);
+        surface[r * cols + c] = surf.smooth(lat, lon);
       }
     }
     // The tiles store elevation in ~115 m steps: blur over about one data pixel so the
     // steps don't show as terraces. (This doesn't remove real detail: there is none finer.)
     const pxKm = (180 / (256 * 2 ** metas.elevation.max_zoom)) * KM_PER_DEG;
     const cellKm = wKm / (cols - 1);
-    const heights = blur(raw, rows, cols, Math.max(0.6, (0.6 * pxKm) / cellKm));
+    const heights = blur(raw, rows, cols, Math.max(0.8, (1.1 * pxKm) / cellKm));
     terrain?.mesh.geometry.dispose();
     if (terrain) scene.remove(terrain.mesh);
-    terrain = { rows, cols, wKm, hKm, lat0, lon0, kx, heights, slopes, cellKm, pxKm, missing };
+    terrain = { rows, cols, wKm, hKm, lat0, lon0, kx, heights, slopes, surface, cellKm, pxKm, missing };
+    if (!userExaggeration) exaggeration = autoExaggeration(heights, Math.max(wKm, hKm));
+    refreshButtons();
     makeMesh();
+    makeContext(ctxElev);
     await applyColours();
     if (my !== building) return;
     placeSun();
+    scene.fog = new THREE.Fog(FOG, Math.max(wKm, hKm) * 1.1, Math.max(wKm, hKm) * CONTEXT_FACTOR * 0.9);
     resetCamera();
     drawRoute();
     root.classList.remove('busy');
     let lo = Infinity; let hi = -Infinity;
     for (const h of heights) { if (h < lo) lo = h; if (h > hi) hi = h; }
-    setStatus(`${Math.round(wKm).toLocaleString()} × ${Math.round(hKm).toLocaleString()} km · elevation ${fmtM(lo)} to ${fmtM(hi)}`);
+    setStatus(`${region.name ? `${region.name} · ` : ''}${Math.round(wKm).toLocaleString()} × ${Math.round(hKm).toLocaleString()} km · elevation ${fmtM(lo)} to ${fmtM(hi)}${region.note ? ` · ${region.note}` : ''}`);
     updateInfo();
+    // try the spacecraft images in the background; switch to them if the servers allow it
+    if (colourMode === 'elevation' && !triedImagery) {
+      triedImagery = true;
+      tryImagery(my);
+    }
+  }
+
+  let triedImagery = false;
+  async function tryImagery(my) {
+    const tex = await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null);
+    if (!tex || my !== building || colourMode !== 'elevation') return;
+    colourMode = 'imagery';
+    refreshButtons();
+    await applyColours(tex);
+  }
+
+  // Heights exaggerated so the relief reads well: the tallest features become ~7% of the
+  // area's width (rounded to one of the offered factors, at most x10). Always shown on screen.
+  function autoExaggeration(heights, size) {
+    const sorted = Float32Array.from(heights).sort();
+    const relief = Math.max(0.05, sorted[Math.floor(sorted.length * 0.99)] - sorted[Math.floor(sorted.length * 0.01)]);
+    const ideal = (0.07 * size) / relief;
+    let best = 1;
+    for (const x of EXAGGERATIONS) if (Math.abs(Math.log(x / ideal)) < Math.abs(Math.log(best / ideal))) best = x;
+    return best;
+  }
+
+  // The surroundings: same real elevation, coarser, a little lower so the detailed area sits
+  // on top, fading into the haze. Without it the area floats like a tile in space.
+  function makeContext(sampler) {
+    if (context) { scene.remove(context.mesh); context.mesh.geometry.dispose(); context.mesh.material.dispose(); }
+    const { wKm, hKm, lat0, lon0, kx } = terrain;
+    const W = wKm * CONTEXT_FACTOR; const Hh = hKm * CONTEXT_FACTOR;
+    const cols = CONTEXT_SIDE; const rows = Math.max(8, Math.round((CONTEXT_SIDE * Hh) / W));
+    const geo = new THREE.PlaneGeometry(W, Hh, cols - 1, rows - 1);
+    geo.rotateX(-Math.PI / 2);
+    const pos = geo.attributes.position;
+    const heights = new Float32Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i); const z = pos.getZ(i);
+      const lat = Math.max(-89, Math.min(89, lat0 - z / KM_PER_DEG));
+      const lon = ((((lon0 + x / kx) + 180) % 360) + 360) % 360 - 180;
+      const h = sampler.smooth(lat, lon);
+      heights[i] = Number.isNaN(h) ? 0 : h;
+    }
+    // smooth away the 115 m storage steps (they'd show as terraces once exaggerated)
+    const ctxPxKm = (180 / (256 * 2 ** 2)) * KM_PER_DEG;
+    const smoothed = blur(heights, rows, cols, Math.max(1, (1.2 * ctxPxKm) / (W / (cols - 1))));
+    heights.set(smoothed);
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3));
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    context = { mesh, heights };
+    shapeContext();
+  }
+  function shapeContext() {
+    if (!context) return;
+    const pos = context.mesh.geometry.attributes.position;
+    const drop = Math.max(terrain.wKm, terrain.hKm) * 0.0012;
+    for (let i = 0; i < pos.count; i++) {
+      // inside the detailed area, tuck the coarse surface under it
+      const inside = Math.abs(pos.getX(i)) < terrain.wKm / 2 && Math.abs(pos.getZ(i)) < terrain.hKm / 2;
+      pos.setY(i, context.heights[i] * exaggeration - (inside ? drop * 4 : drop));
+    }
+    pos.needsUpdate = true;
+    context.mesh.geometry.computeVertexNormals();
+    context.mesh.geometry.computeBoundingSphere();
+  }
+  function colourContext(lo, span) {
+    if (!context) return;
+    const col = context.mesh.geometry.attributes.color;
+    for (let i = 0; i < col.count; i++) {
+      const c = ramp(ELEV_STOPS, (context.heights[i] - lo) / span);
+      col.setXYZ(i, c[0] * 0.85, c[1] * 0.85, c[2] * 0.85);
+    }
+    col.needsUpdate = true;
   }
 
   function blur(src, rows, cols, sigma) {
@@ -285,20 +378,21 @@ export function createView3D({ routeEvents }) {
     terrain.mesh.geometry.computeVertexNormals();
     terrain.mesh.geometry.computeBoundingSphere();
     terrain.mesh.geometry.computeBoundingBox();
-    // keep the camera's height above ground in step with the new heights
+    shapeContext();
     drawRoute();
     updateInfo();
   }
 
-  async function applyColours() {
-    const { heights, slopes, mesh } = terrain;
+  async function applyColours(readyTexture = null) {
+    const { heights, slopes, surface, mesh } = terrain;
     const col = mesh.geometry.attributes.color;
     let lo = Infinity; let hi = -Infinity;
     for (const h of heights) { if (h < lo) lo = h; if (h > hi) hi = h; }
     const span = Math.max(0.05, hi - lo);
     mesh.material.map = null;
+    colourContext(lo, span);
     if (colourMode === 'imagery') {
-      const tex = await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null);
+      const tex = readyTexture ?? await Promise.race([imageryTexture(), new Promise((r) => setTimeout(() => r(null), 12000))]).catch(() => null);
       if (tex) {
         for (let i = 0; i < col.count; i++) col.setXYZ(i, 1, 1, 1);
         mesh.material.map = tex;
@@ -312,16 +406,26 @@ export function createView3D({ routeEvents }) {
       setStatus('The image servers don\'t allow their pictures to be used in 3D here, so the terrain is coloured by elevation.');
     }
     for (let i = 0; i < col.count; i++) {
-      const c = colourMode === 'slope'
-        ? (Number.isNaN(slopes[i]) ? [0.5, 0.5, 0.5] : ramp(SLOPE_STOPS, slopes[i] / 25))
-        : ramp(ELEV_STOPS, (heights[i] - lo) / span);
+      let c;
+      if (colourMode === 'slope') {
+        c = Number.isNaN(slopes[i]) ? [0.5, 0.5, 0.5] : ramp(SLOPE_STOPS, slopes[i] / 25);
+      } else {
+        c = ramp(ELEV_STOPS, (heights[i] - lo) / span);
+        // real surface type (TES thermal inertia): fine bright dust lighter, rock and bedrock darker
+        const ti = surface[i];
+        if (!Number.isNaN(ti)) {
+          const t = Math.min(1, Math.max(-1, (Math.log10(ti) - Math.log10(250)) / 0.6));
+          const f = 1 - 0.16 * t;
+          c = [c[0] * f, c[1] * f, c[2] * (1 - 0.1 * t)];
+        }
+      }
       col.setXYZ(i, c[0], c[1], c[2]);
     }
     col.needsUpdate = true;
     mesh.material.needsUpdate = true;
     $('view3d-legend').innerHTML = colourMode === 'slope'
       ? 'Colour: slope at ~2 km scale (MOLA) · <span style="color:#4ca06e">■</span> flat · <span style="color:#d7be5a">■</span> 8° · <span style="color:#e6823c">■</span> 15° · <span style="color:#c83232">■</span> 25°+'
-      : `Colour: elevation · dark = ${fmtM(lo)} · pale = ${fmtM(hi)}`;
+      : `Colour: elevation (dark = ${fmtM(lo)}, pale = ${fmtM(hi)}), lighter where the ground is dusty and darker where it's rocky (TES thermal inertia)`;
   }
 
   // Spacecraft images for the texture, read from the same tile servers as the 2D map.
@@ -573,13 +677,13 @@ export function createView3D({ routeEvents }) {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = `×${x}`; b.dataset.exag = x; b.setAttribute('role', 'radio');
     b.title = x === 1 ? 'True heights' : `Heights exaggerated ${x} times`;
-    b.onclick = () => { setExaggeration(x); refreshButtons(); };
+    b.onclick = () => { userExaggeration = true; setExaggeration(x); refreshButtons(); };
     return b;
   }));
   $('view3d-colour').replaceChildren(...[['elevation', 'Elevation'], ['slope', 'Slope'], ['imagery', 'Images']].map(([k, label]) => {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = label; b.dataset.colour = k; b.setAttribute('role', 'radio');
-    b.onclick = async () => { colourMode = k; refreshButtons(); if (terrain) await applyColours(); };
+    b.onclick = async () => { colourMode = k; triedImagery = true; refreshButtons(); if (terrain) await applyColours(); };
     return b;
   }));
   refreshButtons();
@@ -627,7 +731,14 @@ export function createView3D({ routeEvents }) {
     loop();
     const state = planner?.result();
     $('view3d-route').hidden = !state?.route;
-    const reg = regionFromRoute(state) ?? getLeafletView();
+    let reg = regionFromRoute(state);
+    if (!reg) {
+      const v = getLeafletView();
+      reg = v.wKm > MAX_REGION_KM
+        ? { ...SHOWCASE, note: 'zoom the 2D map in on any area, or plan a route, to see it here' }
+        : v;
+    }
+    triedImagery = false;
     build(reg);
   }
   function close() {
