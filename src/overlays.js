@@ -19,7 +19,7 @@ export const VIEWS = {
   surface: { name: 'Dusty or rocky terrain', short: 'Dust / rock' },
   iron: { name: 'Minerals: iron content', short: 'Iron' },
   ice: { name: 'Underground ice', short: 'Underground ice' },
-  temperature: { name: 'Temperature', short: 'Temperature' },
+  temperature: { name: 'Average temperature', short: 'Avg. temperature' },
   temp_range: { name: 'Daily temperature variation', short: 'Daily temp. swing' },
   temp_yearly: { name: 'Yearly temperature range', short: 'Yearly temp. range' },
   temp_max: { name: 'Maximum temperature', short: 'Max. temperature' },
@@ -42,6 +42,13 @@ const PALETTES = {
   coolwarm: [
     [0.0, [49, 54, 149]], [0.15, [69, 117, 180]], [0.3, [116, 173, 209]], [0.45, [224, 243, 248]],
     [0.55, [254, 224, 144]], [0.7, [253, 174, 97]], [0.85, [244, 109, 67]], [1.0, [165, 0, 38]],
+  ],
+  // Moon / Mars elevation: relief colours like NASA's MOLA maps (deep blue low -> green ->
+  // yellow -> orange -> red -> white peaks), so the map isn't mostly one colour.
+  topo: [
+    [0.0, [38, 26, 104]], [0.07, [42, 84, 186]], [0.15, [48, 160, 214]], [0.25, [62, 178, 128]],
+    [0.4, [170, 206, 84]], [0.55, [240, 205, 70]], [0.7, [236, 140, 52]], [0.84, [196, 74, 48]],
+    [0.93, [150, 104, 92]], [1.0, [248, 248, 248]],
   ],
   terrain: [
     [0.0, [52, 128, 70]], [0.1, [104, 160, 82]], [0.25, [186, 196, 116]], [0.4, [226, 205, 140]],

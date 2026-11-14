@@ -154,11 +154,11 @@ function openMap(key, params) {
     maxBounds: proj.bounds ?? undefined,
     maxBoundsViscosity: 1.0, // hard stop at the map edges
     zoomControl: false,
+    doubleClickZoom: false, // a second click on the selected area zooms to it instead
   });
-  // Credit Leaflet with a plain link (its default prefix also shows a flag icon)
-  map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
   if (import.meta.env.DEV) window.map = map; // handy for debugging in the browser console
   // Zoom buttons: a see-through horizontal bar at the top centre of the map
+  map.attributionControl.setPrefix(false); // no 'Leaflet' link; the data credits stay
   const zoom = L.control.zoom({ position: 'topright' }).addTo(map);
   const zoomEl = zoom.getContainer();
   zoomEl.classList.add('zoom-bar');
@@ -476,8 +476,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     }
   }
 
+  let zoomedIn = false; // has the current area already been zoomed to (second click)?
   function select(lat, lon, opts) {
     current = { lat, lon };
+    zoomedIn = false;
     $('select-hint').hidden = true;
     $('select-info').hidden = false;
     $('select-coords').textContent = formatLatLon(lat, lon);
@@ -487,6 +489,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   }
 
   function clear() {
+    zoomedIn = false;
     if (shapes) shapes.remove();
     shapes = null;
     current = null;
@@ -536,9 +539,48 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       const raw = map.containerPointToLayerPoint(e.containerPoint).add(map.getPixelOrigin());
       if (!proj.inside(raw.x / n, raw.y / n)) return;
     }
+    // a click on the area that's already selected zooms to it; anywhere else selects a new area
+    // the second click on the selected area zooms to it, once; after that, clicks inside it do
+    // nothing (no zooming again), until a new area is selected by clicking outside it
+    if (current && insideSelection(e.containerPoint)) {
+      if (!zoomedIn) { zoomedIn = true; zoomToSelection(); }
+      return;
+    }
     select(e.latlng.lat, e.latlng.lng);
   });
   $('clear-selection').onclick = clear;
+
+  // Is a screen point on the selected area? (Tiny areas count within ~14 px of their centre,
+  // so they can be clicked again even when the map is zoomed far out.)
+  function insideSelection(point) {
+    const ring = circlePoints(current.lat, current.lon, radiusKm, body.radiusKm);
+    const c = map.latLngToContainerPoint([current.lat, current.lon]);
+    const reach = Math.max(14, ...ring.map((ll) => c.distanceTo(map.latLngToContainerPoint(ll))));
+    return c.distanceTo(point) <= reach;
+  }
+  // Zoom so the selected area fills the free part of the screen - the same size on screen
+  // whatever its radius. Fitted in screen pixels, so it works in every projection (also
+  // around a pole, where a latitude/longitude box doesn't).
+  function zoomToSelection() { zoomToArea(current.lat, current.lon, radiusKm); }
+  // Fly to a circular area so it fills the free part of the screen (selected area, similar spots)
+  function zoomToArea(lat, lon, km) {
+    const ring = circlePoints(lat, lon, km, body.radiusKm);
+    // measured at the most detailed zoom, so even a 1 km area is many pixels wide
+    const z0 = map.getMaxZoom();
+    const pts = ring.map((ll) => map.project(ll, z0));
+    const xs = pts.map((q) => q.x); const ys = pts.map((q) => q.y);
+    const bw = Math.max(1, Math.max(...xs) - Math.min(...xs));
+    const bh = Math.max(1, Math.max(...ys) - Math.min(...ys));
+    const { paddingTopLeft: [pl, pt], paddingBottomRight: [pr, pb] } = freeScreenPadding(6);
+    const size = map.getSize();
+    const freeW = size.x - pl - pr; const freeH = size.y - pt - pb;
+    const z = Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), z0 + Math.log2(Math.min(freeW / bw, freeH / bh))));
+    const k = 2 ** (z - z0);
+    // the area's middle goes to the middle of the free part of the screen
+    const mid = L.point((Math.min(...xs) + Math.max(...xs)) / 2 * k, (Math.min(...ys) + Math.max(...ys)) / 2 * k);
+    const shift = L.point(pl + freeW / 2 - size.x / 2, pt + freeH / 2 - size.y / 2);
+    map.flyTo(map.unproject(mid.subtract(shift), z), z, { duration: 0.8 });
+  }
 
   // 'Find similar spots' first asks how much each characteristic should count.
   async function chooseWeights() {
@@ -670,7 +712,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       li.querySelector('.num').textContent = i + 1;
       li.querySelector('.where').textContent = `${formatLatLon(res.lat, res.lon)} · ${formatKm(res.km)}`;
       li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
-      li.querySelector('button').onclick = () => pick(i, true);
+      li.querySelector('button').onclick = () => pick(i);
       return li;
     });
     $('analog-results').replaceChildren(...items);
@@ -680,14 +722,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       map.flyToBounds(all, { padding: [80, 80], duration: 0.8, maxZoom: map.getZoom() + 1 });
     }
 
-    function pick(i, fly = false) {
+    // clicking a spot (in the list or its marker on the map) zooms so it fills the free screen
+    function pick(i) {
       const res = results[i];
       items.forEach((li, j) => li.querySelector('button').setAttribute('aria-pressed', i === j));
       markers.forEach((m, j) => m.getElement()?.firstChild?.classList.toggle('picked', i === j));
-      if (fly) {
-        map.flyToBounds(L.latLngBounds(circlePoints(res.lat, res.lon, Math.max(r, 50), body.radiusKm)),
-          { padding: [60, 60], duration: 0.8 });
-      }
+      zoomToArea(res.lat, res.lon, r);
       const rows = used.map((k) => `<tr><td>${VIEWS[k].name}</td><td>${formatValue(available[k], siteValues[k])}</td>` +
         `<td>${formatValue(available[k], res.values[k])}</td></tr>`);
       const box = $('analog-compare');
@@ -716,20 +756,33 @@ function parseCount(text, fallback = DEFAULT_COUNT) {
 // Padding for fitting something into the part of the map not covered by panels: the
 // results panel (left on wide screens, bottom on phones), the area summary (top right),
 // the top buttons and the bottom-left map controls.
-function freeScreenPadding() {
+function freeScreenPadding(gap = 24) {
   const W = window.innerWidth;
   const H = window.innerHeight;
   const box = (id) => { const el = $(id); return el && !el.hidden ? el.getBoundingClientRect() : null; };
   const left = box('analog-banner');
   const summary = box('area-panel');
-  const gap = 24;
+  const selectPanel = box('select-panel');
   let pl = gap; let pr = gap; let pt = 70 + gap; let pb = gap;
   if (W > 600) {
     if (left) pl = Math.max(pl, left.right + gap);
     if (summary) pr = Math.max(pr, W - summary.left + gap);
+    if (selectPanel) pr = Math.max(pr, W - selectPanel.left + gap);
+    // bottom-left map controls (legend, landmarks switch, zoom readout)
+    const controls = document.querySelector('#map-view .leaflet-bottom.leaflet-left')?.getBoundingClientRect();
+    if (controls && controls.width > 0) pl = Math.max(pl, controls.right + gap);
   } else {
     if (left) pb = Math.max(pb, H - left.top + gap);
+    if (selectPanel) pb = Math.max(pb, H - selectPanel.top + gap);
     if (summary) pt = Math.max(pt, summary.bottom + gap);
+    // bottom-left map controls: keep the area beside them or above them, whichever leaves more room
+    const controls = document.querySelector('#map-view .leaflet-bottom.leaflet-left')?.getBoundingClientRect();
+    if (controls && controls.width > 0 && controls.top < H - pb) {
+      const besideW = W - (controls.right + gap) - pr; const besideH = H - pt - pb;
+      const aboveW = W - pl - pr; const aboveH = controls.top - gap - pt;
+      if (Math.min(besideW, besideH) >= Math.min(aboveW, aboveH)) pl = Math.max(pl, controls.right + gap);
+      else pb = Math.max(pb, H - controls.top + gap);
+    }
   }
   // always leave room for the area itself: a third of the width, and at least 160 px of height
   pl = Math.min(pl, W / 3); pr = Math.min(pr, W / 3);

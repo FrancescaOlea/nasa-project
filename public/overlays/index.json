@@ -26,7 +26,8 @@
       "enc_max": 21.181,
       "pixel_km": 1.9,
       "max_zoom": 4,
-      "format": "webp"
+      "format": "webp",
+      "palette": "topo"
     },
     "surface": {
       "unit": "TIU",
@@ -612,7 +613,8 @@
       "enc_max": 10.711125,
       "pixel_km": 1.9,
       "max_zoom": 3,
-      "format": "webp"
+      "format": "webp",
+      "palette": "topo"
     },
     "surface": {
       "unit": "TIU",

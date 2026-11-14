@@ -547,9 +547,9 @@ def catalogue():
         return temps[which], 0.5
 
     return {
-        ('mars', 'elevation'): (lambda: elevation('mars'), dict(unit='km', log=False, min=-8, max=12), 4,
+        ('mars', 'elevation'): (lambda: elevation('mars'), dict(unit='km', log=False, min=-8, max=12, palette='topo'), 4,
                                 'Height above the average surface level (MOLA, MGS).'),
-        ('moon', 'elevation'): (lambda: elevation('moon'), dict(unit='km', log=False, min=-6, max=6), 3,
+        ('moon', 'elevation'): (lambda: elevation('moon'), dict(unit='km', log=False, min=-6, max=6, palette='topo'), 3,
                                 'Height above the average surface level (LOLA, LRO).'),
         ('mars', 'slope'): (lambda: slope('mars'), SLOPE, 4,
                             'How steep the ground is, in degrees, between points ~1.9 km apart (MOLA).'),
