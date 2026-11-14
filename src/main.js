@@ -148,7 +148,11 @@ function openMap(key, params) {
     zoomControl: false,
   });
   if (import.meta.env.DEV) window.map = map; // handy for debugging in the browser console
-  L.control.zoom({ position: 'topright' }).addTo(map);
+  // Zoom buttons: a see-through horizontal bar at the top centre of the map
+  const zoom = L.control.zoom({ position: 'topright' }).addTo(map);
+  const zoomEl = zoom.getContainer();
+  zoomEl.classList.add('zoom-bar');
+  map.getContainer().appendChild(zoomEl); // out of Leaflet's corner, positioned by CSS
   body.layers.forEach((layer, i) => {
     // Each layer gets its own pane so it can have its own blend/filter.
     const pane = `layer${i}`;
