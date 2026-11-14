@@ -155,6 +155,7 @@ function openMap(key, params) {
   });
   if (import.meta.env.DEV) window.map = map; // handy for debugging in the browser console
   // Zoom buttons: a see-through horizontal bar at the top centre of the map
+  map.attributionControl.setPrefix(false); // no 'Leaflet' link; the data credits stay
   const zoom = L.control.zoom({ position: 'topright' }).addTo(map);
   const zoomEl = zoom.getContainer();
   zoomEl.classList.add('zoom-bar');
