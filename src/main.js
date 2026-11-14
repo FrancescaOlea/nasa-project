@@ -638,10 +638,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (!Object.keys(available).length || !(await chooseWeights())) return;
     showSimilarResults();
   };
-  // Moon only: stand at the selected point in 3D
-  $('view-3d').hidden = key !== 'moon';
+  // Moon and Mars: stand at the selected point in 3D
+  $('view-3d').hidden = !WORLDS_3D.includes(key);
   $('view-3d').onclick = () => {
-    location.hash = `#/moon3d?lat=${current.lat.toFixed(5)}&lon=${current.lon.toFixed(5)}`;
+    location.hash = `#/${key}3d?lat=${current.lat.toFixed(5)}&lon=${current.lon.toFixed(5)}`;
   };
 
   // ---- 'Find similar spots': search this world, show the best spots on the map
@@ -947,43 +947,45 @@ function showHome() {
 //   #/earth?from=mars                     Earth map, opened from Mars (switch button goes back)
 //   #/earth?from=mars&site=lat,lon&sr=10&w=..  Earth map, looking for analogs of a Mars area
 //   (Earth's own selection and view use lat/lon/r/view like the other maps)
-//   #/moon3d?lat=..&lon=..&t=ISO           standing on the Moon in 3D at that time
+//   #/moon3d?lat=..&lon=..&t=ISO           standing on the Moon in 3D at that time (#/mars3d: Mars)
+const WORLDS_3D = ['moon', 'mars'];
 function route() {
   const [path, query = ''] = location.hash.replace(/^#\/?/, '').split('?');
   if (map) { map.remove(); map = null; }
   close3D?.(); close3D = null;
   $('view3d').hidden = true;
   hidePanels();
-  if (path === 'moon3d') open3DPage(new URLSearchParams(query));
+  const world3d = WORLDS_3D.find((w) => path === `${w}3d`);
+  if (world3d) open3DPage(world3d, new URLSearchParams(query));
   else if (BODIES[path]) openMap(path, new URLSearchParams(query));
   else showHome();
 }
 
-// ---- Moon: stand on the surface in 3D (code loaded only when opened) ---------------------
+// ---- Moon / Mars: stand on the surface in 3D (code loaded only when opened) ---------------
 let close3D = null;
-function open3DPage(params) {
+function open3DPage(world, params) {
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) { location.hash = '#/moon'; return; }
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) { location.hash = `#/${world}`; return; }
   const t = new Date(params.get('t') ?? '');
   home.hidden = true;
   mapView.hidden = true;
   $('view3d').hidden = false;
-  document.title = 'Moon 3D · Planet Maps';
+  document.title = `${BODIES[world].name} 3D · Planet Maps`;
   const els = Object.fromEntries(['canvas', 'hud', 'back', 'where', 'status', 'date', 'now', 'slider', 'play', 'speed',
-    'offset', 'sun', 'earth', 'next'].map((k) => [k, $(`v3-${k}`)]));
+    'offset', 'sun', 'earth', 'next', 'note'].map((k) => [k, $(`v3-${k}`)]));
   els.status.hidden = false;
   els.status.textContent = 'Loading the 3D view…';
   const hash = location.hash;
-  import('./moon3d/view.js').then(({ open3D }) => {
+  import('./surface3d/view.js').then(({ open3D }) => {
     if (location.hash !== hash) return; // left meanwhile
     close3D = open3D(els, {
-      lat, lon,
+      world, lat, lon,
       date: Number.isNaN(t.getTime()) ? new Date() : t,
-      onBack: () => { location.hash = lastPage.moon ?? `#/moon?lat=${lat}&lon=${lon}`; },
+      onBack: () => { location.hash = lastPage[world] ?? `#/${world}?lat=${lat}&lon=${lon}`; },
       onTime: (date) => {
         const q = new URLSearchParams({ lat, lon, t: date.toISOString().slice(0, 16) + 'Z' });
-        history.replaceState(null, '', `#/moon3d?${q}`);
+        history.replaceState(null, '', `#/${world}3d?${q}`);
       },
     });
     $('v3-canvas').focus();

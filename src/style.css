@@ -291,7 +291,7 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
   font-variant-numeric: tabular-nums; }
 .radius-ticks span { position: absolute; transform: translateX(-50%); }
 
-/* ---- Moon: standing on the surface in 3D (src/moon3d) ---- */
+/* ---- Moon / Mars: standing on the surface in 3D (src/surface3d) ---- */
 .panel .view-3d-btn { width: 100%; margin-top: .5rem; min-height: 40px; border-color: #ffb347; color: #ffd9a0; }
 .panel .view-3d-btn:hover { background: rgba(255,179,71,.14); }
 .view3d { position: fixed; inset: 0; background: #000; overflow: hidden; touch-action: none; }

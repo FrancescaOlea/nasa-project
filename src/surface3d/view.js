@@ -1,23 +1,25 @@
-// "3D view from here" on the Moon: stand at a point, 1.8 m eye height, look around, change
-// the time and watch the light and shadows. Loaded only when opened (dynamic import).
+// "Stand here in 3D" on the Moon or Mars: stand at a point, 1.8 m eye height, look around,
+// change the time and watch the light, shadows and sky. Loaded only when opened.
 import * as THREE from 'three';
-import { loadFar, loadLola } from './dem.js';
-import { buildLevels, levelGeometry, heightTexture, heightAt, sunVisibility, rng, LEVELS } from './terrain.js';
+import { WORLDS } from './worlds.js';
+import { loadFar, loadDetail, loadColours } from './dem.js';
+import { levelsFor, buildLevels, levelGeometry, heightTexture, heightAt, sunVisibility, rng } from './terrain.js';
 import { skyAt, azEl, nextSunCrossing } from './sky.js';
 
 const EYE_M = 1.8;
-const SUN_RADIUS_DEG = 0.267;
 const DAY_EXPOSURE = 1.0;
-const NIGHT_EXPOSURE = 9.0; // eyes adapted to earthshine
+const NIGHT_EXPOSURE = 9.0; // eyes adapted to earthshine (Moon)
+const SKY_D = 1000;         // distance of sky objects in the sky scene
 
 // local east/north/up -> three.js (x = east, y = up, z = -north)
 const toThree = (v) => new THREE.Vector3(v.x, v.z, -v.y);
+const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // ---- terrain shadows on the GPU: march towards the Sun through the four heightfields ----
 
 const SHADOW_GLSL = /* glsl */`
 uniform sampler2D uH0; uniform sampler2D uH1; uniform sampler2D uH2; uniform sampler2D uH3;
-uniform vec4 uHalf; uniform vec4 uN; uniform vec3 uSunDir; uniform float uMaxZ;
+uniform vec4 uHalf; uniform vec4 uN; uniform vec3 uSunDir; uniform float uMaxZ; uniform float uSunTan;
 varying vec3 vTW;
 float hLevel(sampler2D tex, float hs, float n, vec2 xy) {
   vec2 g = clamp((xy + hs) / (2.0 * hs) * (n - 1.0), vec2(0.0), vec2(n - 1.001));
@@ -46,10 +48,10 @@ float terrainSun(vec3 w) {
   float cell = tCell(p0);
   float z0 = w.y + 0.04 * cell + 0.01;
   float vis = 1.0; float t = cell;
-  for (int k = 0; k < 280; k++) {
+  for (int k = 0; k < 320; k++) {
     vec2 p = p0 + dir * t; float pz = z0 + sz * t;
     if (max(abs(p.x), abs(p.y)) > uHalf.w) break;
-    vis = min(vis, (pz - tHeight(p)) / (t * 0.00466));
+    vis = min(vis, (pz - tHeight(p)) / (t * uSunTan));
     if (vis < -1.0) return 0.0;
     if (pz > uMaxZ && sz > 0.0) break;
     t += max(0.12, t * 0.045);
@@ -82,7 +84,42 @@ function shadowedMaterial(uniforms, opts) {
   return mat;
 }
 
-// ---- rocks (made up) ----------------------------------------------------------------------
+// ---- Mars sky: dusty air -----------------------------------------------------------------
+// Fine dust scatters red light out of the sky (butterscotch by day) and scatters blue light
+// forwards, so the sky round the Sun turns blue at sunset. A simple analytic model of that.
+const SKY_GLSL_V = /* glsl */`
+varying vec3 vDir;
+void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const SKY_GLSL_F = /* glsl */`
+uniform vec3 uSun; uniform vec3 uZenith; uniform vec3 uHorizon; uniform vec3 uGlow;
+uniform float uDay; uniform float uTwi; uniform float uScale;
+varying vec3 vDir;
+void main() {
+  vec3 v = normalize(vDir);
+  float h = max(v.y, 0.0);
+  vec3 base = mix(uHorizon, uZenith, pow(h, 0.45));
+  float th = acos(clamp(dot(v, uSun), -1.0, 1.0));
+  vec3 col = base * uDay * (1.0 + 1.3 * exp(-th * 2.2));
+  col += uGlow * (1.8 * exp(-th * 7.0) + 0.45 * exp(-th * 2.0)) * uTwi * (0.45 + 0.55 * exp(-h * 5.0));
+  gl_FragColor = vec4(col * uScale, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+
+// three.js' ACES filmic tone mapping + sRGB encoding, so the haze colour (applied after tone
+// mapping) matches the sky drawn behind the terrain
+function displayColour([r, g, b], exposure) {
+  const k = exposure / 0.6;
+  const c = [r * k, g * k, b * k];
+  const i = [0.59719 * c[0] + 0.35458 * c[1] + 0.04823 * c[2], 0.076 * c[0] + 0.90834 * c[1] + 0.01566 * c[2],
+    0.0284 * c[0] + 0.13383 * c[1] + 0.83777 * c[2]];
+  const f = i.map((v) => (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081));
+  const o = [1.60475 * f[0] - 0.53108 * f[1] - 0.07367 * f[2], -0.10208 * f[0] + 1.10813 * f[1] - 0.00605 * f[2],
+    -0.00327 * f[0] - 0.07276 * f[1] + 1.07602 * f[2]];
+  return o.map((v) => { v = Math.min(1, Math.max(0, v)); return v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055; });
+}
+
+// ---- made-up rocks ---------------------------------------------------------------------------
 
 function rockGeometries(random) {
   return [0, 1, 2].map((v) => {
@@ -103,13 +140,14 @@ function rockGeometries(random) {
 
 // ---- sky textures ---------------------------------------------------------------------------
 
+const CORE = 0.085; // the Sun's disc as a share of its glow sprite
 function sunTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = 256;
   const g = c.getContext('2d');
   const grad = g.createRadialGradient(128, 128, 0, 128, 128, 128);
   grad.addColorStop(0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.085, 'rgba(255,255,250,1)');
+  grad.addColorStop(CORE, 'rgba(255,255,250,1)');
   grad.addColorStop(0.1, 'rgba(255,250,235,0.55)');
   grad.addColorStop(0.25, 'rgba(255,240,220,0.12)');
   grad.addColorStop(1, 'rgba(255,240,220,0)');
@@ -120,8 +158,22 @@ function sunTexture() {
   return t;
 }
 
+function starTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.15, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,0.15)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
 function earthTexture() {
-  // a stand-in: ocean blue with white cloud swirls (a real map of Earth comes next)
+  // a stand-in: ocean blue with white cloud swirls
   const c = document.createElement('canvas');
   c.width = 512; c.height = 256;
   const g = c.getContext('2d');
@@ -146,13 +198,29 @@ function earthTexture() {
   return t;
 }
 
+// Phobos / Deimos: lumpy potatoes (Phobos 27 x 22 x 18 km, Deimos 15 x 12 x 11 km)
+function moonGeometry(random, axes) {
+  const g = new THREE.IcosahedronGeometry(1, 3);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const d = new THREE.Vector3().fromBufferAttribute(p, i);
+    const s = 1 + 0.06 * Math.sin(d.x * 7 + random()) * Math.cos(d.y * 5) - 0.05 * Math.max(0, d.dot(new THREE.Vector3(0.6, 0.5, 0.6)) - 0.8) * 8;
+    p.setXYZ(i, d.x * s * axes[0], d.y * s * axes[1], d.z * s * axes[2]);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 // ---- the view ---------------------------------------------------------------------------------
 
 /**
- * Open the 3D view. `els` = the page's elements; `onBack()` leaves; `onTime(date)` reports
- * time changes (for the address). Returns a function that closes the view.
+ * Open the 3D view on `world` ('moon' | 'mars'). `els` = the page's elements; `onBack()` leaves;
+ * `onTime(date)` reports time changes (for the address). Returns a function that closes it.
  */
-export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
+export function open3D(els, { world: key, lat, lon, date: startDate, onBack, onTime }) {
+  const W = WORLDS[key];
+  const air = W.atmosphere;
+  const LEVELS = levelsFor(W);
   const { canvas, hud } = els;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
@@ -163,14 +231,16 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
   renderer.autoClear = false;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 400000);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.05, LEVELS[3].half * 1.6);
   camera.rotation.order = 'YXZ';
   const skyScene = new THREE.Scene();
   const skyCam = new THREE.PerspectiveCamera(60, 1, 1, 5000);
   skyCam.rotation.order = 'YXZ';
+  const fog = air ? new THREE.FogExp2(0x000000, 0.833 / (air.hazeKm * 1000)) : null;
+  scene.fog = fog;
 
   // lights: the Sun (casts rock shadows near you; terrain shadows come from the shader),
-  // earthshine, and a little fill for light bounced off sunlit ground
+  // earthshine (Moon) or skylight (Mars), and fill for light bounced off sunlit ground
   const sunLight = new THREE.DirectionalLight(0xfffaf2, 3.2);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(4096, 4096);
@@ -182,6 +252,8 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
   scene.add(earthLight, earthLight.target);
   const fill = new THREE.AmbientLight(0xffffff, 0);
   scene.add(fill);
+  const skyLight = new THREE.HemisphereLight(0xffffff, 0x000000, 0);
+  scene.add(skyLight);
 
   const uniforms = {
     uH0: { value: null }, uH1: { value: null }, uH2: { value: null }, uH3: { value: null },
@@ -189,25 +261,54 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
     uN: { value: new THREE.Vector4(...LEVELS.map((l) => l.n)) },
     uSunDir: { value: new THREE.Vector3(0, 1, 0) },
     uMaxZ: { value: 0 },
+    uSunTan: { value: 0.00466 },
   };
   const groundMat = shadowedMaterial(uniforms, { vertexColors: true });
-  const rockMat = shadowedMaterial(uniforms, { color: 0x9a948c });
+  const rockMat = shadowedMaterial(uniforms, { color: W.rock });
 
-  // sky: Sun and Earth
+  // ---- sky scene: (Mars) the sky dome, then the Sun, Earth and moons
+  const skyUniforms = air ? {
+    uSun: { value: new THREE.Vector3() }, uZenith: { value: new THREE.Color(...air.zenith) },
+    uHorizon: { value: new THREE.Color(...air.horizon) }, uGlow: { value: new THREE.Color(...air.glow) },
+    uDay: { value: 0 }, uTwi: { value: 0 }, uScale: { value: 0.5 },
+  } : null;
+  if (air) {
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_D * 2, 64, 32),
+      new THREE.ShaderMaterial({ uniforms: skyUniforms, vertexShader: SKY_GLSL_V, fragmentShader: SKY_GLSL_F,
+        side: THREE.BackSide, depthWrite: false }));
+    dome.renderOrder = -1;
+    skyScene.add(dome);
+  }
   const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: sunTexture(), blending: THREE.AdditiveBlending,
     depthTest: false, depthWrite: false, transparent: true, toneMapped: false }));
-  const SKY_D = 1000;
-  sunSprite.scale.setScalar(2 * SKY_D * Math.tan((SUN_RADIUS_DEG * Math.PI) / 180) / 0.085);
+  sunSprite.renderOrder = 3;
   skyScene.add(sunSprite);
-  const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32),
-    new THREE.MeshStandardMaterial({ map: earthTexture(), roughness: 0.9, metalness: 0 }));
-  skyScene.add(earth);
-  const earthSun = new THREE.DirectionalLight(0xffffff, 3);
-  skyScene.add(earthSun, earthSun.target, new THREE.AmbientLight(0xffffff, 0.02));
+  const skySun = new THREE.DirectionalLight(0xffffff, 3); // lights Earth (from the Moon) and Phobos/Deimos
+  skyScene.add(skySun, skySun.target, new THREE.AmbientLight(0xffffff, 0.02));
+  // Earth: a disc from the Moon, a bright star from Mars
+  const earthDisc = key === 'moon' ? new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32),
+    new THREE.MeshStandardMaterial({ map: earthTexture(), roughness: 0.9, metalness: 0 })) : null;
+  if (earthDisc) skyScene.add(earthDisc);
+  const star = (color) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTexture(), color, blending: THREE.AdditiveBlending,
+      depthTest: false, depthWrite: false, transparent: true, sizeAttenuation: false, toneMapped: false }));
+    s.renderOrder = 2;
+    skyScene.add(s);
+    return s;
+  };
+  const earthStar = key === 'mars' ? star(0xbfd8ff) : null;
+  const moonRandom = rng(5);
+  const moonMeshes = key === 'mars' ? [[1, 0.83, 0.68], [1, 0.8, 0.73]].map((axes) => {
+    const m = new THREE.Mesh(moonGeometry(moonRandom, axes), new THREE.MeshStandardMaterial({ color: 0x6b6058, roughness: 1 }));
+    m.renderOrder = 1;
+    skyScene.add(m);
+    return { mesh: m, star: star(0xfff0e0) };
+  }) : [];
 
   // ---- state
   const seed = (Math.round(lat * 1000) * 73856093) ^ (Math.round(lon * 1000) * 19349663);
   let levels = null;
+  let proj = null;
   let meshes = [];
   let rocks = [];
   let eyeZ = EYE_M;
@@ -218,14 +319,33 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
   let sky = null;
   let closed = false;
   let dirty = true;
+  const sources = {};
+  const colours = {};
   const status = (text) => { els.status.textContent = text; els.status.hidden = !text; };
 
-  function rebuild(sources) {
-    const built = buildLevels(lat, lon, sources, seed);
+  // ground colour of a level: the world's colour, made darker or brighter by the map mosaic.
+  // Only the mosaic's brightness is used (dark basalt vs bright dust): its colour balance is
+  // not true colour (the Viking mosaic turns dark ground purple-grey).
+  const colourFor = (i) => {
+    const sampler = [colours.near, colours.near, colours.mid, colours.far][i];
+    if (!sampler || !proj) return () => W.ground;
+    const { meanLum } = W.imagery;
+    return (x, y) => {
+      const [la, lo] = proj(x, y);
+      const c = sampler(la, lo);
+      if (!c) return W.ground;
+      const f = Math.min(1.5, Math.max(0.45, 0.4 + 0.6 * ((0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]) / meanLum)));
+      return W.ground.map((v) => v * f);
+    };
+  };
+
+  function rebuild() {
+    const built = buildLevels(W, lat, lon, sources, seed);
     levels = built.levels;
+    proj = built.proj;
     for (const m of meshes) { scene.remove(m); m.geometry.dispose(); }
     meshes = levels.map((L, i) => {
-      const mesh = new THREE.Mesh(levelGeometry(L, levels[i - 1], seed + i), groundMat);
+      const mesh = new THREE.Mesh(levelGeometry(L, levels[i - 1], seed + i, colourFor(i)), groundMat);
       mesh.receiveShadow = i <= 1;
       scene.add(mesh);
       return mesh;
@@ -238,8 +358,8 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
     placeRocks();
     eyeZ = heightAt(levels, 0, 0) + EYE_M;
     camera.position.set(0, eyeZ, 0);
-    els.where.textContent = `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'W'}` +
-      ` · ground ${(built.h0 / 1000).toFixed(2)} km`;
+    els.where.textContent = `${W.name} · ${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}, ` +
+      `${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'W'} · ground ${(built.h0 / 1000).toFixed(2)} km`;
     updateSky();
   }
 
@@ -247,7 +367,7 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
   function placeRocks() {
     for (const r of rocks) scene.remove(r);
     const random = rng(seed + 11);
-    const per = 900;
+    const per = Math.round(W.rocks / 3);
     const foot = levels[0];
     const m = new THREE.Matrix4(); const q = new THREE.Quaternion(); const e = new THREE.Euler();
     rocks = rockGeos.map((g) => {
@@ -276,84 +396,156 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
   function updateSky() {
     if (!levels) return;
     const date = now();
-    sky = skyAt(date, lat, lon);
+    sky = skyAt(key, W.radius, date, lat, lon);
     const s = sky.sun.dir;
     const sun3 = toThree(s);
     uniforms.uSunDir.value.copy(sun3);
+    uniforms.uSunTan.value = Math.tan((sky.sun.radiusDeg * Math.PI) / 180);
     sunLight.position.copy(camera.position).addScaledVector(sun3, 1000);
     sunLight.target.position.set(0, eyeZ, 0);
     const sunEl = azEl(s).el;
-    const vis = sunVisibility(levels, s, 0, 0, eyeZ);
-    const sunUp = Math.max(0, Math.min(1, (sunEl + SUN_RADIUS_DEG) / (2 * SUN_RADIUS_DEG)));
-    sunLight.intensity = 3.2 * sunUp;
-    fill.intensity = 0.14 * sunUp; // light bounced off the sunlit ground: shadows are dark, not black
-    // earthshine: from the Earth's direction, as bright as its lit share
-    const e = sky.earth;
-    const earthEl = azEl(e.dir).el;
-    earthLight.position.copy(toThree(e.dir)).multiplyScalar(1000);
-    earthLight.intensity = earthEl > -1 ? 0.06 * e.lit : 0;
-    const day = Math.min(1, Math.max(0, (sunEl + 1) / 2)) * Math.max(vis, 0.15);
-    renderer.toneMappingExposure = NIGHT_EXPOSURE + (DAY_EXPOSURE - NIGHT_EXPOSURE) * Math.min(1, day * 1.4);
-    earthSun.intensity = 2.5 / renderer.toneMappingExposure; // the Earth looks the same whatever the eyes adapt to
-    // sky objects
+    const vis = sunVisibility(levels, s, 0, 0, eyeZ, sky.sun.radiusDeg);
+    const sunUp = smoothstep(-sky.sun.radiusDeg, sky.sun.radiusDeg, sunEl);
+    let exposure;
+    if (air) {
+      // dust dims and reddens the low Sun; the bright sky fills the shadows
+      const ext = Math.exp(-air.tau * (1 / Math.max(s.z, 0.03) - 1));
+      sunLight.intensity = 3.0 * sunUp * ext;
+      sunLight.color.setRGB(1, 0.93 + 0.07 * ext, 0.85 + 0.15 * ext);
+      const day = smoothstep(-0.07, 0.2, s.z);
+      const twi = smoothstep(-0.3, -0.02, s.z) * (1 - 0.6 * smoothstep(0.1, 0.5, s.z));
+      skyUniforms.uSun.value.copy(sun3);
+      skyUniforms.uDay.value = day;
+      skyUniforms.uTwi.value = twi;
+      skyLight.color.setRGB(...air.zenith);
+      skyLight.groundColor.setRGB(0.25, 0.15, 0.1);
+      skyLight.intensity = 0.45 * day + 0.02;
+      fill.intensity = 0.1 * sunUp;
+      earthLight.intensity = 0;
+      // eyes adapt to the sky's brightness; the haze takes the colour of the sky near the horizon
+      exposure = 1 + 6 * (1 - Math.min(1, day * 1.5 + twi * 0.3));
+      // the sky shader at the horizon, away from the Sun: horizon colour x day (+ a little glow)
+      const h = air.horizon.map((v, i) => (v * day * 1.04 + air.glow[i] * twi * 0.03) * skyUniforms.uScale.value);
+      fog.color.setRGB(...displayColour(h, exposure), THREE.LinearSRGBColorSpace);
+    } else {
+      sunLight.intensity = 3.2 * sunUp;
+      fill.intensity = 0.14 * sunUp; // light bounced off the sunlit ground: shadows are dark, not black
+      const earthEl = azEl(sky.earth.dir).el;
+      earthLight.position.copy(toThree(sky.earth.dir)).multiplyScalar(1000);
+      earthLight.intensity = earthEl > -1 ? 0.06 * sky.earth.lit : 0; // earthshine
+      const day = Math.min(1, Math.max(0, (sunEl + 1) / 2)) * Math.max(vis, 0.15);
+      exposure = NIGHT_EXPOSURE + (DAY_EXPOSURE - NIGHT_EXPOSURE) * Math.min(1, day * 1.4);
+    }
+    renderer.toneMappingExposure = exposure;
+    skySun.intensity = 2.5 / exposure; // sky objects look the same whatever the eyes adapt to
+    skySun.position.copy(sun3).multiplyScalar(10);
+
+    // Sun
     sunSprite.position.copy(sun3).multiplyScalar(SKY_D);
+    sunSprite.scale.setScalar((2 * SKY_D * Math.tan((sky.sun.radiusDeg * Math.PI) / 180)) / CORE);
     sunSprite.visible = sunEl > -2;
-    const earthAng = Math.asin(6371 / e.km);
-    earth.position.copy(toThree(e.dir)).multiplyScalar(SKY_D);
-    earth.scale.setScalar(SKY_D * Math.tan(earthAng));
-    earthSun.position.copy(earth.position).add(toThree(e.sunDir).multiplyScalar(10));
-    earthSun.target.position.copy(earth.position);
-    showInfo(date, sunEl, vis, e, earthEl);
+    // Earth
+    const e3 = toThree(sky.earth.dir).multiplyScalar(SKY_D);
+    if (earthDisc) {
+      earthDisc.position.copy(e3);
+      earthDisc.scale.setScalar(SKY_D * Math.tan((sky.earth.radiusDeg * Math.PI) / 180));
+    }
+    if (earthStar) {
+      earthStar.position.copy(e3);
+      // a bright star, fading out against the daytime sky
+      const fade = 1 - smoothstep(-0.12, 0.05, s.z);
+      earthStar.material.opacity = (0.35 + 0.65 * sky.earth.lit) * fade;
+      earthStar.scale.setScalar(0.022);
+    }
+    // Phobos and Deimos
+    sky.moons.forEach((m, i) => {
+      const { mesh, star: st } = moonMeshes[i];
+      mesh.position.copy(toThree(m.dir)).multiplyScalar(SKY_D);
+      mesh.scale.setScalar(SKY_D * Math.tan((m.radiusDeg * Math.PI) / 180));
+      mesh.lookAt(0, 0, 0); // keeps its long axis pointing at Mars, as it really does (roughly)
+      // too small to see as a disc: a point of light, brightest when fully lit
+      const fade = 1 - smoothstep(-0.12, 0.08, s.z);
+      st.position.copy(mesh.position);
+      st.scale.setScalar(m.radiusDeg < 0.05 ? 0.012 : 0.0001);
+      st.material.opacity = m.lit * fade * 0.9;
+    });
+    showInfo(date, sunEl, vis);
     dirty = true;
   }
 
   // ---- info panel and controls
   const pad = (n) => String(n).padStart(2, '0');
   const localInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const fmtDuration = (h) => (h < 1 ? `${Math.round(h * 60)} min` : h < 48 ? `${h < 10 ? h.toFixed(1) : Math.round(h)} h` : `${(h / 24).toFixed(1)} days`);
+  const compass = (az) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(az / 45) % 8];
+  const clock = (h) => `${pad(Math.floor(h))}:${pad(Math.floor((h % 1) * 60))}`;
   let crossingTimer = null;
-  function showInfo(date, sunEl, vis, e, earthEl) {
+  function showInfo(date, sunEl, vis) {
     els.date.value = localInput(date);
     els.slider.value = offsetH;
-    els.offset.textContent = offsetH === 0 ? 'chosen time' : `${offsetH > 0 ? '+' : '−'}${fmtDuration(Math.abs(offsetH))}`;
+    els.offset.textContent = Math.abs(offsetH) < 1e-6 ? 'chosen time' : `${offsetH > 0 ? '+' : '−'}${fmtDuration(Math.abs(offsetH))}`;
     const sAz = Math.round(azEl(sky.sun.dir).az);
     let sunText;
-    if (sunEl < -SUN_RADIUS_DEG) sunText = `<b>Night.</b> The Sun is ${(-sunEl).toFixed(1)}° below the horizon.`;
-    else if (vis < 0.02) sunText = `<b>In shadow.</b> The Sun is ${sunEl.toFixed(1)}° up (${compass(sAz)}) but hidden behind terrain.`;
-    else sunText = `<b>Day.</b> Sun ${sunEl.toFixed(1)}° above the horizon, ${compass(sAz)} (${sAz}°)` +
-      (vis < 0.98 ? `, partly hidden (${Math.round(vis * 100)}% visible)` : '') + '.';
-    els.sun.innerHTML = sunText;
-    els.earth.innerHTML = earthEl > -1
-      ? `<b>Earth</b> ${earthEl.toFixed(1)}° up, ${compass(azEl(e.dir).az)} · ${Math.round(e.lit * 100)}% lit · ${Math.round(e.km).toLocaleString()} km away`
-      : '<b>Earth</b> is below the horizon here (always, on the far side of the Moon).';
+    if (sunEl < -sky.sun.radiusDeg) {
+      sunText = air && sunEl > -18 ? `<b>Twilight.</b> The Sun is ${(-sunEl).toFixed(1)}° below the horizon.`
+        : `<b>Night.</b> The Sun is ${(-sunEl).toFixed(1)}° below the horizon.`;
+    } else if (vis < 0.02) sunText = `<b>In shadow.</b> The Sun is ${sunEl.toFixed(1)}° up (${compass(sAz)}) but hidden behind terrain.`;
+    else {
+      sunText = `<b>Day.</b> Sun ${sunEl.toFixed(1)}° above the horizon, ${compass(sAz)} (${sAz}°)` +
+        (vis < 0.98 ? `, partly hidden (${Math.round(vis * 100)}% visible)` : '') + '.';
+    }
+    els.sun.innerHTML = `${sunText} Local solar time ${clock(sky.solarTime)}${key === 'mars' ? ' (Mars hours)' : ''}.`;
+    const e = sky.earth; const ee = azEl(e.dir);
+    if (key === 'moon') {
+      els.earth.innerHTML = ee.el > -1
+        ? `<b>Earth</b> ${ee.el.toFixed(1)}° up, ${compass(ee.az)} · ${Math.round(e.lit * 100)}% lit · ${Math.round(e.km).toLocaleString()} km away`
+        : '<b>Earth</b> is below the horizon here (always, on the far side of the Moon).';
+    } else {
+      const earthText = ee.el > 0
+        ? `<b>Earth</b> ${ee.el.toFixed(1)}° up, ${compass(ee.az)}: ` +
+          `${sunEl > 3 ? 'a star, lost in the daylight' : sunEl > -18 ? 'a bright star in the twilight' : 'a bright star'}` +
+          ` · ${Math.round(e.km / 1e6)} million km away`
+        : `<b>Earth</b> is below the horizon now (${Math.round(e.km / 1e6)} million km away).`;
+      const moonText = sky.moons.map((m) => {
+        const a = azEl(m.dir);
+        return a.el > 0 ? `<b>${m.name}</b> ${a.el.toFixed(0)}° up, ${compass(a.az)} · ${Math.round(m.lit * 100)}% lit`
+          : `<b>${m.name}</b> below the horizon`;
+      }).join('<br>');
+      els.earth.innerHTML = `${earthText}<br>${moonText}<br><span class="sub">Phobos and Deimos: positions approximate (a few degrees).</span>`;
+    }
     clearTimeout(crossingTimer);
     crossingTimer = setTimeout(() => {
-      const c = nextSunCrossing(date, lat, lon);
+      const c = key === 'mars' ? nextSunCrossing(key, W.radius, date, lat, lon, 2, 0.25) : nextSunCrossing(key, W.radius, date, lat, lon);
       els.next.textContent = c ? `Next ${c.rising ? 'sunrise' : 'sunset'} (flat horizon): in ${fmtDuration((c.date - date) / 3600e3)}` +
         ` · ${c.date.toLocaleString()}` : '';
     }, 120);
   }
-  const fmtDuration = (h) => (h < 48 ? `${Math.round(h)} h` : `${(h / 24).toFixed(1)} days`);
-  const compass = (az) => ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(az / 45) % 8];
 
+  els.slider.min = -W.range.hours; els.slider.max = W.range.hours; els.slider.step = W.range.step;
+  els.slider.setAttribute('aria-label', `Move time, up to ${fmtDuration(W.range.hours)} either way`);
+  els.note.textContent = `Drag to look around, scroll to zoom. Hills and craters larger than ~${W.dem.detailM} m are real ` +
+    `(${W.dem.label})${W.imagery ? '; ground colours from Viking orbiter images' : ''}. Smaller craters, rocks and the ground ` +
+    `texture are made up.${key === 'moon' ? ' The Earth is a stand-in globe; stars and planets are not shown yet.' : ' Stars and planets are not shown yet.'}`;
   els.slider.oninput = () => { offsetH = Number(els.slider.value); updateSky(); onTime?.(now()); };
   els.date.onchange = () => {
     const d = new Date(els.date.value);
     if (!Number.isNaN(d.getTime())) { base = d; offsetH = 0; updateSky(); onTime?.(now()); }
   };
   els.now.onclick = () => { base = new Date(); offsetH = 0; updateSky(); onTime?.(now()); };
-  const SPEEDS = [1, 6, 24];
+  const SPEEDS = W.speeds;
+  let speedIdx = 0;
+  const speedLabel = (h) => (h < 1 ? `${Math.round(h * 60)} min/s` : `${h} h/s`);
   els.play.onclick = () => {
     playing = playing ? 0 : SPEEDS[speedIdx];
     els.play.textContent = playing ? '❚❚ Pause' : '▶ Play';
     if (!playing) onTime?.(now());
   };
-  let speedIdx = 0;
   els.speed.onclick = () => {
     speedIdx = (speedIdx + 1) % SPEEDS.length;
-    els.speed.textContent = `${SPEEDS[speedIdx]} h/s`;
+    els.speed.textContent = speedLabel(SPEEDS[speedIdx]);
     if (playing) playing = SPEEDS[speedIdx];
   };
-  els.speed.textContent = `${SPEEDS[speedIdx]} h/s`;
+  els.speed.textContent = speedLabel(SPEEDS[speedIdx]);
   els.play.textContent = '▶ Play';
   els.back.onclick = () => onBack();
 
@@ -426,15 +618,12 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
     const w = hud.width; const h = hud.height; const s = devicePixelRatio;
     g.clearRect(0, 0, w, h);
     g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(0, 0, w, h);
-    const v = new THREE.Vector3();
+    const half = Math.tan((camera.fov * camera.aspect * Math.PI) / 360);
     const xOf = (az) => {
-      v.set(Math.sin((az * Math.PI) / 180), 0, -Math.cos((az * Math.PI) / 180));
       const d = ((az - yaw + 540) % 360) - 180;
-      if (Math.abs(d) > camera.fov * camera.aspect * 0.75) return null;
-      // horizontal position from the camera's yaw only (the strip ignores pitch)
-      const half = Math.tan((camera.fov * camera.aspect * Math.PI) / 360);
+      if (Math.abs(d) >= 89) return null;
       const x = Math.tan((d * Math.PI) / 180) / half;
-      return Math.abs(d) < 89 ? (x * 0.5 + 0.5) * w : null;
+      return Math.abs(x) <= 1.05 ? (x * 0.5 + 0.5) * w : null;
     };
     g.textAlign = 'center'; g.textBaseline = 'middle';
     for (let az = 0; az < 360; az += 5) {
@@ -446,7 +635,9 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
       else if (az % 15 === 0) { g.fillStyle = 'rgba(255,255,255,.6)'; g.font = `${10 * s}px system-ui`; g.fillText(String(az), x, 14 * s); }
     }
     if (sky) {
-      for (const [dir, label, color] of [[sky.sun.dir, '☀', '#ffd27a'], [sky.earth.dir, '◐ Earth', '#9cc4ff']]) {
+      const marks = [[sky.sun.dir, '☀', '#ffd27a'], [sky.earth.dir, '● Earth', '#9cc4ff'],
+        ...sky.moons.map((m) => [m.dir, `● ${m.name}`, '#e8d2c0'])];
+      for (const [dir, label, color] of marks) {
         const { az, el } = azEl(dir);
         if (el < -1) continue; // below the horizon
         const x = xOf(az); if (x === null) continue;
@@ -479,21 +670,27 @@ export function open3D(els, { lat, lon, date: startDate, onBack, onTime }) {
   if (camera.aspect < 1) zoomTo(85); // portrait phones: wider view so there's more than a slit sideways
   requestAnimationFrame(frame);
 
-  // ---- load terrain: coarse first, then the detailed rings as they arrive
+  // ---- load: coarse terrain first, then ground colours and the detailed rings as they arrive
   (async () => {
-    status('Loading the Moon’s terrain…');
-    const sources = { far: await loadFar() };
+    status(`Loading ${W.name}’s terrain…`);
+    sources.far = await loadFar(W);
     if (closed) return;
-    rebuild(sources);
+    rebuild();
+    const colourJob = W.imagery ? Promise.all([
+      loadColours(W, lat, lon, LEVELS[3].half, LEVELS[3].half / 120).then((c) => { colours.far = c; }),
+      loadColours(W, lat, lon, LEVELS[2].half, LEVELS[2].half / 150).then((c) => { colours.mid = c; }),
+      loadColours(W, lat, lon, LEVELS[1].half, 100).then((c) => { colours.near = c; }),
+    ]).catch((err) => console.error(err)) : Promise.resolve();
     try {
-      sources.near = await loadLola(lat, lon, LEVELS[1].half * 1.06, 1,
+      sources.near = await loadDetail(W, lat, lon, LEVELS[1].half * 1.06, 1,
         (d, n) => status(`Loading detailed terrain around you… ${Math.round((100 * d) / n)}%`));
+      await colourJob;
       if (closed) return;
-      rebuild(sources);
-      sources.mid = await loadLola(lat, lon, LEVELS[2].half * 1.03, 4,
+      rebuild();
+      sources.mid = await loadDetail(W, lat, lon, LEVELS[2].half * 1.03, W.dem.midStep,
         (d, n) => status(`Loading the surrounding landscape… ${Math.round((100 * d) / n)}%`));
       if (closed) return;
-      rebuild(sources);
+      rebuild();
       status('');
     } catch (err) {
       console.error(err);

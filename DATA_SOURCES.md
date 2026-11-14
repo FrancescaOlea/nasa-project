@@ -10,6 +10,10 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **MOLA elevation** (Mars Orbiter Laser Altimeter, Mars Global Surveyor): MEGDR 32 px/deg,
   `MGS-M-MOLA-5-MEGDR-L3-V1.0`, NASA Planetary Data System (PDS) Geosciences Node.
   Used for elevation, slope, relief, the thermal model and Mars sunlight (dust column).
+- **MOLA MEGDR 16 px/deg** (`megt90n000eb.img`, same data set), averaged to 8 px/deg: far terrain in
+  the Mars 3D view (`public/surface3d/mars_8ppd.bin`).
+- **Phobos and Deimos orbits**: mean orbital elements from JPL Solar System Dynamics (planetary
+  satellite mean elements, after Jacobson 2014). Approximate positions in the Mars 3D view sky.
 - **TES thermal inertia** (Thermal Emission Spectrometer, Mars Global Surveyor): global night map
   2007 (N. Putzig, SwRI), `MGS-M-TES-5-TIMAP-V1.0`, PDS Geosciences. Used for "Dusty or rocky
   terrain" and the thermal model.
@@ -20,7 +24,7 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **Mars Odyssey GRS averaged neutron data** (epithermal neutrons, ~12 Mars years),
   `ODY-M-GRS-5-AND-V2`, PDS Geosciences. Used for "Underground ice".
 - **Viking MDIM 2.1 colour mosaic** (NASA/JPL/USGS), ~232 m/pixel, via NASA Mars Trek.
-  Map imagery and the home-page globe.
+  Map imagery and the home-page globe; its brightness also tints the ground in the Mars 3D view.
 - **CTX mosaic** (Context Camera, Mars Reconnaissance Orbiter; NASA/JPL/MSSS, Caltech Murray
   Lab global mosaic), ~5 m/pixel, served by Esri (OnMars). Close-up map imagery.
 
@@ -30,7 +34,7 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **LOLA polar elevation models** (LRO), 75°–90° N and S, 240 m, polar stereographic, same data
   set, PDS Geosciences. Used for crater and mountain shadows in Moon sunlight.
 - **LOLA LDEM 16 px/deg** (same data set, PDS Geosciences), averaged to 8 px/deg: far terrain in the
-  Moon 3D view (`public/moon3d/ldem_8ppd.bin`).
+  Moon 3D view (`public/surface3d/moon_8ppd.bin`).
 - **LOLA global DEM 118 m** (`Lunar_LRO_LOLA_Global_LDEM_118m_Mar2014.tif`, USGS Astrogeology
   Science Center, from LRO LOLA data), read on demand by the browser: near and middle terrain in the
   Moon 3D view.
@@ -54,10 +58,14 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 **Services**
 - **NASA Mars Trek** and **NASA Moon Trek** (Solar System Treks, NASA JPL): map tile services.
 - **NASA Planetary Data System, Geosciences Node** (Washington University in St. Louis): downloads.
-- **USGS Astrogeology Science Center** (Planetary Maps / Annex): the 118 m Moon DEM, served to the browser.
+- **USGS Astrogeology Science Center** (Planetary Maps / Annex): the 118 m Moon DEM and the 200 m
+  Mars DEM, served to the browser.
 
 ## Partner data
 
+- **Mars HRSC + MOLA blended DEM** (`Mars_HRSC_MOLA_BlendDEM_Global_200mp_v2.tif`; ESA/DLR/FU Berlin
+  High Resolution Stereo Camera on Mars Express, blended with NASA MOLA; USGS Astrogeology Science
+  Center), 200 m, read on demand by the browser: near and middle terrain in the Mars 3D view.
 - **Kaguya Terrain Camera ortho mosaic** (JAXA / SELENE), ~21 m/pixel, via NASA Moon Trek.
   Close-up Moon imagery.
 - **NOAA ETOPO 2022** global relief model, 60 arc-seconds (NOAA National Centers for Environmental
@@ -67,6 +75,6 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 
 ## Software
 
-- Leaflet (maps), three.js (3D globes and the Moon 3D view), astronomy-engine (Sun, Earth and Moon
-  positions), geotiff.js (reading the Moon DEM), Vite (build); Python with NumPy, SciPy, Numba,
+- Leaflet (maps), three.js (3D globes and the Moon / Mars 3D views), astronomy-engine (Sun, Earth,
+  Moon and Mars positions and rotation), geotiff.js (reading the DEM file layout), Vite (build); Python with NumPy, SciPy, Numba,
   Pillow and tifffile for data processing.
