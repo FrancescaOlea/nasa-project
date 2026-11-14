@@ -46,6 +46,30 @@ function greatCircle(a, b, n = 64) {
   return pts;
 }
 
+// On flat (cylindrical) maps the 180° meridian is the map's edge: split the line there and
+// continue it from the opposite edge, instead of running off the map into empty space.
+function splitAtDateline(pts) {
+  const segs = [[]];
+  const norm = (lon) => ((((lon + 180) % 360) + 360) % 360) - 180;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (i > 0) {
+      const q = pts[i - 1];
+      const k0 = Math.floor((q.lng + 180) / 360); const k1 = Math.floor((p.lng + 180) / 360);
+      if (k0 !== k1) { // crossed a ±180° line between q and p
+        const edge = (Math.max(k0, k1) * 360) - 180;
+        const f = (edge - q.lng) / (p.lng - q.lng);
+        const lat = q.lat + f * (p.lat - q.lat);
+        const east = p.lng > q.lng;
+        segs[segs.length - 1].push(L.latLng(lat, east ? 180 : -180));
+        segs.push([L.latLng(lat, east ? -180 : 180)]);
+      }
+    }
+    segs[segs.length - 1].push(L.latLng(p.lat, norm(p.lng)));
+  }
+  return segs.filter((s) => s.length > 1);
+}
+
 export function formatDistance(km) {
   if (km < 1) return `${Math.round(km * 1000)} m`;
   if (km < 100) return `${km.toFixed(km < 10 ? 2 : 1)} km`;
@@ -58,7 +82,7 @@ export function formatDistance(km) {
  * `measuring` class (it greys out and disables everything else via CSS), `radiusKm` the
  * body's radius, `inside(e)` optionally rejects clicks off the planet (polar maps).
  */
-export function addRuler(map, { button, panel, root, radiusKm, inside }) {
+export function addRuler(map, { button, panel, root, radiusKm, inside, cylindrical = true }) {
   const text = panel.querySelector('.ruler-text');
   const group = L.layerGroup();
   let start = null;
@@ -67,7 +91,8 @@ export function addRuler(map, { button, panel, root, radiusKm, inside }) {
 
   const say = (html) => { text.innerHTML = html; };
   const draw = (a, b) => {
-    const pts = greatCircle(a, b);
+    let pts = greatCircle(a, b);
+    if (cylindrical) pts = splitAtDateline(pts);
     if (line) line.setLatLngs(pts);
     else line = L.polyline(pts, { className: 'ruler-line', interactive: false }).addTo(group);
   };

@@ -82,6 +82,21 @@ const circumferenceKm = (body) => 2 * Math.PI * body.radiusKm;
 const nativeProjection = (body) => (body.crs === 'EPSG3857' ? 'mercator' : 'equirect');
 let proj = projection('equirect'); // projection of the map currently shown
 let keepViewPanelOpen = false;     // reopen the View panel after switching projection
+// When the projection changes, the view carries over: same centre, same scale on screen
+// (zoom numbers mean different scales in different projections). { key, lat, lon, pxPerKm, atMin }
+let carryView = null;
+
+// Screen pixels per km at (lat, lon) at zoom 0 in a projection (geometric mean of the
+// north-south and east-west scales there).
+function pxPerKmAtZoom0(pr, lat, lon, radiusKm) {
+  const km = 0.5;
+  const dLat = (km / radiusKm) * (180 / Math.PI);
+  const dLon = dLat / Math.max(Math.cos((lat * Math.PI) / 180), 0.01);
+  const p0 = pr.crs.latLngToPoint(L.latLng(lat, lon), 0);
+  const pN = pr.crs.latLngToPoint(L.latLng(lat + (lat > 0 ? -dLat : dLat), lon), 0);
+  const pE = pr.crs.latLngToPoint(L.latLng(lat, lon + dLon), 0);
+  return Math.sqrt(p0.distanceTo(pN) * p0.distanceTo(pE)) / km;
+}
 
 // Zoom level at which the screen width spans MIN_VIEW_KM.
 function maxZoomFor(body, size) {
@@ -172,6 +187,7 @@ function openMap(key, params) {
     panel: $('ruler-panel'),
     root: mapView,
     radiusKm: body.radiusKm,
+    cylindrical: proj.cylindrical, // flat maps: the line is split at the 180° edge
     // polar maps: ignore clicks in the empty corners outside the world disc
     inside: proj.inside ? (e) => {
       const n = 256 * 2 ** map.getZoom();
@@ -256,8 +272,16 @@ function openMap(key, params) {
     map.setMaxZoom(maxZoomFor(body, size));
   });
 
+  // switching projection: same centre and the same scale on screen as before
+  if (carryView?.key === key && !carryView.atMin) {
+    const lat = proj.id === 'mercator' ? Math.max(-84, Math.min(84, carryView.lat)) : carryView.lat;
+    const z = Math.log2(carryView.pxPerKm / pxPerKmAtZoom0(proj, lat, carryView.lon, body.radiusKm));
+    map.setView([lat, carryView.lon], Math.min(map.getMaxZoom(), Math.max(map.getMinZoom(), z)), { animate: false });
+  }
+
   const analog = key === 'earth' && params.has('site');
   const selection = body.selectable ? setUpSelection(key, body, params, { analog }) : null;
+  carryView = null;
   if (analog) showAnalogResults(params, selection);
   setUpWorldSwitch(key, params);
 }
@@ -347,6 +371,13 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     const input = label.querySelector('input');
     input.checked = id === proj.id;
     input.onchange = () => {
+      // remember the view: centre and real scale on screen (or "whole map")
+      const c = map.getCenter();
+      carryView = {
+        key, lat: c.lat, lon: c.lng,
+        pxPerKm: pxPerKmAtZoom0(proj, c.lat, c.lng, body.radiusKm) * 2 ** map.getZoom(),
+        atMin: map.getZoom() <= map.getMinZoom() + 0.05,
+      };
       proj = projection(id);
       saveToUrl();
       keepViewPanelOpen = true; // so projections can be tried one after another
@@ -760,7 +791,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
-  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: analog ? undefined : 'always' });
+  // (after a projection change the carried-over view is kept, so the selection doesn't re-zoom)
+  if (Number.isFinite(lat) && Number.isFinite(lon)) select(lat, lon, { fit: analog || carryView ? undefined : 'always' });
   appHooks.selectPoint = (lat, lon) => select(lat, lon, { fit: 'always' });
   // tutorial: start from the whole planet, nothing selected
   appHooks.zoomOut = () => {
