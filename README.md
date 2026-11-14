@@ -4,7 +4,7 @@ Pick the Moon or Mars on the home page, explore its map, select an area and look
 
 **Open the app online:** https://gumenion594-ai.github.io/nasa-project/ (no install needed)
 
-It's published with GitHub Pages: `.github/workflows/pages.yml` builds the site (`npm run build`)
+It's published with GitHub Pages: `.github/workflows/pages.yml` builds the site (`npm run build`), pushes it to the `gh-pages` branch
 and publishes it every time `main` changes. To run it on your own computer instead, see *Run it* below.
 
 ## Run it
