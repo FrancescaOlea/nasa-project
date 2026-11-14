@@ -43,13 +43,14 @@ Or by hand: `npm install`, then `npm run dev`.
   with a legend). See *Map views* below for what's available on each body.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
   (a slider from 1 to 250 km, logarithmic so small sizes get as much room as big ones; default 10).
-- **Ruler** (third button in the zoom bar, top centre): measure the distance between two points (great-circle
+- **Ruler** (top left, next to Home / View): measure the distance between two points (great-circle
   distance on the planet's sphere, correct in every projection). While measuring, everything else on the page
   is switched off except moving and zooming the map; click a start point, move the cursor (live distance),
   click an end point. The next click starts a new measurement. **×** (or Esc) ends it.
 - **Tutorial**: on the first visit a welcome card offers a short guided tour of the main tools (View, area
   summary and radius, ruler, route planner once it exists, Find Earth analogs, Find similar spots). A click
-  anywhere moves to the next step. It's shown once per browser.
+  anywhere moves to the next step. It's shown once per browser, and any time from the **?** button (top left on
+  the maps, **? Tutorial** at the top right of the home page).
 - Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** searches Earth for
   the 5 places most like the selected area (see *Earth analog search* below); **Find similar spots** is
   still a placeholder.

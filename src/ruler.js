@@ -129,7 +129,7 @@ export function addRuler(map, { button, panel, root, radiusKm, inside }) {
     document.removeEventListener('keydown', onKey);
   }
 
-  L.DomEvent.on(button, 'click', (e) => { L.DomEvent.stop(e); begin(); });
+  button.onclick = (e) => { e.preventDefault(); begin(); }; // (replaces the previous map's handler)
   panel.querySelector('.ruler-close').onclick = stop;
   map.on('unload', stop); // map removed (page change): leave measuring mode
   return { begin, stop };

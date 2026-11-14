@@ -60,11 +60,19 @@ export function showWelcome(app) {
   box.querySelector('.tut-yes').onclick = () => { close(); runTour(app); };
 }
 
+/** Start the tour straight away (the "?" buttons). */
+export function startTour(app) {
+  markSeen();
+  if (!document.querySelector('.tut-layer')) runTour(app);
+}
+
 async function runTour(app) {
-  // the tour runs on the Mars map
-  app.openBody('mars');
+  // the tour runs on the Moon or Mars map: stay on the one that's open, else open Mars
+  const here = app.currentBody?.();
+  if (here !== 'moon' && here !== 'mars') app.openBody('mars');
   await until(() => visible($('menu-btn')));
   await wait(400);
+  const onMoon = app.currentBody?.() === 'moon';
 
   const steps = [
     { target: () => [$('menu-btn')], text: '<strong>Click the View button.</strong> This is the View area.' },
@@ -76,7 +84,8 @@ async function runTour(app) {
     },
     {
       before: async () => {
-        app.selectPoint(18.4, 77.5); // Jezero crater, Perseverance's landing site
+        if (onMoon) app.selectPoint(0.674, 23.473); // Apollo 11 landing site
+        else app.selectPoint(18.4, 77.5); // Jezero crater, Perseverance's landing site
         await until(() => visible($('area-panel')));
         const panel = $('area-panel');
         if (panel.classList.contains('collapsed')) $('area-collapse').click(); // phones
@@ -86,7 +95,7 @@ async function runTour(app) {
       text: '<strong>Click a point</strong> on the map. These are all the parameters around a selected area. '
         + 'You can select the radius manually.',
     },
-    { target: () => [document.querySelector('.ruler-btn')], text: 'This is the <strong>ruler</strong> tool, meant to measure distance.' },
+    { target: () => [$('ruler-btn')], text: 'This is the <strong>ruler</strong> tool, meant to measure distance.' },
     // shown once the route planner exists (a button with id "plan-route")
     {
       when: () => visible($('plan-route')),
@@ -126,13 +135,18 @@ async function runTour(app) {
     // one dimming layer with a see-through hole for every highlighted element
     const W0 = window.innerWidth; const H0 = window.innerHeight;
     let path = `M0 0H${W0}V${H0}H0Z`;
+    const PAD = 5;
     targets.forEach((el) => {
       const r = el.getBoundingClientRect();
-      const x = r.left - 6; const y = r.top - 6; const w = r.width + 12; const h = r.height + 12;
-      path += `M${x} ${y}h${w}v${h}h${-w}Z`;
+      const x = r.left - PAD; const y = r.top - PAD; const w = r.width + 2 * PAD; const h = r.height + 2 * PAD;
+      // same rounding as the element itself (plus the padding), so the highlight hugs its shape
+      const own = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0;
+      const k = Math.min(own + PAD, w / 2, h / 2);
+      path += `M${x + k} ${y}H${x + w - k}A${k} ${k} 0 0 1 ${x + w} ${y + k}V${y + h - k}A${k} ${k} 0 0 1 ${x + w - k} ${y + h}`
+        + `H${x + k}A${k} ${k} 0 0 1 ${x} ${y + h - k}V${y + k}A${k} ${k} 0 0 1 ${x + k} ${y}Z`;
       const b = document.createElement('div');
       b.className = 'tut-spot';
-      Object.assign(b.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+      Object.assign(b.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px`, borderRadius: `${k}px` });
       layer.append(b);
       boxes.push(b);
     });

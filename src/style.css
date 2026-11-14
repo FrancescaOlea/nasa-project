@@ -308,8 +308,6 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .landmark-desert .lm { color: #f5d9a0; font-size: 12px; letter-spacing: .06em; }
 
 /* ---- Ruler ---- */
-.leaflet-container .zoom-bar a.ruler-btn { display: grid; place-items: center; line-height: 0; }
-.leaflet-container .zoom-bar a.ruler-btn[aria-pressed="true"] { background: rgba(127,212,255,.3); color: #fff; }
 .ruler-panel { top: 70px; left: 50%; right: auto; bottom: auto; transform: translateX(-50%); z-index: 1003;
   width: auto; min-width: 260px; max-width: calc(100% - 24px); display: flex; align-items: center; gap: .8rem;
   padding: .6rem .7rem .6rem 1rem; font-size: .95rem; }
@@ -321,12 +319,12 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .ruler-dot { stroke: #000; stroke-width: 2; fill: #ffd23f; fill-opacity: 1; }
 .leaflet-container.ruler-cursor, .leaflet-container.ruler-cursor.leaflet-grab { cursor: crosshair; }
 /* while measuring, everything else is switched off (moving and zooming the map still work) */
-.measuring .top-buttons, .measuring #select-panel, .measuring #area-panel, .measuring #switch-world,
+.measuring .top-buttons > :not(#ruler-btn), .measuring #select-panel, .measuring #area-panel, .measuring #switch-world,
 .measuring #analog-banner, .measuring #menu, .measuring .leaflet-bottom.leaflet-left {
   pointer-events: none; opacity: .3; filter: grayscale(.5); transition: opacity .2s; }
 .measuring .leaflet-marker-pane { pointer-events: none; }
 .measuring .leaflet-marker-pane * { pointer-events: none !important; }
-.measuring .zoom-bar a.ruler-btn { pointer-events: none; }
+.measuring #ruler-btn { pointer-events: none; }
 @media (max-width: 600px) { .ruler-panel { top: 120px; } }
 
 /* ---- First-visit tutorial ---- */
@@ -344,10 +342,25 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .tut-welcome-actions .tut-yes { background: #2b7bd6; border-color: #2b7bd6; color: #fff; font-weight: 600; }
 .tut-layer { position: fixed; inset: 0; z-index: 5000; cursor: pointer; }
 .tut-shade { position: fixed; inset: 0; background: rgba(0,0,0,.58); }
-.tut-spot { position: fixed; border: 3px solid #2b8cff; border-radius: 12px; pointer-events: none;
-  box-shadow: 0 0 22px 6px rgba(43,140,255,.85); animation: tut-pulse 1.6s ease-in-out infinite; }
-@keyframes tut-pulse { 50% { border-color: #7fbfff; } }
+.tut-spot { position: fixed; pointer-events: none;
+  box-shadow: 0 0 0 2px rgba(110,180,255,.95), 0 0 16px 4px rgba(43,140,255,.65), 0 0 40px 12px rgba(43,140,255,.25);
+  animation: tut-glow 1.8s ease-in-out infinite; }
+@keyframes tut-glow { 50% { box-shadow: 0 0 0 2px rgba(150,205,255,1), 0 0 22px 7px rgba(43,140,255,.8), 0 0 50px 16px rgba(43,140,255,.3); } }
 .tut-card { position: fixed; z-index: 1; padding: 1rem 1.1rem .8rem; color: #fff; background: #0f1320;
   border: 1px solid #2b8cff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.6); font-size: .98rem; line-height: 1.45; }
 .tut-foot { display: flex; justify-content: space-between; align-items: center; margin-top: .7rem; color: #8fa3c0; font-size: .8rem; }
 .tut-skip { font: inherit; font-size: .8rem; background: none; border: 0; color: #8fa3c0; text-decoration: underline; cursor: pointer; padding: .2rem; }
+
+/* ---- Ruler and tutorial buttons (top left, next to Home / View) ---- */
+.map-btn.ruler-btn { display: inline-flex; align-items: center; gap: .45rem; }
+.map-btn.ruler-btn[aria-pressed="true"] { background: rgba(127,212,255,.25); border-color: #7fd4ff; }
+.map-btn.help-btn { width: 46px; padding: 0; font-size: 1.15rem; font-weight: 600; border-radius: 50%; }
+.home-help { position: fixed; top: 16px; right: 16px; z-index: 2; font: inherit; font-size: .9rem; letter-spacing: .08em;
+  padding: .55rem 1rem; min-height: 40px; color: #ddd; background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.3);
+  border-radius: 999px; cursor: pointer; }
+.home-help:hover { color: #fff; border-color: rgba(255,255,255,.6); background: rgba(255,255,255,.08); }
+@media (max-width: 600px) {
+  .top-buttons { gap: 8px; }
+  .map-btn.ruler-btn { padding: 0; width: 46px; justify-content: center; }
+  .map-btn.ruler-btn .btn-label { display: none; }
+}

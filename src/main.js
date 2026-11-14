@@ -12,7 +12,7 @@ import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SE
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
 import { addRuler, isMeasuring } from './ruler.js';
-import { maybeStartTutorial } from './tutorial.js';
+import { maybeStartTutorial, startTour } from './tutorial.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -163,19 +163,9 @@ function openMap(key, params) {
   zoomEl.classList.add('zoom-bar');
   map.getContainer().appendChild(zoomEl); // out of Leaflet's corner, positioned by CSS
 
-  // Ruler (measure a distance): a third button in the zoom bar
-  const rulerBtn = L.DomUtil.create('a', 'ruler-btn', zoomEl);
-  rulerBtn.href = '#';
-  rulerBtn.setAttribute('role', 'button');
-  rulerBtn.setAttribute('aria-pressed', 'false');
-  rulerBtn.title = 'Measure distance';
-  rulerBtn.setAttribute('aria-label', 'Measure distance');
-  rulerBtn.innerHTML = `<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><g fill="none"
-    stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="2.5" y="8" width="19" height="8" rx="1.5"
-    transform="rotate(-35 12 12)"/><path d="M7.3 9.9l1.2 1.7M10 8l1.8 2.6M12.6 6.2l1.2 1.7M15.3 4.3l1.8 2.6"
-    transform="translate(-1.2 3.2)"/></g></svg>`;
+  // Ruler (measure a distance): button in the top-left row, next to Home / View
   addRuler(map, {
-    button: rulerBtn,
+    button: $('ruler-btn'),
     panel: $('ruler-panel'),
     root: mapView,
     radiusKm: body.radiusKm,
@@ -792,6 +782,7 @@ function setUpWorldSwitch(key, params) {
 // Hooks the first-visit tutorial uses to drive the app (filled in when a map opens)
 const appHooks = {
   openBody: (key) => { location.hash = `#/${key}`; },
+  currentBody: () => location.hash.replace(/^#\/?/, '').split('?')[0],
   openMenu: () => {},
   selectPoint: () => {},
   bodyName: () => 'Mars',
@@ -826,6 +817,10 @@ function route() {
 }
 
 window.addEventListener('hashchange', route);
+
+// "?" buttons: show the tutorial any time (map pages: top left; home page: top right)
+$('help-btn').onclick = () => startTour(appHooks);
+$('home-help').onclick = () => startTour(appHooks);
 route();
 
 // Reveal the page only when it's ready: styles applied, globe images loaded and the
