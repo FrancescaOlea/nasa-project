@@ -19,7 +19,7 @@ const KM_PER_DEG = MARS_R * DEG;
 const MAX_SIDE = 420;          // mesh vertices along the longer side
 const MAX_REGION_KM = 1600;    // biggest area built at once
 const MIN_REGION_KM = 12;
-const EXAGGERATIONS = [1, 2, 3, 5, 10];
+const EXAGGERATIONS = [5, 10];
 const EXTENT_FACTOR = 8;       // the landscape reaches this many times the area's size...
 const MAX_EXTENT_KM = 7000;    // ...but not further than this
 const GRID = 481;              // vertices per side of the one continuous landscape mesh
@@ -61,7 +61,7 @@ export function createView3D({ routeEvents }) {
   let renderer = null; let scene = null; let camera = null; let controls = null;
   let terrain = null;      // { mesh, heights, rows, cols, lat0, lon0, wKm, hKm, kx, slope }
   let routeGroup = null; let markerGroup = null; let hoverDot = null;
-  let exaggeration = 3;
+  let exaggeration = 5;
   let userExaggeration = false; // the user picked one: don't change it automatically
   let colourMode = 'elevation';
   // One continuous mesh to the horizon: vertices packed densely around the chosen area and
@@ -298,7 +298,7 @@ export function createView3D({ routeEvents }) {
     terrain?.mesh.geometry.dispose();
     if (terrain) scene.remove(terrain.mesh);
     terrain = { rows, cols, wKm, hKm, ex, ez, ax, az, lat0, lon0, kx, heights, slopes, surface, fine, cellKm, pxKm, missing, size };
-    if (!userExaggeration) exaggeration = autoExaggeration(heights, fine, size);
+    // heights x5 unless x10 was chosen
     refreshButtons();
     makeMesh();
     await applyColours();
@@ -314,10 +314,7 @@ export function createView3D({ routeEvents }) {
     setStatus(`${region.name ? `${region.name} · ` : ''}${Math.round(wKm).toLocaleString()} × ${Math.round(hKm).toLocaleString()} km · elevation ${fmtM(lo)} to ${fmtM(hi)}${region.note ? ` · ${region.note}` : ''}`);
     updateInfo();
     // try the spacecraft images in the background; switch to them if the servers allow it
-    if (colourMode === 'elevation' && !triedImagery) {
-      triedImagery = true;
-      tryImagery(my);
-    }
+
   }
 
   let triedImagery = false;
@@ -780,11 +777,11 @@ export function createView3D({ routeEvents }) {
   $('view3d-exag').replaceChildren(...EXAGGERATIONS.map((x) => {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = `×${x}`; b.dataset.exag = x; b.setAttribute('role', 'radio');
-    b.title = x === 1 ? 'True heights' : `Heights exaggerated ${x} times`;
+    b.title = `Heights exaggerated ${x} times`;
     b.onclick = () => { userExaggeration = true; setExaggeration(x); refreshButtons(); };
     return b;
   }));
-  $('view3d-colour').replaceChildren(...[['elevation', 'Elevation'], ['slope', 'Slope'], ['imagery', 'Images']].map(([k, label]) => {
+  $('view3d-colour').replaceChildren(...[['elevation', 'Elevation'], ['slope', 'Slope']].map(([k, label]) => {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = label; b.dataset.colour = k; b.setAttribute('role', 'radio');
     b.onclick = async () => { colourMode = k; triedImagery = true; refreshButtons(); if (terrain) await applyColours(); };
@@ -793,24 +790,10 @@ export function createView3D({ routeEvents }) {
   refreshButtons();
   $('view3d-reset').onclick = () => terrain && resetCamera();
   $('view3d-top').onclick = () => terrain && topView();
-  $('view3d-here').onclick = () => {
-    if (!terrain) return;
-    // rebuild the terrain around the point the camera looks at, about as wide as the view
-    const t = controls.target;
-    const ll = toLatLon(t.x, t.z);
-    const d = camera.position.distanceTo(t);
-    build({ lat: ll.lat, lon: ll.lon, wKm: d * 1.4, hKm: d * 1.4 });
-  };
-  $('view3d-route').onclick = () => {
-    const state = planner?.result();
-    if (!state?.route) return;
-    if (routeInside(state)) frameRoute(); else build(regionFromRoute(state));
-  };
   $('view3d-close').onclick = () => close();
 
   routeEvents?.addEventListener('update', ({ detail }) => {
     if (!isOpen || !terrain || detail.busy) { if (isOpen && terrain) drawRoute(); return; }
-    $('view3d-route').hidden = !detail.route;
     if (detail.route && detail.fresh) {
       // a new route: rebuild around it if it's outside the area or tiny in it, then zoom to it
       const reg = regionFromRoute(detail);
@@ -841,7 +824,6 @@ export function createView3D({ routeEvents }) {
     cancelAnimationFrame(animId);
     loop();
     const state = planner?.result();
-    $('view3d-route').hidden = !state?.route;
     let reg = regionFromRoute(state);
     if (!reg) {
       const v = getLeafletView();

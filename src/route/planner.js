@@ -279,23 +279,20 @@ export function createRoutePlanner(map, params, onChange) {
     b.onclick = () => { state.traveller = k; refreshChips(); plan(); };
     return b;
   }));
-  $('route-season').replaceChildren(...SEASONS.map((s, i) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = s.short;
-    b.title = `${s.name}, ${s.ls}`;
-    b.dataset.value = i;
-    b.dataset.group = 'season';
-    b.setAttribute('role', 'radio');
-    b.onclick = () => { state.season = i; refreshChips(); plan(); };
-    return b;
+  // season: a dropdown next to the A / B coordinates
+  const seasonSelect = $('route-season');
+  seasonSelect.replaceChildren(...SEASONS.map((s, i) => {
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = s.short;
+    o.title = `${s.name}, ${s.ls}`;
+    return o;
   }));
+  seasonSelect.onchange = () => { state.season = Number(seasonSelect.value); refreshChips(); plan(); };
   function refreshChips() {
-    for (const b of panel.querySelectorAll('[data-group]')) {
-      const v = b.dataset.group === 'traveller' ? state.traveller : String(state.season);
-      b.setAttribute('aria-checked', b.dataset.value === v);
-    }
-    $('route-season-note').textContent = `${SEASONS[state.season].name} · ${SEASONS[state.season].ls}`;
+    for (const b of panel.querySelectorAll('[data-group="traveller"]')) b.setAttribute('aria-checked', b.dataset.value === state.traveller);
+    seasonSelect.value = String(state.season);
+    seasonSelect.title = `${SEASONS[state.season].name}, ${SEASONS[state.season].ls}`;
     renderProfileCard();
   }
 
@@ -305,7 +302,10 @@ export function createRoutePlanner(map, params, onChange) {
     const m = travellerModel(state.traveller);
     const modelHtml = `<p class="rv-model"><span class="tag tag-model">Model assumption</span> Slope limit ${m.noGoDeg}° at ~2 km scale (${esc(m.noGoWhy)}); caution above ${m.cautionDeg}°. ${esc(m.why)}</p>`;
     if (state.traveller === 'walk') {
-      box.innerHTML = `<div class="rv-head"><strong>Astronaut on foot</strong><span class="sub">NASA xEVA spacesuit concept of operations</span></div>${modelHtml}`;
+      box.innerHTML = `<details class="rv-card">
+        <summary><span class="rv-icon">${roverIcon('walk', 44)}</span><span class="rv-head"><strong>Astronaut on foot</strong>
+          <span class="sub">NASA xEVA spacesuit concept of operations</span></span></summary>
+        ${modelHtml}</details>`;
       return;
     }
     const r = ROVERS[state.traveller];
@@ -317,7 +317,8 @@ export function createRoutePlanner(map, params, onChange) {
         <span class="sub">${esc(r.mission)} · ${esc(r.period)}</span></span></summary>
       <table class="route-table rv-specs"><tbody>${rows}</tbody></table>
       <p class="sub rv-note">Published specs (hover ⓘ for the source). Silhouettes are drawn to scale by wheel size.</p>
-      </details>${modelHtml}`;
+      ${modelHtml}
+      </details>`;
   }
 
   refreshChips();
@@ -437,8 +438,8 @@ export function createRoutePlanner(map, params, onChange) {
       : !state.b ? 'Now click the destination (B).' : 'Drag A or B to change the route. Click the map to start over.';
     $('route-swap').disabled = !(state.a && state.b);
     $('route-ab').innerHTML = state.a
-      ? `<span class="route-pin route-pin-a">A</span> ${formatLatLon(state.a.lat, state.a.lon)}` +
-        (state.b ? `<br><span class="route-pin route-pin-b">B</span> ${formatLatLon(state.b.lat, state.b.lon)}` : '')
+      ? `<span class="ab-line"><span class="route-pin route-pin-a">A</span> ${formatLatLon(state.a.lat, state.a.lon)}</span>` +
+        (state.b ? `<span class="ab-line"><span class="route-pin route-pin-b">B</span> ${formatLatLon(state.b.lat, state.b.lon)}</span>` : '')
       : '';
     if (!has) { $('route-results').hidden = true; if (!state.b) status(''); return; }
     const { routes, g, opts, traveller } = state.result;

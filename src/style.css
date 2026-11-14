@@ -360,3 +360,16 @@ body.in-3d #select-panel, body.in-3d #area-panel, body.in-3d .switch-world, body
 @media (max-width: 600px) {
   .view3d-bar { top: auto; bottom: 22px; max-height: 45%; }
 }
+/* A / B coordinates with the season dropdown beside them */
+.route-ab-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; margin-top: .45rem; }
+.route-ab-row .route-ab { margin: 0 !important; }
+.season-pick { display: grid; gap: .15rem; flex: none; }
+.season-pick select { font: inherit; font-size: .8rem; color: #eee; background: #1c1c22; border: 1px solid #555; border-radius: 6px;
+  padding: .35rem 1.7rem .35rem .5rem; cursor: pointer; appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #7fd4ff 50%), linear-gradient(135deg, #7fd4ff 50%, transparent 50%);
+  background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+.season-pick select:hover { background-color: #2a2a32; }
+.season-pick select:focus-visible { outline: 2px solid #7fd4ff; outline-offset: 1px; }
+.rv-card .rv-model { margin-top: .5rem !important; }
+.route-ab .ab-line { display: block; white-space: nowrap; font-size: .84rem; }
+.season-pick select { min-width: 7.2rem; }

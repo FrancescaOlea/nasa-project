@@ -54,8 +54,6 @@
           <div class="v3-row">
             <button id="view3d-top" type="button">⬇ Top view</button>
             <button id="view3d-reset" type="button">⟲ Reset</button>
-            <button id="view3d-here" type="button" title="Rebuild the terrain around the point you are looking at, as wide as the view">⌖ Rebuild here</button>
-            <button id="view3d-route" type="button" hidden>↔ Fit route</button>
           </div>
           <span class="eyebrow">Heights</span>
           <div id="view3d-exag" class="chips" role="radiogroup" aria-label="Vertical exaggeration"></div>
@@ -124,14 +122,17 @@
           <button id="route-close" class="icon-btn" aria-label="Close route planner">&times;</button>
         </div>
         <p id="route-hint" class="hint"></p>
-        <p id="route-ab" class="route-ab"></p>
+        <div class="route-ab-row">
+          <p id="route-ab" class="route-ab"></p>
+          <label class="season-pick">
+            <span class="eyebrow">Season</span>
+            <select id="route-season" aria-label="Season (dust storms depend on it)"></select>
+          </label>
+        </div>
         <div class="route-opts">
           <span class="eyebrow">Who travels</span>
           <div id="route-traveller" class="traveller-grid" role="radiogroup" aria-label="Who travels"></div>
           <div id="route-rover" class="route-rover"></div>
-          <span class="eyebrow">Season</span>
-          <div id="route-season" class="chips" role="radiogroup" aria-label="Season"></div>
-          <p id="route-season-note" class="sub"></p>
         </div>
         <p id="route-status" class="sub route-status"></p>
         <div id="route-results" hidden>
