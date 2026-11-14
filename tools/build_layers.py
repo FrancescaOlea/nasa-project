@@ -224,7 +224,18 @@ def mars_surface():
 
 
 def moon_surface():
-    """Diviner rock abundance (fraction of surface covered by rocks > ~1 m), 32 ppd, 60S-60N."""
+    """Thermal inertia, as for Mars: from Diviner's midnight temperatures with a thermal model
+    (tools/moon_thermal_inertia.py), 32 ppd, 70S-70N. Low = fine dust, high = rocks."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import moon_thermal_inertia
+    if not os.path.exists(os.path.join(RAW, 'diviner_tbol_midnight_32.npy')):
+        raise SystemExit('run tools/fetch_diviner_night.py first')
+    return moon_thermal_inertia.moon_thermal_inertia(RAW), 1 / 32
+
+
+def moon_rock_abundance():
+    """(No longer shown.) Diviner rock abundance (fraction of surface covered by rocks > ~1 m),
+    32 ppd, 60S-60N."""
     base = f'{PDS}/lro/urn-nasa-pds-lro_diviner_derived1/data_derived_gdr_l3/cylindrical/img/dgdr_ra_avg_cyl_032_img'
     fetch(base + '.lbl')
     ra = np.fromfile(fetch(base + '.img'), dtype='<i2').reshape(3840, 11520).astype(np.float32)
@@ -553,8 +564,9 @@ def catalogue():
         ('mars', 'surface'): (mars_surface, dict(unit='TIU', log=True, min=30, max=1000, lat_min=-70, lat_max=70), 3,
                               'Thermal inertia: low = fine dust, high = rocks and bedrock (TES, MGS). '
                               '70°S–70°N; nearer the poles seasonal frost spoils the readings.'),
-        ('moon', 'surface'): (moon_surface, dict(unit='%', log=True, min=0.1, max=3, lat_min=-60, lat_max=60), 3,
-                              'Share of the ground covered by rocks bigger than ~1 m (Diviner, LRO). 60°S–60°N.'),
+        ('moon', 'surface'): (moon_surface, dict(unit='TIU', log=True, min=25, max=400, lat_min=-70, lat_max=70), 3,
+                              'Thermal inertia, as on Mars: low = fine dust, high = rocks and bedrock. Calculated '
+                              'from Diviner (LRO) midnight temperatures with a thermal model. 70°S–70°N.'),
         # Iron: each body gets its own range. Mars only varies between ~15 and 23 %,
         # which on a shared 0-25 % scale would be one flat orange.
         ('mars', 'iron'): (mars_iron, dict(unit='%', log=False, min=14, max=24, lat_min=-57.5, lat_max=57.5), 2,

@@ -72,7 +72,7 @@ both share one colour range, so the same colour means the same value on each.
 |---|---|---|---|
 | Elevation | LRO LOLA, ~1.9 km | MGS MOLA, ~1.9 km | linear |
 | Terrain slope | LOLA, ~1.9 km | MOLA, ~1.9 km | log, 0.1-30 deg |
-| Dusty or rocky terrain | LRO Diviner rock abundance (% of ground covered by >1 m rocks), ~3 km, 60S-60N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km, 70S-70N | log |
+| Dusty or rocky terrain | Thermal inertia (low = dust, high = rock), **calculated** from Diviner's midnight temperatures (GHRM mosaic) with a thermal model, ~1 km, 70S-70N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km, 70S-70N | log, TIU; own range per body (Moon 25-400, Mars 30-1000) |
 | Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 57.5S-57.5N | linear; own range per body |
 | Underground ice | *no global map product found* | Mars Odyssey averaged neutron data (~12 Mars years): % fewer epithermal neutrons than the driest ground (hydrogen, mostly ice near the poles), ~300 km | linear |
 | Temperature | Diviner: average over a full lunar day, ~15 km | **Calculated** (see below): average over a Mars year, ~60 km | linear |
@@ -178,6 +178,25 @@ West Greenland, Alaska's North Slope and the Canadian Arctic; Argyre the Canadia
 Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antarctica; Apollo 11 Sudan,
 Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
 Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
+
+### Moon thermal inertia: from Diviner's midnight temperatures
+
+Both worlds show thermal inertia, made the same way: ground with a high thermal inertia (rocks,
+bedrock) stores the day's heat and stays warmer at night; fine dust cools fast. Mars's map (TES) was
+calculated from night temperatures by the TES team; for the Moon, `tools/moon_thermal_inertia.py`
+does it from Diviner's global mosaic of the bolometric (whole-surface, rocks included) temperature
+at slope-adjusted midnight (128 px/deg, streamed and averaged to 32 px/deg by
+`tools/fetch_diviner_night.py`, so the 3.3 GB file is never stored):
+
+- A thermal model (uniform ground, the 29.53-day lunar day, sunlight 1361 W/m², albedo 0.12,
+  emissivity 0.95, 40 layers, implicit time steps) gives the midnight temperature for 48 thermal
+  inertias (10-3000 TIU) at every degree of latitude, e.g. at the equator 103 K for 50 TIU,
+  195 K for 1000 TIU (measured lunar nights: ~95-105 K over typical soil).
+- Each spot's measured temperature is matched to its thermal inertia.
+
+Results: typical soil 42-46 TIU (published lunar values ~50); fresh craters much higher (Tycho's
+floor ~200, up to ~430; Aristarchus ~110). Like the TES map it's an apparent (bulk) value: boulders
+in fine soil give an in-between number. Albedo differences (0.07-0.16) shift it by ~10-15%.
 
 ### Mars temperatures: a thermal model
 

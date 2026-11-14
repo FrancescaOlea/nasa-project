@@ -31,7 +31,9 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   set, PDS Geosciences. Used for crater and mountain shadows in Moon sunlight.
 - **Diviner Global Cumulative Product** (Diviner Lunar Radiometer, LRO): surface temperature for
   96 times of day, 0.5 deg. Used for temperature, daily swing, and max./min. temperature.
-- **Diviner rock abundance** (LRO), gridded data record, `LRO-L-DLRE-5-GDR-V1.0`, PDS Geosciences. Used for "Dusty or rocky terrain".
+- **Diviner global high-resolution mosaic, bolometric temperature at slope-adjusted midnight**
+  (LRO, GHRM, `dghrm_tbol_m_70s70n`, 128 px/deg, 70°S–70°N), `urn:nasa:pds:lro_diviner_derived1`,
+  PDS Geosciences. Turned into thermal inertia with a thermal model for "Dusty or rocky terrain".
 - **Lunar Prospector Gamma Ray Spectrometer** element abundances (FeO), 2 deg,
   `LP-L-GRS-5-ELEM-ABUNDANCE-V1.0`, PDS Geosciences. Used for iron.
 - **LRO WAC global mosaic** (Wide Angle Camera; NASA/GSFC/Arizona State University), ~100 m/pixel,
