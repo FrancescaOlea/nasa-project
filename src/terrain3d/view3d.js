@@ -28,9 +28,10 @@ const SHOWCASE = { lat: -5.4, lon: 137.8, wKm: 180, hKm: 180, name: 'Gale Crater
 const $ = (id) => document.getElementById(id);
 const fmtM = (km) => `${Math.round(km * 1000).toLocaleString()} m`;
 
-// Mars-like elevation colours (low = dark basalt brown, high = pale dusty ochre)
+// Elevation colours matched to the 2D map's NASA Viking colour mosaic: dark reddish browns,
+// a little lighter on high ground (no pale "sand" tones)
 const ELEV_STOPS = [
-  [0.0, [58, 36, 28]], [0.25, [104, 58, 38]], [0.5, [158, 92, 56]], [0.75, [201, 140, 92]], [1.0, [236, 210, 176]],
+  [0.0, [46, 27, 20]], [0.3, [74, 41, 27]], [0.55, [101, 56, 35]], [0.8, [124, 70, 44]], [1.0, [142, 84, 54]],
 ];
 // slope colours: green (gentle) -> amber -> red (steep)
 const SLOPE_STOPS = [[0, [76, 160, 110]], [0.33, [215, 190, 90]], [0.6, [230, 130, 60]], [1, [200, 50, 50]]];
@@ -80,6 +81,7 @@ export function createView3D({ routeEvents }) {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.9;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     canvasHost.appendChild(renderer.domElement);
     scene = new THREE.Scene();
@@ -92,8 +94,8 @@ export function createView3D({ routeEvents }) {
     scene.background = new THREE.CanvasTexture(sky);
     scene.background.colorSpace = THREE.SRGBColorSpace;
     camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1e5);
-    scene.add(new THREE.HemisphereLight(0xffeedd, 0x3a2418, 0.75));
-    const sun = new THREE.DirectionalLight(0xfff1e0, 2.4);
+    scene.add(new THREE.HemisphereLight(0xffe2cc, 0x2a160e, 0.6));
+    const sun = new THREE.DirectionalLight(0xffeedd, 2.2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(4096, 4096);
     sun.shadow.bias = -0.0005;
@@ -411,7 +413,7 @@ export function createView3D({ routeEvents }) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.computeVertexNormals();
-    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x4a2e22, roughness: 1, side: THREE.DoubleSide }));
+    skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x2a1810, roughness: 1, side: THREE.DoubleSide }));
     scene.add(skirt);
   }
 
@@ -494,8 +496,8 @@ export function createView3D({ routeEvents }) {
         const ti = surface[i];
         if (!Number.isNaN(ti)) {
           const t = Math.min(1, Math.max(-1, (Math.log10(ti) - Math.log10(250)) / 0.6));
-          const f = 1 - 0.16 * t;
-          c = [c[0] * f, c[1] * f, c[2] * (1 - 0.1 * t)];
+          const f = 1 - 0.12 * t;
+          c = [c[0] * f, c[1] * f, c[2] * f];
         }
       }
       col.setXYZ(i, c[0], c[1], c[2]);
