@@ -11,6 +11,7 @@ import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
   similarity } from './analogs.js';
 import { addLandmarks } from './landmarks.js';
+import { createRoutePlanner } from './route/planner.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -249,6 +250,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let analogWeights = parseAnalogWeights(params.get('aw')); // ... and for 'Find Earth analogs'
   let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
   let available = {};                          // data layers for this body (from index.json)
+  let planner = null;                          // Mars route planner (src/route/), when open
   let describe = () => {};
   function selectView(v) {
     view = v;
@@ -271,6 +273,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (current || radiusKm !== DEFAULT_RADIUS_KM) q.set('r', radiusKm);
     if (view) q.set('view', view);
     if (proj.id !== nativeProjection(body)) q.set('proj', proj.id);
+    planner?.query(q);
     if (key !== 'earth' && Object.keys(weights).length) q.set('w', formatWeights(weights));
     if (key !== 'earth' && Object.keys(analogWeights).length) {
       q.set('aw', formatWeights(analogWeights));
@@ -498,6 +501,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
   map.on('click', (e) => {
     if (analog) return; // paused while analog results are shown
+    if (planner?.isOpen()) { planner.click(e.latlng); return; } // route planner picks A and B
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -554,6 +558,17 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   $('find-similar').onclick = async () => {
     if (await chooseWeights('similar')) $('toast').hidden = false; // search not built yet
   };
+
+  // ---- Route planner (Mars only): A to B, with the dangers on the way
+  $('plan-route').hidden = key !== 'mars';
+  if (key === 'mars') {
+    const showRoutePanels = (open) => {
+      $('select-panel').hidden = open;
+      if (open) $('area-panel').hidden = true; else updateSummary();
+    };
+    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); });
+    $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
+  }
 
   const lat = parseFloat(params.get('lat'));
   const lon = parseFloat(params.get('lon'));
@@ -699,7 +714,7 @@ function setUpWorldSwitch(key, params) {
 }
 
 function hidePanels() {
-  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world']) $(id).hidden = true;
+  for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'route-panel']) $(id).hidden = true;
   $('menu-btn').setAttribute('aria-expanded', false);
   $('select-hint').hidden = false;
   $('select-info').hidden = true;

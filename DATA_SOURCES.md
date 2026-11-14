@@ -45,6 +45,20 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **NASA Mars Trek** and **NASA Moon Trek** (Solar System Treks, NASA JPL): map tile services.
 - **NASA Planetary Data System, Geosciences Node** (Washington University in St. Louis): downloads.
 
+**Mars route planner**
+- **Robbins & Hynek global Mars crater database** (2012 release, `RobbinsCraters_20121016`):
+  384,343 craters ≥ 1 km with position, diameter and MOLA-measured rim-to-floor depth, rim height
+  and degradation state. Robbins, S. J. & Hynek, B. M. (2012), JGR 117, E05004,
+  doi:10.1029/2011JE003966; https://craters.sjrdesign.net/ (NASA-funded; uses MGS MOLA and
+  Mars Odyssey THEMIS data). Used for crater hazards and depths.
+- **Mars Dust Activity Database (MDAD) v1.0**: 14,974 dust storms mapped from MGS MOC and MRO
+  MARCI daily global images, Mars years 24–32 (2001–2015). Battalio, M. & Wang, H. (2021), Icarus
+  354, 114059; data doi:10.7910/DVN/F8R2JX. Used for dust-storm frequency by season.
+- Slope limits: NASA xEVA System Concept of Operations (EVA-EXP-0042); Rankin, A. et al., "Mars
+  Curiosity Rover Mobility Trends During the First Seven Years" (JPL); Ono, M. et al., Mars 2020
+  surface traversability analysis (JPL).
+- Walking time: Tobler, W. (1993), hiking function (Earth-based).
+
 ## Partner data
 
 - **Kaguya Terrain Camera ortho mosaic** (JAXA / SELENE), ~21 m/pixel, via NASA Moon Trek.

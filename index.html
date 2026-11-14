@@ -70,6 +70,7 @@
       <!-- Area selection panel (Moon and Mars) -->
       <aside id="select-panel" class="panel" hidden>
         <p id="select-hint" class="hint">Click anywhere on the map to select an area.</p>
+        <button id="plan-route" class="primary route-open" type="button" hidden>🧭 Plan a route from A to B</button>
         <div id="select-info" hidden>
           <div class="panel-head">
             <span class="eyebrow">Selected area</span>
@@ -86,6 +87,41 @@
         <div class="radius-row">
           <span class="eyebrow">Radius, km</span>
           <div id="radius-options" class="radius-chips" role="radiogroup" aria-label="Selection radius in km"></div>
+        </div>
+      </aside>
+
+      <!-- Mars route planner: A to B, shortest / easiest / safest (src/route/) -->
+      <aside id="route-panel" class="panel route-panel" hidden aria-label="Route planner" aria-live="polite">
+        <div class="panel-head">
+          <span class="eyebrow">Route planner · Mars</span>
+          <button id="route-close" class="icon-btn" aria-label="Close route planner">&times;</button>
+        </div>
+        <p id="route-hint" class="hint"></p>
+        <p id="route-ab" class="route-ab"></p>
+        <div class="route-opts">
+          <span class="eyebrow">Who travels</span>
+          <div id="route-traveller" class="chips" role="radiogroup" aria-label="Who travels"></div>
+          <span class="eyebrow">Season</span>
+          <div id="route-season" class="chips" role="radiogroup" aria-label="Season"></div>
+          <p id="route-season-note" class="sub"></p>
+        </div>
+        <p id="route-status" class="sub route-status"></p>
+        <div id="route-results" hidden>
+          <div id="route-tabs" class="route-tabs"></div>
+          <p id="route-about" class="sub route-about"></p>
+          <div id="route-stats"></div>
+          <canvas id="route-profile" class="route-profile" height="90"></canvas>
+          <p id="route-profile-note" class="sub"></p>
+          <span class="eyebrow">Dangers on the way</span>
+          <ol id="route-dangers" class="route-dangers"></ol>
+          <p id="route-no-dangers" class="sub" hidden>No major hazards found at this map scale.</p>
+          <p class="route-note">Measured = spacecraft data (MOLA, TES); catalog = Robbins crater database;
+            observed = dust storms mapped from orbit (MDAD); model = calculated. The data is 2–300 km per pixel,
+            so this compares corridors; it can't see single boulders or small cliffs.</p>
+        </div>
+        <div class="actions">
+          <button id="route-swap" type="button">⇅ Swap A and B</button>
+          <button id="route-clear" type="button">Start over</button>
         </div>
       </aside>
 
