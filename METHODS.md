@@ -201,7 +201,7 @@ The new characteristics make sites share places a little more often: 35 of the 6
 site's result within 400 km (30 of 60 before). Equatorial Mars sites now often share the Andean deserts, and
 polar sites the barren Arctic islands: few places on Earth are cold, barren and dry at once.
 
-### Countries and field-research cost (Earth analogs)
+### Countries (Earth analogs)
 
 - **Country filter** (optional; one row near the top of the Find Earth analogs dialog): *Anywhere*, *Avoid countries* or *Only in
   countries*, with a searchable list. "No country" stands for Antarctica (Antarctic Treaty area, south of
@@ -210,13 +210,44 @@ polar sites the barren Arctic islands: few places on Earth are cold, barren and 
 - Boundaries: Natural Earth 1:50m (public domain), turned into a 0.25° lookup grid by
   `tools/build_country_grid.mjs` (`public/search/countries.bin`, 20 kB). Natural Earth draws de facto
   boundaries; disputed areas follow its choices.
-- **Field research here** (under each result's report card): the technology needed to do Moon or Mars
-  research at that place, what is needed to simulate what the place lacks (e.g. a cold, low-pressure chamber
-  where nights aren't cold enough, a UV lamp array, a gravity off-load rig), the camp, the team (people,
-  weeks, person-years) and a total cost per year. The list follows the place's climate, altitude and
-  latitude from the search grid, and the world it stands in for (`src/fieldplan.js`).
-  **The prices are rough planning figures chosen by the authors (2025 US dollars), not quotes and not NASA
-  data**; the app says so next to them.
+
+### Simulation Planning (Earth analogs)
+
+**🛠 Simulation Planning** (above each result's comparison table) opens a scrollable panel on the right: what it
+would take to recreate the Moon or Mars site's environment at the selected Earth area (`src/simplan/`). It
+follows the selected result while open.
+
+- **Environmental gaps** (`plan.js`): each characteristic here and at the site, the difference, ✓ / ≈ / ✗ (same
+  thresholds as the report card), and where it can be recreated: *Outdoors* (terrain, bare ground, rain, regolith,
+  shading), *Equipment* at the site (climatic chamber, UV lamps, ground freezing, dust generators) or *Facility only*
+  (vacuum / Mars-air chamber, gravity, radiation, the Moon's long days). Place values come from the app's data
+  (the Moon / Mars layers and the Earth search grid); gravity, air, radiation and day length from NASA fact
+  sheets, Curiosity RAD (Hassler et al. 2014), Chang'e 4 (Zhang et al. 2020) and UNSCEAR (`facts.js`). Earth's air
+  pressure follows from the altitude. Wind is shown as *no data* (the app has no Earth wind data yet).
+- **Recommendations**: one for each gap that can be acted on: what is lacking, what to change, the technology,
+  its cost and its effect. For search characteristics the effect is computed: the match % with that gap
+  closed (e.g. "raises the match from 75% to 77% inside the chamber"). Ordered by importance (the search
+  weight × the gap) × feasibility (outdoors 1, equipment 0.75, facility 0.5).
+- **Technology and equipment** (`catalog.js`): only what the gaps need. Each card: image (Wikimedia Commons),
+  purpose, why it is needed here, purchase or per-campaign cost, running cost, where it has been used before
+  (ARGOS, Chamber A, Aarhus Mars wind tunnel, NSRL, LUNA, MOXIE, Curiosity RAD …) and sources.
+  **Every price says whether it is published** (regolith simulant ~$45/kg, parabolic flights $8,200 a seat
+  (2022), NSRL beam time ~$4,000/hour, −70 °C chambers $42,000–67,000, walk-in chambers from ~$85,000, small
+  thermal-vacuum chambers ~$52,000, solar simulators $50,000 to over $1 million) **or an estimate**, with its
+  basis. Estimates are wide ranges, not quotes.
+- **Total cost**: initial investment (equipment, installation 10–25%, a test hall when chambers or the
+  offload rig are needed, power, field camp, transport 5–10%, preparation staff), recurring costs per year
+  (maintenance, energy at grid or diesel prices, operating staff) and one simulation campaign (facility time,
+  travel and permits, field team), with the assumptions listed. Field camp and logistics reuse the site types
+  of `src/fieldplan.js` (polar, high altitude, hot or cold desert …), whose figures are the authors' planning
+  numbers.
+- **Manpower**: people per role (mission and simulation specialists, environmental, mechanical and electrical
+  engineers, geologists, atmospheric scientists, technicians, construction workers) for preparing and for
+  operating, from the setup person-months and operating staff of each piece of equipment; preparation time
+  from the longest lead time, plus a test hall and commissioning.
+
+New equipment: add an entry to `ITEMS` in `catalog.js` and a gap (or a line in an existing one) in `plan.js`
+that names it.
 
 ### Similar spots
 
