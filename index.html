@@ -207,6 +207,17 @@
           <button id="exit-results">Exit results</button>
         </div>
       </aside>
+
+      <!-- Simulation Planning for the selected Earth analog (src/simplan) -->
+      <aside id="sim-panel" class="panel sim-panel" hidden aria-label="Simulation planning">
+        <div class="panel-head sim-head">
+          <span class="eyebrow">Simulation planning</span>
+          <button id="sim-close" class="icon-btn" aria-label="Close simulation planning">&times;</button>
+        </div>
+        <p id="sim-sub" class="coords sim-sub"></p>
+        <p class="sub">What it would take to recreate the site’s environment here: gaps, equipment, cost and people.</p>
+        <div id="sim-body"></div>
+      </aside>
     </section>
 
     <!-- Moon / Mars: standing on the surface in 3D (src/surface3d) -->

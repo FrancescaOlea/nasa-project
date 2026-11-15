@@ -15,7 +15,7 @@ import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILA
 import { addLandmarks } from './landmarks.js';
 import { reportCardHtml, novelty, ordinal } from './reportcard.js';
 import { loadCountries, parseCountryFilter, formatCountryFilter, filteredOut, describeFilter } from './countries.js';
-import { fieldPlanHtml } from './fieldplan.js';
+import { createSimPanel } from './simplan/panel.js';
 import { inKnownRegion, KNOWN_REGION_KM } from './knownAnalogs.js';
 import { refineResults, REFINE_BELOW_KM } from './refine.js';
 import { featuresNear, featuresHtml } from './features.js';
@@ -1076,7 +1076,8 @@ function showAnalogResults(params, selection) {
       return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
     });
     const box = $('analog-compare');
-    box.innerHTML = `<div class="analog-3d-row">
+    box.innerHTML = `<button type="button" class="primary analog-sim">🛠 Simulation Planning</button>
+      <div class="analog-3d-row">
         <button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
         <button type="button" class="view-3d-btn analog-terrain">⛰ 3D terrain</button>
       </div>
@@ -1085,17 +1086,16 @@ function showAnalogResults(params, selection) {
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
       as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
       (top right) shows this Earth area's typical values from the map data.</p>
-      ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}
-      <div class="field-plan-slot"></div>`;
+      ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}`;
     featuresNear(res.lat, res.lon, r).then((f) => {
       const slot = box.querySelector('.rc-features-slot');
       if (slot) slot.outerHTML = featuresHtml(f);
     }).catch(() => {});
-    // equipment, team and yearly cost of field research here (needs the Earth grid's values)
-    fieldPlanHtml({ from, worldName: source.name, lat: res.lat, lon: res.lon, country: res.country }).then((html) => {
-      const slot = box.querySelector('.field-plan-slot');
-      if (slot) slot.innerHTML = html;
-    }).catch((err) => console.error(err));
+    // Simulation Planning: what recreating the site's environment here would take (src/simplan/)
+    const simCtx = { from, worldName: source.name, siteName: formatLatLon(lat, lon), res, site, found, weights,
+      placeName: `Area ${i + 1}${res.country ? ` · ${res.country}` : ''}` };
+    box.querySelector('.analog-sim').onclick = () => simPanel().open(simCtx);
+    if (simPanelInstance?.isOpen()) simPanelInstance.update(simCtx); // follows the selected result
     // detailed 3D landscape of this area's centre, loaded only on request
     box.querySelector('.analog-3d').onclick = () => {
       location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
@@ -1143,8 +1143,12 @@ const appHooks = {
   bodyName: () => 'Mars',
 };
 
+let simPanelInstance = null; // Simulation Planning panel (src/simplan/), made when first opened
+const simPanel = () => (simPanelInstance ??= createSimPanel());
+
 function hidePanels() {
   if (terrainView?.isOpen()) terrainView.close();
+  simPanelInstance?.close();
   $('btn-3d').hidden = true;
   for (const id of ['select-panel', 'analog-banner', 'menu', 'menu-btn', 'area-panel', 'switch-world', 'ruler-panel', 'route-panel']) $(id).hidden = true;
   mapView.classList.remove('measuring');
