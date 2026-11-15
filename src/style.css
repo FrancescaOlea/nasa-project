@@ -540,20 +540,20 @@ body.in-3d #ruler-btn, body.in-3d #help-btn, body.in-3d #ruler-panel, body.in-3d
 .season-pick select { min-width: 7.2rem; }
 
 /* ---- Country filter (analog search dialog) and country names in the results ---- */
-.w-countries { margin: .4rem 1.5rem .6rem; padding: .7rem .8rem .8rem; border: 1px solid #33333b; border-radius: 10px; min-width: 0; }
-.w-countries legend { padding: 0 .4rem; font-size: .93rem; }
-.w-countries legend small { color: #8a8a92; }
-.w-c-modes { display: flex; gap: .4rem; flex-wrap: wrap; }
-.weights .w-c-modes button { flex: 1; min-height: 38px; padding: .4rem .6rem; font-size: .88rem; white-space: nowrap; }
+.w-countries { padding: .1rem 1.5rem .5rem; }
+.w-c-row { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; font-size: .93rem; }
+.w-c-modes { display: flex; gap: .3rem; }
+.weights .w-c-modes button { min-height: 34px; padding: .3rem .75rem; font-size: .85rem; border-radius: 999px; white-space: nowrap; }
 .weights .w-c-modes button[aria-checked="true"] { background: #7fd4ff; border-color: #7fd4ff; color: #000; font-weight: 600; }
-.w-c-chosen { display: flex; flex-wrap: wrap; gap: .3rem; margin: .6rem 0 .5rem; color: #8a8a92; font-size: .82rem; min-height: 1.6rem; align-items: center; }
+.w-c-pick { margin-top: .5rem; padding: .6rem .7rem; border: 1px solid #33333b; border-radius: 10px; }
+.w-c-chosen { display: flex; flex-wrap: wrap; gap: .3rem; margin: 0 0 .5rem; color: #8a8a92; font-size: .82rem; min-height: 1.6rem; align-items: center; }
 .weights button.w-c-chip { min-height: 0; padding: .2rem .55rem; font-size: .8rem; border-radius: 999px; background: #1f2a36; border-color: #3b536b; color: #dcecff; }
 .w-c-search { width: 100%; font: inherit; font-size: .92rem; padding: .45rem .6rem; border-radius: 8px; border: 1px solid #555; background: #1c1c22; color: #fff; }
-.w-c-list { margin-top: .4rem; max-height: 11rem; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0 .8rem; }
+.w-c-list { margin-top: .4rem; max-height: 8.5rem; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0 .8rem; }
 .w-c-list label { display: flex; align-items: center; gap: .45rem; padding: .28rem .2rem; font-size: .88rem; cursor: pointer; }
 .w-c-list input { accent-color: #7fd4ff; width: 16px; height: 16px; flex: none; }
 .analog-results .where .country { display: block; color: #9fc3e6; font-size: .78rem; }
-@media (max-width: 600px) { .w-countries { margin-left: 1rem; margin-right: 1rem; } }
+@media (max-width: 600px) { .w-countries { padding-left: 1rem; padding-right: 1rem; } }
 
 /* ---- Field campaign plan (equipment, team, yearly cost) ---- */
 .field-plan { margin-top: .7rem; padding-top: .6rem; border-top: 1px solid #333; font-size: .8rem; }

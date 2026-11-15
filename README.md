@@ -376,7 +376,7 @@ places* none are.
 
 ### Countries and field-research cost (Earth analogs)
 
-- **Country filter** (optional, in the Find Earth analogs dialog): *Anywhere*, *Avoid countries* or *Only in
+- **Country filter** (optional; one row near the top of the Find Earth analogs dialog): *Anywhere*, *Avoid countries* or *Only in
   countries*, with a searchable list. "No country" stands for Antarctica (Antarctic Treaty area, south of
   60°S) and unclaimed land. Every result shows its country. Filtered-out places still count for Earth's
   spread and percentiles, so the scores of the remaining places don't change.
