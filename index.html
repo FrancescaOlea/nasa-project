@@ -264,6 +264,19 @@
         <span><span class="w-toggle-label"></span><small class="w-toggle-help"></small></span>
       </label>
       <div class="w-list"></div>
+      <fieldset class="w-countries" hidden>
+        <legend>Countries <small>(optional)</small></legend>
+        <div class="w-c-modes" role="radiogroup" aria-label="Country filter">
+          <button type="button" role="radio" data-mode="any">Anywhere</button>
+          <button type="button" role="radio" data-mode="avoid">Avoid countries</button>
+          <button type="button" role="radio" data-mode="only">Only in countries</button>
+        </div>
+        <div class="w-c-pick" hidden>
+          <div class="w-c-chosen" aria-live="polite"></div>
+          <input class="w-c-search" type="search" placeholder="Search countries…" aria-label="Search countries">
+          <div class="w-c-list" role="group" aria-label="Countries"></div>
+        </div>
+      </fieldset>
       <p class="w-warning" role="alert" hidden>Turn on at least one characteristic to continue.</p>
       <footer>
         <div class="w-presets">

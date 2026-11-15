@@ -106,6 +106,8 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **NOAA ETOPO 2022** global relief model, 60 arc-seconds (NOAA National Centers for Environmental
   Information; includes NASA SRTM data). Earth elevation, slope, relief, land mask and the analog
   search.
+- **Natural Earth** 1:50m country boundaries (public domain, naturalearthdata.com; via the
+  `world-atlas` package). Country of each Earth analog result and the country filter.
 - **Esri World Imagery** (Esri, Maxar, Earthstar Geographics). Earth satellite imagery, also the
   ground texture in the Earth 3D view.
 - **NASADEM** (NASA JPL, reprocessed SRTM Space Shuttle radar data), 1 arc second, 60° N–56° S, as
