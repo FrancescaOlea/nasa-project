@@ -54,6 +54,12 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   `PRECTOTCORR` (rainfall; from MERRA-2 / GPM), `ALLSKY_SFC_UV_INDEX` (UV; from CERES),
   `ALLSKY_SFC_SW_DWN` (sunlight reaching the ground; from CERES).
   Used for Earth's temperature, dryness, UV and sunlight layers and the analog search.
+  `TS` (yearly mean ground-surface temperature) for "Frozen ground" in the analog search.
+- **MODIS land cover** (MCD12Q1, Terra + Aqua, IGBP classification), 2023, via **NASA GIBS**
+  (`MODIS_Combined_L3_IGBP_Land_Cover_Type_Annual`, decoded with its published colour map; sampled at
+  0.025°). Used for "Bare ground" (class 16, Barren) in the analog search.
+- **MERRA-2** dust surface mass concentration (NASA GMAO reanalysis), monthly 2014–2023, via NASA GIBS
+  (`MERRA2_Dust_Surface_Mass_Concentration_Monthly`). Used for "Dust in the air" in the analog search.
 
 **Services**
 - **NASA Mars Trek** and **NASA Moon Trek** (Solar System Treks, NASA JPL): map tile services.
@@ -113,6 +119,15 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   the browser: terrain in the Earth 3D view.
 - **AWS Terrain Tiles** (Registry of Open Data on AWS; Mapzen/Tilezen, from SRTM, GMTED, ETOPO1 and
   national models). Earth 3D view terrain north of 60° N and south of 56° S.
+
+## Earth features
+
+- **Impact structures**: the confirmed structures in Wikipedia's regional "List of impact structures in …"
+  pages (Africa, Asia and Russia, Australia, Europe, North America, South America; Antarctica has only
+  unconfirmed ones), which follow the **Earth Impact Database** (Planetary and Space Science Centre,
+  University of New Brunswick). 197 structures with position and diameter.
+- **Volcanoes**: Smithsonian Institution **Global Volcanism Program**, Volcanoes of the World database,
+  Holocene volcanoes (1,214), via its public web service (webservices.volcano.si.edu).
 
 ## Known analog sites
 

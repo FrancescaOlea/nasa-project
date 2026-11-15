@@ -1,7 +1,7 @@
 // Analogy report card for one Earth analog result: where the analogy is strong, where it is
 // weak, what was only matched relatively (the site is beyond anything on Earth), what was
 // not compared at all, and what no place on Earth can reproduce.
-import { PARAMS, formatValue, gapOf } from './analogs.js';
+import { PARAMS, formatValue, formatSite, gapOf } from './analogs.js';
 import { nearestKnown, KNOWN_REGION_KM } from './knownAnalogs.js';
 
 // Gap to the target in Earth spreads (5th-95th percentile of all of Earth's land), as in the score
@@ -10,10 +10,10 @@ export const WEAK_GAP = 0.5;    // from this: weak match (in between: partial)
 
 // Characteristics the Moon / Mars maps have that the Earth search can't compare (yet)
 const NOT_IN_SEARCH = {
-  moon: ['Surface material: dust vs rock (thermal inertia)', 'Iron content (minerals)', 'Sunlight',
-    'Rock type and geology', 'Impact craters'],
-  mars: ['Surface material: dust vs rock (thermal inertia)', 'Iron content (minerals)', 'Underground ice',
-    'Sunlight', 'Dust storms', 'Rock type and geology', 'Impact craters'],
+  moon: ['Surface material: dust vs rock (thermal inertia)', 'Iron content (minerals)',
+    'Rock type and geology', 'Impact craters (shown below, not scored)'],
+  mars: ['Surface material: dust vs rock (thermal inertia)', 'Iron content (minerals)',
+    'Rock type and geology', 'Impact craters (shown below, not scored)'],
 };
 
 // What no place on Earth can reproduce
@@ -60,26 +60,34 @@ export function novelty(lat, lon) {
  * found: the whole findAnalogs() answer; weights: the search weights.
  */
 export function reportCardHtml({ from, worldName, res, site, found, weights }) {
-  const { used, targets, spreads, relative = {} } = found;
+  const { used, targets, spreads, relative = {}, rules = {} } = found;
   const strong = []; const partial = []; const weak = []; const rel = [];
   for (const k of used) {
     const p = PARAMS[k];
     const v = res.values[k];
-    const gap = gapOf(k, v, targets[k], spreads[k]);
+    const gap = gapOf(k, v, targets[k], spreads[k], rules[k]);
     if (k in relative) {
       const pct = Math.round(relative[k] * 100);
-      rel.push(`<li><b>${esc(p.name)}</b>: ${worldName} ${formatValue(k, site[k])}, here ${formatValue(k, v)}. `
+      rel.push(`<li><b>${esc(p.name)}</b>: ${worldName} ${formatSite(k, site[k])}, here ${formatValue(k, v)}. `
         + `<span class="rc-why">Only the rank matches: both are at about the ${ordinal(pct)} percentile of their own world.</span></li>`);
       continue;
     }
-    const what = p.site
-      ? `${worldName} ${formatValue(k, site[k])}, here ${formatValue(k, v)}`
-      : `${formatValue(k, v)} (${p.better === 'low' ? 'lower is better' : 'higher is better'}; no ${worldName} value)`;
+    let what;
+    if (p.rule) {
+      const wantsFrozen = rules[k]?.better === 'low';
+      what = `${worldName} ${formatSite(k, site[k])}, so it looks for ${wantsFrozen ? 'frozen' : 'unfrozen'} ground; `
+        + `here the ground averages ${formatValue(k, v)} over the year`;
+    } else if (p.site) {
+      what = `${worldName} ${formatSite(k, site[k])}, here ${formatValue(k, v)}`;
+    } else {
+      what = `${formatValue(k, v)} (${p.better === 'low' ? 'lower is better' : 'higher is better'}; no ${worldName} value)`;
+    }
     const line = `<li><b>${esc(p.name)}</b>: ${what}</li>`;
     (gap <= STRONG_GAP ? strong : gap < WEAK_GAP ? partial : weak).push(line);
   }
   const off = Object.keys(PARAMS).filter((k) => !used.includes(k))
-    .map((k) => PARAMS[k].name + (weights[k] > 0 ? ` (no ${worldName} data here)` : ' (switched off)'));
+    .map((k) => PARAMS[k].name + (PARAMS[k].worlds && !PARAMS[k].worlds.includes(from) ? ` (no ${worldName} equivalent)`
+      : weights[k] > 0 ? ` (no ${worldName} data here)` : ' (switched off)'));
   const notCompared = [...off, ...(NOT_IN_SEARCH[from] ?? [])];
   const nov = novelty(res.lat, res.lon);
 
@@ -87,6 +95,8 @@ export function reportCardHtml({ from, worldName, res, site, found, weights }) {
     ? `<div class="rc-group rc-${cls}"><p class="rc-head">${title}</p><ul>${items.join('')}</ul></div>` : '');
   return `<section class="report-card" aria-label="Analogy report card">
     <p class="c-title">How good is this analog?</p>
+    ${res.refined?.km > 0.5 ? `<p class="sub rc-refined">Position refined with ~5 km terrain data: moved
+      ${Math.round(res.refined.km)} km within its ~50 km search cell to where the slope matches best.</p>` : ''}
     <p class="rc-novelty ${nov.known ? 'known' : 'new'}">${esc(nov.text)}.
       <a href="${esc(nov.site.source)}" target="_blank" rel="noopener noreferrer">About ${esc(nov.site.name)}</a></p>
     ${group('strong', '✓ Strong match', strong)}
@@ -94,6 +104,7 @@ export function reportCardHtml({ from, worldName, res, site, found, weights }) {
     ${group('weak', '✗ Weak match', weak)}
     ${group('rel', '↕ Matched only relatively (beyond anything on Earth)', rel)}
     ${group('none', '○ Not compared', notCompared.map((t) => `<li>${esc(t)}</li>`))}
+    <div class="rc-features-slot"></div>
     <details class="rc-limits"><summary>What no place on Earth can reproduce</summary>
       <ul>${(EARTH_LIMITS[from] ?? []).map(([t, d]) => `<li><b>${t}</b>: ${esc(d)}</li>`).join('')}</ul>
     </details>

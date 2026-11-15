@@ -290,11 +290,12 @@ with `python3 tools/build_layers.py earth`.
 **Find Earth analogs** (Moon or Mars, with an area selected) first asks how much each characteristic
 should count (off, ×0.5, ×1, ×2, ×3; at least one on), how many places to find (1-10, default 3) and
 what a good analog is. **Defaults** restores the default weights, mode and number:
-max. temperature ×2, min. temperature ×1, daily swing ×1, slope ×2, relief ×2, dryness ×2, UV and
-altitude off. These were chosen by running 18 Moon and Mars sites and checking that different sites
-get different places: only 9% of results are shared between sites (it was 41% with every weight at
-×1, when most searches ended in the Atacama or Tibet). UV and altitude have no Mars/Moon value, so
-they pull every search towards the same highlands.
+max. temperature ×2, min. temperature ×1, daily swing ×1, slope ×2, relief ×2, dryness ×2, sunlight ×1,
+bare ground ×1, frozen ground ×1 and dust ×1 (the last two on Mars only); UV and altitude off. The first six
+were chosen by running 18 Moon and Mars sites and checking that different sites get different places (it was
+much worse with every weight at ×1, when most searches ended in the Atacama or Tibet). UV and altitude have no
+Mars/Moon value, so they pull every search towards the same highlands. The last four were added later and set
+with `tools/validate-analogs.html` (see *Does the search find known analogs?* below).
 
 - **Match my site**: places whose values are closest to the site's. Where the site is beyond anything
   on Earth (Mars nights are always colder, its day-night swing always bigger), it is matched
@@ -310,12 +311,22 @@ they pull every search towards the same highlands.
 | Terrain slope | mean of log10(slope), ~1.9 km scale | ETOPO 2022, same scale | matched |
 | Terrain relief | mean elevation standard deviation inside ~9 km blocks | ETOPO 2022, same blocks | matched |
 | Dryness | – (no Mars/Moon equivalent) | yearly rain, log | any desert (under 250 mm/yr) counts as dry enough; wetter places count against |
+| Sunlight | the Sunlight layer, W/m² | NASA POWER (CERES), yearly mean, W/m² | **by rank only**: as sunny for Earth as the site is for its world |
+| Bare ground | – (all of the Moon and Mars is bare) | share of land MODIS classes "Barren" (rock, sand or soil, under 10% vegetation), 2023 | half or more counts fully; less counts against |
+| Frozen ground (Mars) | Underground ice layer (Odyssey) | NASA POWER yearly mean ground temperature | ice-rich site (signal ≥ 50%, `ICE_RICH`): looks for permafrost (yearly mean below 0 °C); other sites: for unfrozen ground |
+| Dust in the air (Mars) | share of days with a dust storm (Mars Dust Activity Database, yearly mean) | MERRA-2 dust near the ground, 2014–2023 mean, log | **by rank only**: as dusty for Earth as the site is for Mars |
 | UV radiation | – | average UV index | highest wins |
 | Altitude (thin air) | – | mean elevation | highest wins |
 
+Why "by rank only" for sunlight: Mars gets ~40% of Earth's sunlight, so its equator gets about as much as
+cloudy Britain. Matching the W/m² sent equatorial Mars sites to England; matching the rank sends them to Earth's
+sunniest deserts. Why 50% for ice: the Odyssey signal is 20–40% at the Martian equator (mostly water bound in
+minerals) and over 60% poleward of ~60°, where ground ice lies within ~1 m.
+
 How it works (`src/analogs.js`):
 - `tools/build_search_grid.py` stores, for each of the ~96,000 half-degree cells with land, the
-  land-area mean of each characteristic (2.7 MB, loaded only when a search starts).
+  land-area mean of each characteristic; `tools/build_search_extra.py` adds sunlight, mean ground
+  temperature, bare ground and dust to the same file (3.5 MB, loaded only when a search starts).
 - For the chosen radius, every land cell becomes the centre of a circle; the cells inside are
   combined, weighted by land area (circles smaller than a cell use the cell, centred on its land).
   Circles that are less than half land are skipped. Every circle is scored: nothing is sampled.
@@ -324,6 +335,11 @@ How it works (`src/analogs.js`):
   root-mean-square; "% match" = 100 % minus the score (0 % = a whole Earth spread away).
 - The best circle is kept, then the next best at least 800 km from all kept ones, until there are as
   many as asked for (3 by default).
+- **Fine-scale positions** (`src/refine.js`): for radii under 25 km a result is only "somewhere in this
+  ~50 km cell". Each one is then moved, within its cell, to the spot whose slope matches the site best,
+  read from the Earth slope tiles (~5 km pixels at the equator, ~2.5 km at 60°). Climate data stays at
+  ~50 km, and relief (measured in ~9 km blocks) stays at the cell value. The report card says when and how
+  far a result moved.
 
 #### Report card: how good is the analog, and where does it fail?
 
@@ -333,14 +349,23 @@ Click a result for its **report card** (`src/reportcard.js`), under the comparis
 - **✓ Strong / ≈ partial / ✗ weak match**: each characteristic, by how far the place is from the site's
   value, measured in Earth's spread of that characteristic (its 5th–95th percentile over all land): strong up
   to 15%, weak from 50% (`STRONG_GAP`, `WEAK_GAP`).
-- **↕ Matched only relatively**: where the site is beyond anything on Earth, only the rank matches. The card
-  gives both real values, e.g. *Min. temperature: Mars −93 °C, here 6 °C; both at about the 92nd percentile of
-  their own world*.
+- **↕ Matched only relatively**: where the site is beyond anything on Earth, and always for sunlight and dust,
+  only the rank matches. The card gives both real values, e.g. *Min. temperature: Mars −93 °C, here 6 °C; both
+  at about the 92nd percentile of their own world*.
 - **○ Not compared**: characteristics that were switched off, have no data at the site, or have no Earth
-  counterpart in the search yet (surface material, iron, ice, sunlight, dust storms, rock type, craters).
+  counterpart in the search yet (surface material, iron, rock type, impact craters).
+- **◎ Features in this area**: confirmed impact structures that overlap the area and young volcanoes in it
+  (or else the nearest impact structure). Shown, not scored.
 - **What no place on Earth can reproduce** (fixed per world): gravity, vacuum or the thin CO₂ air, radiation,
   the Moon's 29.5-day day, Mars's perchlorate soil, and Earth's life, which helps testing but contaminates
   samples.
+
+#### Impact structures and volcanoes on the Earth map
+
+`public/features/earth.json` (`tools/build_earth_features.py`): the 197 confirmed impact structures from
+Wikipedia's regional lists (which follow the Earth Impact Database), drawn as dashed rings to scale (labelled
+from 2× zoom when 20 km or larger, otherwise from 4×), and the 1,214 volcanoes active in the last ~12,000 years
+from the Smithsonian Global Volcanism Program, as orange dots (hover for name, type and last eruption).
 
 #### Known analogs: is the place new?
 
@@ -351,28 +376,32 @@ details). Every result is labelled **New analog** or **Known analog region** (wi
 `KNOWN_REGION_KM`). **Only new places** in the search dialog leaves the known regions out (address: `new=1`).
 
 **Does the search find known analogs?** `tools/validate-analogs.html` (open it with `npm run dev`, at
-`/tools/validate-analogs.html`) runs the search with the default weights and a 25 km radius for Moon / Mars
-sites whose Earth analog is established, and reports how well the best area within 250 km of that analog ranks
-among all of Earth's ~96,000 areas. For comparison, the same number for 300 random land points (median):
+`/tools/validate-analogs.html`; `?sets=default,before` compares the current and the earlier defaults, `?w=...`
+any weights) runs the search with a 25 km radius for Moon / Mars sites whose Earth analog is established, and
+reports how well the best area within 250 km of that analog ranks among all of Earth's ~96,000 areas. For
+comparison, the same number for 300 random land points (median). Current defaults, and in brackets the six
+climate and terrain characteristics only (before sunlight, bare ground, frozen ground and dust were added):
 
 | Moon / Mars site | Known Earth analog | Why that pair | Known analog ranks in | Random land point |
 |---|---|---|---|---|
-| Phoenix landing site (Mars) | McMurdo Dry Valleys | ice-cemented polar ground | **top 1.5%** | top 36% |
-| Opportunity, Meridiani Planum (Mars) | Río Tinto | jarosite from acid water | **top 1.5%** | top 29% |
-| Apollo 15, Hadley (Moon) | Askja | Apollo field training | **top 3.9%** | top 18% |
-| Apollo 14, Fra Mauro (Moon) | Nördlinger Ries | Apollo 14 crew training | top 20% | top 34% |
-| Apollo 16, Descartes (Moon) | Sudbury Basin | Apollo 16 / 17 rock studies | top 28% | top 28% |
-| Viking 1, Chryse Planitia (Mars) | Atacama (Yungay) | Viking-like soil experiments | top 81% | top 21% |
+| Phoenix landing site (Mars) | McMurdo Dry Valleys | ice-cemented polar ground | **top 2.8%** (1.5%) | top 37% |
+| Opportunity, Meridiani Planum (Mars) | Río Tinto | jarosite from acid water | **top 3.4%** (1.5%) | top 39% |
+| Apollo 15, Hadley (Moon) | Askja | Apollo field training | **top 4.7%** (3.9%) | top 18% |
+| Apollo 14, Fra Mauro (Moon) | Nördlinger Ries | Apollo 14 crew training | top 29% (20%) | top 40% |
+| Apollo 16, Descartes (Moon) | Sudbury Basin | Apollo 16 / 17 rock studies | top 33% (28%) | top 37% |
+| Viking 1, Chryse Planitia (Mars) | Atacama (Yungay) | Viking-like soil experiments | top 38% (81%) | top 21% |
 
-Four of six known analogs rank far above a random place, from climate and terrain alone. The two that don't
-were chosen for what the search doesn't compare: Sudbury for its impact rocks, and the Atacama for its soil
-chemistry. Viking 1's site is cold for Mars, so it is matched to places cold for Earth, while Yungay is a warm
-coastal desert. For every site, *some* known analog for its world ranks in the top 1.5%.
+Five of six known analogs rank above a random place (four before); three of them far above it. Sudbury is only
+slightly above it and the Atacama below it: they were chosen for what the search can't compare, Sudbury for its
+impact rocks and the Atacama for its soil chemistry. Viking 1's site is cold for Mars, so it is matched to
+places cold for Earth, while Yungay is a warm coastal desert; bare ground and sunlight moved it from the bottom
+fifth to the middle.
 
-None of the six known analogs is among the site's 10 results: the results are other places with similar
-values. Over 20 Moon and Mars sites × 10 results, **7 of 200 results (3.5%) are in a known analog region**
-(e.g. Hellas → near Haughton crater, Mars's north pole → Svalbard); the other 96.5% are new. With *Only new
-places* none are.
+Over 20 Moon and Mars sites × 10 results, **12 of 200 results (6%) are in a known analog region** (e.g. Hellas →
+near Haughton crater, Mars's north pole → Svalbard); the other 94% are new. With *Only new places* none are.
+The new characteristics make sites share places a little more often: 35 of the 60 top-3 results have another
+site's result within 400 km (30 of 60 before). Equatorial Mars sites now often share the Andean deserts, and
+polar sites the barren Arctic islands: few places on Earth are cold, barren and dry at once.
 
 ### Similar spots
 
@@ -403,8 +432,8 @@ Altiplano and Algeria; Meridiani the Sechura Desert (Peru), the Western Sahara a
 West Greenland, Alaska's North Slope and the Canadian Arctic; Argyre the Canadian Arctic islands and
 Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antarctica; Apollo 11 Sudan,
 Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
-Not covered yet: impact craters as a search characteristic and soil type (dusty/rocky data for Earth); see the
-report card's *Not compared* list.
+Not covered yet: impact craters as a search characteristic (they are shown, not scored) and soil type
+(dusty/rocky data for Earth); see the report card's *Not compared* list.
 
 ### Moon and Mars 3D view: standing on the surface
 
@@ -554,3 +583,6 @@ The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value ->
     python3 tools/fetch_power.py               # Earth climate (NASA POWER), ~10 min
     python3 tools/build_layers.py              # or e.g.: python3 tools/build_layers.py mars iron
     python3 tools/build_search_grid.py         # Earth grid for the analog search, ~1 min
+    python3 tools/fetch_gibs.py                # MODIS land cover + MERRA-2 dust from NASA GIBS, 16 MB
+    python3 tools/build_search_extra.py        # adds sunlight, ground temperature, bare ground, dust
+    python3 tools/build_earth_features.py      # impact structures + volcanoes for the Earth map
