@@ -156,8 +156,23 @@
           <span class="eyebrow">Who travels</span>
           <div id="route-traveller" class="traveller-grid" role="radiogroup" aria-label="Who travels"></div>
           <div id="route-rover" class="route-rover"></div>
+          <details class="route-settings">
+            <summary>Route settings <span class="sub">(efficient route)</span></summary>
+            <label class="rs-row"><span>Rover: max slope</span><input id="rs-rover" type="range" min="10" max="30" step="1"><output></output></label>
+            <label class="rs-row"><span>On foot: max slope</span><input id="rs-foot" type="range" min="10" max="25" step="1"><output></output></label>
+            <span class="eyebrow">Climbing penalty</span>
+            <div id="rs-kup" class="chips" role="radiogroup" aria-label="Climbing penalty"></div>
+            <span class="eyebrow">Small adjustments (together at most +25%)</span>
+            <label class="rs-row"><span>Deep dust</span><input id="rs-dust" type="range" min="0" max="2" step="0.5"><output></output></label>
+            <label class="rs-row"><span>Boulder fields</span><input id="rs-rock" type="range" min="0" max="2" step="0.5"><output></output></label>
+            <label class="rs-row"><span>Cold nights</span><input id="rs-cold" type="range" min="0" max="2" step="0.5"><output></output></label>
+            <p class="sub">A rover route is tried first, then on foot; if neither fits the limits: "Path unavailable".
+              Climbing penalty: climbing 1 m counts like driving this many metres on the flat.</p>
+            <button id="rs-reset" type="button">Reset to defaults</button>
+          </details>
         </div>
         <p id="route-status" class="sub route-status"></p>
+        <p id="route-precise-note" class="verdict route-precise-note" hidden></p>
         <div id="route-results" hidden>
           <div id="route-tabs" class="route-tabs"></div>
           <p id="route-about" class="sub route-about"></p>

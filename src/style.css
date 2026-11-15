@@ -549,3 +549,14 @@ body.in-3d #ruler-btn, body.in-3d #help-btn, body.in-3d #ruler-panel, body.in-3d
   .top-buttons { gap: 6px; }
   .top-buttons .map-btn { padding: .6rem .8rem; }
 }
+/* route settings (efficient route) */
+.route-settings { margin: .3rem 0 .2rem; font-size: .8rem; }
+.route-settings summary { cursor: pointer; color: #7fd4ff; padding: .2rem 0; }
+.route-settings .eyebrow { display: block; margin-top: .45rem; }
+.rs-row { display: grid; grid-template-columns: 8.5rem 1fr 2.6rem; align-items: center; gap: .5rem; margin-top: .3rem; }
+.rs-row input { width: 100%; accent-color: #7fd4ff; }
+.rs-row output { text-align: right; font-variant-numeric: tabular-nums; color: #fff; }
+.route-settings .sub { margin-top: .4rem !important; line-height: 1.4; }
+.route-settings button { margin-top: .4rem; }
+.route-precise-note { margin-top: .5rem !important; }
+.danger-blocked { border-color: #e5484d; font-size: 14px; }
