@@ -273,6 +273,11 @@ html, body { margin: 0; height: 100%; background: #000; color: #eee;
 .rc-none .rc-head, .rc-none li { color: #9a9aa2; }
 .rc-why { color: #9a9aa2; }
 .rc-limits { margin-top: .5rem; }
+.rc-features .rc-head { color: #f5b97a; }
+.rc-refined { margin: 0 0 .4rem !important; }
+.impact-ring { stroke: #f5b97a; stroke-width: 1.5; stroke-dasharray: 4 3; fill: none; }
+.volcano-dot { stroke: #000; stroke-width: 1; fill: #ff6a3d; fill-opacity: .9; }
+.landmark-impact .lm { color: #f5b97a; font-size: 11px; text-shadow: 0 0 3px #000, 0 0 3px #000; }
 .rc-limits summary { cursor: pointer; font-weight: 600; color: #f1e7dc; }
 .w-toggle { display: flex; gap: .6rem; align-items: flex-start; padding: .1rem 1.5rem .5rem; cursor: pointer; }
 .w-toggle input { margin-top: .2rem; accent-color: #7fd4ff; }

@@ -8,6 +8,7 @@
 // Coordinates: planetocentric latitude, east longitude (-180..180).
 import L from 'leaflet';
 import { KNOWN_ANALOGS } from './knownAnalogs.js';
+import { addFeatureMarkers } from './features.js';
 
 export const LANDMARKS = {
   moon: [
@@ -408,6 +409,8 @@ export function addLandmarks(map, body) {
       marker.bindPopup(analogPopup(a), { className: 'mission-popup-shell', minWidth: 200, maxWidth: 280, autoPanPadding: [16, 16] });
       tiers[1].addLayer(marker);
     }
+    // impact structures and young volcanoes (loaded in the background)
+    addFeatureMarkers(map, tiers).catch((e) => console.warn('Earth features not loaded', e));
   }
   let visible = true;
   const update = () => {

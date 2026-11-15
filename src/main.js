@@ -8,13 +8,15 @@ import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss, retryFailedTiles } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
-import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, formatValue as formatParam,
+import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, formatValue as formatParam, formatSite,
   similarity } from './analogs.js';
 import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILAR_DEFAULT_COUNT,
   MAX_COUNT as SIMILAR_MAX_COUNT, cellKm } from './similar.js';
 import { addLandmarks } from './landmarks.js';
 import { reportCardHtml, novelty } from './reportcard.js';
 import { inKnownRegion, KNOWN_REGION_KM } from './knownAnalogs.js';
+import { refineResults, REFINE_BELOW_KM } from './refine.js';
+import { featuresNear, featuresHtml } from './features.js';
 import { addRuler, isMeasuring } from './ruler.js';
 import { maybeStartTutorial, startTour } from './tutorial.js';
 import { createRoutePlanner, routeEvents } from './route/planner.js';
@@ -677,7 +679,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       heading: 'Find Earth analogs',
       subheading: `${body.name} · ${formatLatLon(at.lat, at.lon)} · ${radiusKm} km radius`,
       action: 'Find Earth analogs →',
-      items: Object.entries(PARAMS).map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
+      items: Object.entries(PARAMS).filter(([, p]) => !p.worlds || p.worlds.includes(key))
+        .map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
       steps: WEIGHT_STEPS,
       initial: { ...DEFAULT_WEIGHTS, ...analogWeights },
       defaults: DEFAULT_WEIGHTS,
@@ -977,7 +980,13 @@ function showAnalogResults(params, selection) {
     const t0 = performance.now();
     const found = await findAnalogs({ site, weights, mode, radiusKm: r, count, exclude: newOnly ? inKnownRegion : null });
     if (map !== thisMap) return; // the page has changed meanwhile
-    if (import.meta.env.DEV) console.log(`analog search: ${Math.round(performance.now() - t0)} ms`, found, site);
+    if (r < REFINE_BELOW_KM && found.results.length) {
+      $('analog-status').textContent = 'Refining positions with ~5 km terrain data…';
+      await refineResults({ results: found.results, found, weights, radiusKm: r, slopeMeta: index.earth?.slope });
+      found.results.sort((a, b) => a.score - b.score);
+      if (map !== thisMap) return;
+    }
+    if (import.meta.env.DEV) { console.log(`analog search: ${Math.round(performance.now() - t0)} ms`, found, site); window.__lastAnalogs = found; }
     showResults(found, site);
   })().catch((err) => {
     console.error(err);
@@ -1034,7 +1043,7 @@ function showAnalogResults(params, selection) {
     const fmt = formatParam;
     const rows = Object.keys(res.values).map((k) => {
       const p = PARAMS[k];
-      let siteCell = p.site ? fmt(k, site[k]) : `<span class="note">${p.better === 'low' ? 'lower wins' : 'higher wins'}</span>`;
+      let siteCell = p.site ? formatSite(k, site[k]) : `<span class="note">${p.better === 'low' ? 'lower wins' : 'higher wins'}</span>`;
       if (k in relative) {
         // beyond Earth's range: matched to the same percentile of Earth
         const pct = Math.round(relative[k] * 100);
@@ -1054,6 +1063,10 @@ function showAnalogResults(params, selection) {
       as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
       (top right) shows this Earth area's typical values from the map data.</p>
       ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}`;
+    featuresNear(res.lat, res.lon, r).then((f) => {
+      const slot = box.querySelector('.rc-features-slot');
+      if (slot) slot.outerHTML = featuresHtml(f);
+    }).catch(() => {});
     // detailed 3D landscape of this area's centre, loaded only on request
     box.querySelector('.analog-3d').onclick = () => {
       location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
