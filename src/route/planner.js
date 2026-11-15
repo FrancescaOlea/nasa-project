@@ -487,7 +487,8 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
 
   // ---- panel: which world, who travels
   const panel = $('route-panel');
-  $('route-world').textContent = cmp ? `Earth analog vs ${WORLD_CFG[cmp.world].name} site` : cfg.name;
+  $('route-world').textContent = !cmp ? cfg.name
+    : cmp.world === 'earth' ? `${cfg.name} · equivalent of your Earth route` : `Earth analog vs ${WORLD_CFG[cmp.world].name} site`;
   $('route-note').innerHTML = cfg.note;
   panel.querySelector('.season-pick').hidden = !cfg.seasons;
   panel.querySelector('.route-settings').hidden = !(world in PRECISE); // the settings tune the precise (MOLA / LOLA) route
