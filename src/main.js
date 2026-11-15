@@ -8,11 +8,13 @@ import { drawStarfield } from './starfield.js';
 import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss, retryFailedTiles } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
-import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, displayValue,
+import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, formatValue as formatParam,
   similarity } from './analogs.js';
 import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILAR_DEFAULT_COUNT,
   MAX_COUNT as SIMILAR_MAX_COUNT, cellKm } from './similar.js';
 import { addLandmarks } from './landmarks.js';
+import { reportCardHtml, novelty } from './reportcard.js';
+import { inKnownRegion, KNOWN_REGION_KM } from './knownAnalogs.js';
 import { addRuler, isMeasuring } from './ruler.js';
 import { maybeStartTutorial, startTour } from './tutorial.js';
 import { createRoutePlanner, routeEvents } from './route/planner.js';
@@ -315,6 +317,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let analogWeights = parseAnalogWeights(params.get('aw')); // ... and for 'Find Earth analogs'
   let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
   let analogCount = parseCount(params.get('an'));
+  let analogNewOnly = params.get('anew') === '1';
   let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
   let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
@@ -333,7 +336,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
   // Earth keeps where it was opened from (and an analog search's site) in its address
-  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n'].filter((k) => params.has(k)) : [];
+  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new'].filter((k) => params.has(k)) : [];
   function query() {
     const q = new URLSearchParams();
     for (const k of keep) q.set(k, params.get(k));
@@ -350,6 +353,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       q.set('aw', formatWeights(analogWeights));
       q.set('am', analogMode);
       q.set('an', analogCount);
+      if (analogNewOnly) q.set('anew', '1');
     }
     return q.toString();
   }
@@ -689,8 +693,12 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
             'hottest or biggest day–night swing.'],
         ],
       },
+      toggle: { value: analogNewOnly, label: 'Only new places',
+        help: `Leave out known analog regions (within ${KNOWN_REGION_KM} km of a site already used for Moon or Mars research).` },
     });
     if (!chosen) return;
+    analogNewOnly = chosen.toggle;
+    delete chosen.toggle;
     analogMode = chosen.mode;
     analogCount = chosen.count;
     delete chosen.mode;
@@ -699,6 +707,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     saveToUrl();
     const site = new URLSearchParams({ from: key, site: `${at.lat.toFixed(4)},${at.lon.toFixed(4)}`,
       sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
+    if (analogNewOnly) site.set('new', '1');
     location.hash = `#/earth?${site}`;
   }
   $('find-similar').onclick = async () => {
@@ -937,11 +946,12 @@ function showAnalogResults(params, selection) {
   if (!Object.values(weights).some((v) => v > 0)) Object.assign(weights, DEFAULT_WEIGHTS);
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
   const count = parseCount(params.get('n'));
+  const newOnly = params.get('new') === '1';
 
   $('results-analogs').hidden = true;
   $('analog-heading').textContent = 'Earth analogs for';
   $('analog-source').textContent = `${source.name} · ${formatLatLon(lat, lon)}`;
-  $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}`;
+  $('analog-radius').textContent = `${r} km radius · ${mode === 'extreme' ? 'most extreme' : 'match my site'}${newOnly ? ' · only new places' : ''}`;
   const w = Object.entries(weights).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   const total = w.reduce((a, [, v]) => a + v, 0);
   $('analog-weights').textContent = `Weights: ${w.map(([k, v]) => `${PARAMS[k].name} ${Math.round((v / total) * 100)}%`).join(' · ')}`;
@@ -965,7 +975,7 @@ function showAnalogResults(params, selection) {
     const index = await loadIndex();
     const site = await siteValues(from, source.radiusKm, index[from] ?? {}, lat, lon, r);
     const t0 = performance.now();
-    const found = await findAnalogs({ site, weights, mode, radiusKm: r, count });
+    const found = await findAnalogs({ site, weights, mode, radiusKm: r, count, exclude: newOnly ? inKnownRegion : null });
     if (map !== thisMap) return; // the page has changed meanwhile
     if (import.meta.env.DEV) console.log(`analog search: ${Math.round(performance.now() - t0)} ms`, found, site);
     showResults(found, site);
@@ -974,7 +984,8 @@ function showAnalogResults(params, selection) {
     $('analog-status').textContent = 'The search failed to load its data.';
   });
 
-  function showResults({ results, used, relative, targets }, site) {
+  function showResults(found, site) {
+    const { results, used } = found;
     const skipped = Object.keys(weights).filter((k) => weights[k] > 0 && !used.includes(k));
     $('analog-status').textContent = results.length
       ? (results.length === 1 ? 'Best area.' : `Best ${results.length} areas, at least ${MIN_SEPARATION_KM} km apart.`) +
@@ -992,10 +1003,14 @@ function showAnalogResults(params, selection) {
       m.on('click', () => pick(i));
       markers.push(m);
       const li = document.createElement('li');
-      li.innerHTML = '<button type="button" aria-pressed="false"><span class="num"></span><span class="where"></span><span class="sim"></span></button>';
+      li.innerHTML = '<button type="button" aria-pressed="false"><span class="num"></span><span class="where"></span><span class="sim"></span><span class="nov"></span></button>';
       li.querySelector('.num').textContent = i + 1;
       li.querySelector('.where').textContent = formatLatLon(res.lat, res.lon);
       li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
+      const nov = novelty(res.lat, res.lon);
+      const novEl = li.querySelector('.nov');
+      novEl.textContent = nov.known ? `Known analog region (${nov.site.name})` : 'New analog';
+      novEl.classList.add(nov.known ? 'known' : 'new');
       li.querySelector('button').onclick = () => pick(i);
       return li;
     });
@@ -1010,18 +1025,13 @@ function showAnalogResults(params, selection) {
       selection?.select(res.lat, res.lon);
       const area = L.latLngBounds(circlePoints(res.lat, res.lon, r, BODIES.earth.radiusKm));
       map.flyToBounds(area, { ...freeScreenPadding(), duration: 0.9, maxZoom: map.getMaxZoom() });
-      showComparison(i, res, site, relative, targets);
+      showComparison(i, res, site, found);
     }
   }
 
-  function showComparison(i, res, site, relative = {}, targets = {}) {
-    const fmt = (k, v) => {
-      const d = displayValue(k, v);
-      if (!Number.isFinite(d)) return '–';
-      const p = PARAMS[k];
-      const digits = Math.abs(d) >= 100 || p.unit === '°C' || p.unit === 'm' ? 0 : Math.abs(d) >= 10 ? 1 : 2;
-      return `${d.toFixed(digits)}${p.unit === '°C' || p.unit === '°' ? p.unit : ` ${p.unit}`}`;
-    };
+  function showComparison(i, res, site, found) {
+    const { relative = {}, targets = {} } = found;
+    const fmt = formatParam;
     const rows = Object.keys(res.values).map((k) => {
       const p = PARAMS[k];
       let siteCell = p.site ? fmt(k, site[k]) : `<span class="note">${p.better === 'low' ? 'lower wins' : 'higher wins'}</span>`;
@@ -1042,7 +1052,8 @@ function showAnalogResults(params, selection) {
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
       as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
-      (top right) shows this Earth area's typical values from the map data.</p>`;
+      (top right) shows this Earth area's typical values from the map data.</p>
+      ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}`;
     // detailed 3D landscape of this area's centre, loaded only on request
     box.querySelector('.analog-3d').onclick = () => {
       location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
