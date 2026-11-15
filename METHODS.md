@@ -201,6 +201,23 @@ The new characteristics make sites share places a little more often: 35 of the 6
 site's result within 400 km (30 of 60 before). Equatorial Mars sites now often share the Andean deserts, and
 polar sites the barren Arctic islands: few places on Earth are cold, barren and dry at once.
 
+### Countries and field-research cost (Earth analogs)
+
+- **Country filter** (optional; one row near the top of the Find Earth analogs dialog): *Anywhere*, *Avoid countries* or *Only in
+  countries*, with a searchable list. "No country" stands for Antarctica (Antarctic Treaty area, south of
+  60°S) and unclaimed land. Every result shows its country. Filtered-out places still count for Earth's
+  spread and percentiles, so the scores of the remaining places don't change.
+- Boundaries: Natural Earth 1:50m (public domain), turned into a 0.25° lookup grid by
+  `tools/build_country_grid.mjs` (`public/search/countries.bin`, 20 kB). Natural Earth draws de facto
+  boundaries; disputed areas follow its choices.
+- **Field research here** (under each result's report card): the technology needed to do Moon or Mars
+  research at that place, what is needed to simulate what the place lacks (e.g. a cold, low-pressure chamber
+  where nights aren't cold enough, a UV lamp array, a gravity off-load rig), the camp, the team (people,
+  weeks, person-years) and a total cost per year. The list follows the place's climate, altitude and
+  latitude from the search grid, and the world it stands in for (`src/fieldplan.js`).
+  **The prices are rough planning figures chosen by the authors (2025 US dollars), not quotes and not NASA
+  data**; the app says so next to them.
+
 ### Similar spots
 
 **Find similar spots** (Moon or Mars, with an area selected) looks for the places on the *same* world
