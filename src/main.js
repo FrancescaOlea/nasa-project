@@ -5,7 +5,7 @@ import { BODIES } from './bodies.js';
 import { circlePoints, formatLatLon } from './geo.js';
 import { createGlobe, globesReady } from './globes.js';
 import { drawStarfield } from './starfield.js';
-import { VIEWS, loadIndex, createOverlay, legendHtml, colourPos, gradientCss, retryFailedTiles } from './overlays.js';
+import { VIEWS, loadIndex, createOverlay, legendHtml, levelColour, retryFailedTiles } from './overlays.js';
 import { summarize } from './areastats.js';
 import { askWeights, parseWeights, formatWeights } from './weights.js';
 import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SEPARATION_KM, parseAnalogWeights, siteValues, findAnalogs, formatValue as formatParam,
@@ -512,10 +512,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       const spread = lo === hi ? 'uniform' : `${lo} – ${formatValue(meta, res.p90)}`;
       const regional = meta.pixel_km > 2 * radiusKm ? ` · regional value (~${Math.round(meta.pixel_km)} km data)` : '';
       row.querySelector('.a-range').textContent = `range ${spread}${regional}`;
-      const t = colourPos(meta, res.median);
-      row.querySelector('.swatch').style.background = gradientCss(meta);
-      row.querySelector('.swatch').style.backgroundSize = '2000% 100%';
-      row.querySelector('.swatch').style.backgroundPosition = `${t * 100}% 0`;
+      // blue = low, white = middle, red = high (same scale on every row)
+      row.querySelector('.swatch').style.background = levelColour(meta, res.median);
     }));
   }
   const setCollapsed = (collapsed) => {

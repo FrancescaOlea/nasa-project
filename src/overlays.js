@@ -269,6 +269,14 @@ export function colourPos(meta, v) {
   return meta.reverse ? 1 - t : t;
 }
 
+// Area summary swatches: one simple scale for every layer - blue = low, white = middle,
+// red = high within the layer's colour range - whatever the layer's own map palette is
+// (relief colours, reversed dryness, ...), so high and low read the same on every row.
+export function levelColour(meta, v) {
+  const t = Math.min(1, Math.max(0, position(meta, v)));
+  return `rgb(${colourAt(t, PALETTES.coolwarm).join(',')})`;
+}
+
 export function position(meta, v) {
   if (meta.log) return (Math.log10(v) - Math.log10(meta.min)) / (Math.log10(meta.max) - Math.log10(meta.min));
   return (v - meta.min) / (meta.max - meta.min);
