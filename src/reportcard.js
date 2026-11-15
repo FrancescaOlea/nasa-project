@@ -39,7 +39,7 @@ const EARTH_LIMITS = {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const km = (d) => `${Math.round(d).toLocaleString('en-US')} km`;
 // 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st, 92nd ...
-const ordinal = (n) => {
+export const ordinal = (n) => {
   const t = n % 100;
   const s = t >= 11 && t <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] ?? 'th';
   return `${n}${s}`;
@@ -83,7 +83,9 @@ export function reportCardHtml({ from, worldName, res, site, found, weights }) {
       what = `${formatValue(k, v)} (${p.better === 'low' ? 'lower is better' : 'higher is better'}; no ${worldName} value)`;
     }
     const line = `<li><b>${esc(p.name)}</b>: ${what}</li>`;
-    (gap <= STRONG_GAP ? strong : gap < WEAK_GAP ? partial : weak).push(line);
+    // frozen or not is a yes/no question: the wrong side of 0 °C is a weak match however close
+    if (p.rule) (gap === 0 ? strong : weak).push(line);
+    else (gap <= STRONG_GAP ? strong : gap < WEAK_GAP ? partial : weak).push(line);
   }
   const off = Object.keys(PARAMS).filter((k) => !used.includes(k))
     .map((k) => PARAMS[k].name + (PARAMS[k].worlds && !PARAMS[k].worlds.includes(from) ? ` (no ${worldName} equivalent)`

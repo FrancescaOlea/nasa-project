@@ -13,7 +13,7 @@ import { PARAMS, WEIGHT_STEPS, DEFAULT_WEIGHTS, DEFAULT_COUNT, MAX_COUNT, MIN_SE
 import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILAR_DEFAULT_COUNT,
   MAX_COUNT as SIMILAR_MAX_COUNT, cellKm } from './similar.js';
 import { addLandmarks } from './landmarks.js';
-import { reportCardHtml, novelty } from './reportcard.js';
+import { reportCardHtml, novelty, ordinal } from './reportcard.js';
 import { inKnownRegion, KNOWN_REGION_KM } from './knownAnalogs.js';
 import { refineResults, REFINE_BELOW_KM } from './refine.js';
 import { featuresNear, featuresHtml } from './features.js';
@@ -1047,8 +1047,8 @@ function showAnalogResults(params, selection) {
       if (k in relative) {
         // beyond Earth's range: matched to the same percentile of Earth
         const pct = Math.round(relative[k] * 100);
-        siteCell += `<br><span class="note" title="${pct}% of ${source.name} is below this value; matched to Earth's ${pct}th percentile">` +
-          `${pct}th pct → ${fmt(k, targets[k])} on Earth</span>`;
+        siteCell += `<br><span class="note" title="${pct}% of ${source.name} is below this value; matched to Earth's ${ordinal(pct)} percentile">` +
+          `${ordinal(pct)} pct → ${fmt(k, targets[k])} on Earth</span>`;
       }
       return `<tr><td>${p.name}</td><td>${siteCell}</td><td>${fmt(k, res.values[k])}</td></tr>`;
     });
