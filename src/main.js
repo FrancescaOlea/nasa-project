@@ -340,7 +340,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
   // Earth keeps where it was opened from (and an analog search's site) in its address
-  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new', 'src', 'str', 'sss'].filter((k) => params.has(k)) : [];
+  const keep = (key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new', 'src', 'str', 'sss'] : ['cmp', 'ca']).filter((k) => params.has(k));
   function query() {
     const q = new URLSearchParams();
     for (const k of keep) q.set(k, params.get(k));
@@ -919,8 +919,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
 
   // ---- Route planner (Mars and Moon): A to B, with the dangers on the way. On Earth only at an
   // analog search's results, to drive the same route there (src/route/compare.js).
-  const routeWorld = key === 'mars' || key === 'moon' || (key === 'earth' && analog);
-  $('plan-route').hidden = !(key === 'mars' || key === 'moon');
+  const routeWorld = true;
+  $('plan-route').hidden = key === 'earth' && analog; // (at Earth analog results: 'Drive the same route here')
   $('route-analogs').hidden = true;
   if (routeWorld) {
     const showRoutePanels = (open) => {
@@ -936,7 +936,16 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     };
     // Earth: the site route to compare with: the one planned at the site, or a crossing of the site area
     let compare = null;
-    if (key === 'earth') {
+    const pairOf = (text) => {
+      const pts = (text ?? '').split(';').map((t) => t.split(',').map(Number));
+      return pts.length === 2 && pts.every((p) => p.length === 2 && p.every(Number.isFinite))
+        ? { a: { lat: pts[0][0], lon: pts[0][1] }, b: { lat: pts[1][0], lon: pts[1][1] } } : null;
+    };
+    // Moon / Mars opened from an Earth route's equivalents: compare with that Earth route
+    if (key !== 'earth' && params.get('cmp') === 'earth' && pairOf(params.get('ca'))) {
+      compare = { world: 'earth', ...pairOf(params.get('ca')), season: 0 };
+    }
+    if (key === 'earth' && analog) {
       const from = BODIES[params.get('from')] && params.get('from') !== 'earth' ? params.get('from') : 'mars';
       const [sLat, sLon] = (params.get('site') ?? '').split(',').map(Number);
       const pts = (params.get('src') ?? '').split(';').map((t) => t.split(',').map(Number));
@@ -951,13 +960,62 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     }, key, { compare });
     // Moon / Mars: with a route, find Earth analogs for it (and drive it there); the planner shows the button
     update3dButton(); // (a route restored from the address)
+    saveToUrl(); // (the planner's part of the address, now that `planner` is set)
     $('route-analogs').onclick = () => {
       const res = planner.result();
       if (!res.a || !res.b) return;
       const km = routeKm(res.a.lat, res.a.lon, res.b.lat, res.b.lon, body.radiusKm);
       const mid = destination(res.a, bearingDeg(res.a, res.b), km / 2, body.radiusKm);
-      findEarthAnalogs(mid, { a: res.a, b: res.b, km, traveller: res.traveller, season: res.season });
+      if (key === 'earth') routeEquivalents(res, km, mid);
+      else findEarthAnalogs(mid, { a: res.a, b: res.b, km, traveller: res.traveller, season: res.season });
     };
+    // Earth: the Mars and Moon areas most like this route's area (a circle around it), and the
+    // same route (length, direction, traveller) driven there, compared on arrival
+    let equivToken2 = 0;
+    async function routeEquivalents(res, km, mid) {
+      const my = ++equivToken2;
+      const box = $('route-equiv');
+      const say = (t) => { if (my === equivToken2) box.innerHTML = `<p class="sub">${t}</p>`; };
+      const areaKm = Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, Math.round(km / 2)));
+      try {
+        const found = await findEquivalents({ lat: mid.lat, lon: mid.lon, radiusKm: areaKm, index: await loadIndex(), onProgress: say });
+        if (my !== equivToken2) return;
+        if (!found) { say('No land data around this route (sea or ice sheet): no equivalents to look for.'); return; }
+        const brg = bearingDeg(res.a, res.b);
+        const f = (p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
+        box.replaceChildren(...['mars', 'moon'].map((w) => {
+          const W = found.worlds[w];
+          const best = W.results[0];
+          const the = w === 'moon' ? 'the Moon' : 'Mars';
+          const sec = document.createElement('section');
+          sec.className = `equiv-world ${W.close ? 'close' : 'far'}`;
+          const where = best?.landmark ? `near ${best.landmark.name}${best.landmark.km > 25 ? ` (${Math.round(best.landmark.km)} km)` : ''}` : best ? formatLatLon(best.lat, best.lon) : '';
+          sec.innerHTML = `<p class="equiv-head"><strong>${BODIES[w].name}</strong> ${W.close
+            ? `<span class="equiv-badge ok">${best.match}% match</span>` : '<span class="equiv-badge far">no close equivalent</span>'}</p>
+            <p class="sub">${!best ? `No ${BODIES[w].name} data to compare with.` : W.close
+    ? `This route's ${areaKm} km area is most like ${the} ${where}.`
+    : `Nothing on ${the} reaches ${CLOSE_MATCH}%: the nearest is ${where}, a ${best.match}% match.`}</p>`;
+          if (best) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'view-3d-btn equiv-drive';
+            btn.textContent = `🛣 Drive this route on ${the} →`;
+            btn.onclick = () => {
+              const R = BODIES[w].radiusKm;
+              const line = { a: destination(best, (brg + 180) % 360, km / 2, R), b: destination(best, brg, km / 2, R) };
+              const q = new URLSearchParams({
+                route: `${f(line.a)};${f(line.b)}`, tr: res.traveller, cmp: 'earth', ca: `${f(res.a)};${f(res.b)}` });
+              location.hash = `#/${w}?${q}`;
+            };
+            sec.append(btn);
+          }
+          return sec;
+        }));
+      } catch (err) {
+        console.error(err);
+        say('The search failed to load its data.');
+      }
+    }
     // Earth analogs: 'Drive the same route here' at a result
     driveAt = async (res) => {
       const line = await sameRouteOnEarth(compare, res);

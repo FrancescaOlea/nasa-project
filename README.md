@@ -493,6 +493,24 @@ named place (e.g. "near Hellas Planitia") and a button that opens it on that wor
   Island 92%, Antarctic Dry Valleys 96%), deserts ~88% (Sahara, Death Valley); wet or green
   places don't reach it (London 80%, Iceland 78%, Hawaii and the Amazon 70%).
 
+**For a route**: the route planner also works on the Earth map. Plan a route there, then
+**🪐 Find the Mars & Moon equivalents of this route**: the same search for the circle around the
+route (its midpoint, half its length), and **🛣 Drive this route on Mars / the Moon** opens that
+world's planner with the same route (same straight-line length and direction, same traveller where
+that world has it) at the best-matching spot, compared side by side with the Earth route
+(the same summary as at an Earth analog, the other way round).
+
+### Map reliability
+
+- **Moon / Mars imagery gaps**: the imagery comes from NASA Trek, which can be slow or drop tiles.
+  A bundled whole-world layer sits underneath (`public/basemap/`, made by
+  `tools/build_fallback_basemap.py` from the globe textures shaded with the 8 px/degree LOLA /
+  MOLA relief), so a missing tile shows the shaded relief instead of a black square.
+- **Earth 3D ("Stand here in 3D")**: the far landscape now comes from the AWS terrain tiles (small
+  PNGs, fast), so it appears within seconds; NASADEM (Microsoft Planetary Computer) is used for
+  the detailed rings with a 25 s limit, falling back to the AWS tiles; the satellite ground images
+  get 30 s, and if they don't arrive the ground keeps its plain colour instead of turning black.
+
 ### Similar spots
 
 **Find similar spots** (Moon or Mars, with an area selected) looks for the places on the *same* world

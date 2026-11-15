@@ -28,11 +28,23 @@ function grid({ data, rows, cols, lat0, lon0, dLat, dLon, wrap }) {
   return { get, lat0, lon0, dLat, dLon, rows, cols };
 }
 
+/** Rejects if `p` hasn't settled within `ms`. */
+function withTimeout(p, ms, what) {
+  let timer;
+  return Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms / 1000} s`)), ms); })])
+    .finally(() => clearTimeout(timer));
+}
+const flat = () => ({ get: () => 0 });
+
 const farCache = new Map();
 export function loadFar(world, lat, lon) {
-  // Earth: no bundled file; coarse heights around the point (NASADEM's coarsest overview,
-  // every 32nd arc second ~ 1 km; polar regions: AWS terrain tiles)
-  if (!world.far) return loadDetail(world, lat, lon, world.farHalf * 1.05, 32);
+  // Earth: no bundled file; coarse heights around the point (~1 km) from the AWS terrain tiles:
+  // small PNGs that load in a second or two, so the landscape appears quickly (NASADEM's
+  // big GeoTIFFs are used for the detailed rings, where they matter)
+  if (!world.far) {
+    return withTimeout(loadTerrarium(world, lat, lon, world.farHalf * 1.05, 960), 30000, 'terrain tiles')
+      .catch(() => flat()); // offline: a flat plain rather than a black screen
+  }
   if (!farCache.has(world.far)) {
     const p = (async () => {
       const res = await fetch(`${import.meta.env.BASE_URL}surface3d/${world.far}`);
@@ -65,7 +77,15 @@ function strips(url) {
  * least), keeping every `step`-th row and column. `onRow(done, total)` reports progress.
  */
 export async function loadDetail(world, lat, lon, halfM, step, onRow) {
-  if (world.dem.source === 'nasadem') return loadNasadem(world, lat, lon, halfM, step, onRow);
+  if (world.dem.source === 'nasadem') {
+    // NASADEM (Microsoft Planetary Computer) can be slow or unreachable: give it a time limit,
+    // then use the AWS terrain tiles (SRTM and other sources, ~30 m at the finest) instead
+    return withTimeout(loadNasadem(world, lat, lon, halfM, step, onRow), 25000, 'NASADEM')
+      .catch((err) => {
+        console.warn(`${err.message}: using the AWS terrain tiles`);
+        return loadTerrarium(world, lat, lon, halfM, Math.max(30, 30 * step));
+      });
+  }
   const { url, width: DW, height: DH, scale } = world.dem;
   const offsets = await strips(url);
   const ppd = DW / 360; // square pixels: DH = DW / 2

@@ -100,50 +100,60 @@ function relate(earth, site, tol, floor) {
  * One sentence: e.g. "A 12 km Curiosity traverse here has similar slopes but 40% less rough
  * ground than at the Mars site."
  */
-export function conclusion(site, earth, { travellerName, worldName, walking }) {
-  const slope = relate(earth.avgSlope, site.avgSlope, 0.2, 0.2);
-  const rough = Number.isFinite(earth.avgRelief) && Number.isFinite(site.avgRelief)
-    ? relate(earth.avgRelief, site.avgRelief, 0.15, 0.005) : null;
-  const there = `the ${worldName} site`;
-  const slopeText = slope.word === 'similar' ? `similar slopes to ${there}`
-    : slope.word === 'less' ? `${slope.pct}% gentler slopes than ${there}` : `${slope.pct}% steeper slopes than ${there}`;
+export function conclusion(there, here, { travellerName, thereLabel, walking }) {
+  const slope = relate(here.avgSlope, there.avgSlope, 0.2, 0.2);
+  const rough = Number.isFinite(here.avgRelief) && Number.isFinite(there.avgRelief)
+    ? relate(here.avgRelief, there.avgRelief, 0.15, 0.005) : null;
+  const slopeText = slope.word === 'similar' ? `similar slopes to ${thereLabel}`
+    : slope.word === 'less' ? `${slope.pct}% gentler slopes than ${thereLabel}` : `${slope.pct}% steeper slopes than ${thereLabel}`;
   const roughText = !rough ? '' : rough.word === 'similar' ? 'about as much rough ground'
     : rough.word === 'less' ? `${rough.pct}% less rough ground` : `${rough.pct}% more rough ground`;
   // "but" when the two point different ways (one similar and one not, or one less and one more)
   const join = rough && slope.word !== rough.word ? ' but ' : ' and ';
   const who = walking ? 'walk' : `${travellerName} traverse`;
-  return `A ${fmtKm(earth.dist)} ${who} here has ${slopeText}${roughText ? `${join}${roughText}` : ''}.`;
+  return `A ${fmtKm(here.dist)} ${who} here has ${slopeText}${roughText ? `${join}${roughText}` : ''}.`;
 }
 
 /**
- * The comparison table. site / earth: the chosen kind's route on each world (from computeRoutes);
- * returns HTML for the planner panel.
+ * The comparison table: the chosen kind's route on the other world (`there`) and on this map
+ * (`here`), from computeRoutes. One of the two worlds is Earth. Returns HTML for the planner panel.
+ *   thereWorld / hereWorld: 'mars' | 'moon' | 'earth'; source: how the route here was made
  */
-export function compareHtml({ site, earth, kindName, worldName, travellerName, walking, crossing, turned, missing, cellKm }) {
-  const row = (label, s, e, note = '') => `<tr><td>${label}${note ? ` <span class="sub">${note}</span>` : ''}</td><td>${s}</td><td>${e}</td></tr>`;
+export function compareHtml({ there, here, thereWorld, hereWorld, kindName, travellerName, walking, crossing, turned, missing, cellKm }) {
+  const NAME = { mars: 'Mars', moon: 'Moon', earth: 'Earth' };
+  const thereName = NAME[thereWorld]; const hereName = NAME[hereWorld];
+  const fromEarth = thereWorld === 'earth'; // Earth route -> its Mars / Moon equivalent
+  const planet = fromEarth ? hereName : thereName;
+  const thereLabel = fromEarth ? 'your Earth route' : `the ${thereName} site`;
+  const row = (label, a, b, note = '') => `<tr><td>${label}${note ? ` <span class="sub">${note}</span>` : ''}</td><td>${a}</td><td>${b}</td></tr>`;
   const pctOver = (r) => (r.dist > 0 ? ` <span class="sub">(${Math.round((r.steep15Km / r.dist) * 100)}%)</span>` : '');
   const rel = (r) => (Number.isFinite(r.avgRelief) ? fmtM(r.avgRelief) : '–');
   const diffWord = (d) => (d < 0.15 ? 'Easy' : d < 0.4 ? 'Moderate' : d < 0.8 ? 'Hard' : 'Very hard');
+  const all = (r, w) => (w === 'earth' ? '<span class="sub">no data</span>' : `${(r.dist > 0 ? r.hazardSum / r.dist : 0).toFixed(2)}/km`);
+  const how = fromEarth
+    ? (turned === 'moved' ? 'You moved A or B, so the two routes differ in length: compare the per-km and % values.'
+      : `Same straight-line length and direction as your Earth route, at the best-matching ${planet} area.`)
+    : crossing
+      ? `No route was planned at the site, so this compares a west–east crossing of the site area. Plan a route on the ${planet} map before finding analogs to compare that one.${turned === 'moved' ? ' You moved A or B here: compare the per-km and % values.' : ''}`
+      : turned === 'moved' ? 'You moved A or B, so the two routes differ in length: compare the per-km and % values.'
+        : `Same straight-line length and direction as your ${planet} route${turned ? `, turned ${Math.abs(turned)}° to stay on land` : turned === null ? ' (part of it may cross water: drag A or B onto land)' : ''}.`;
   return `
-    <p class="cmp-conclusion">${conclusion(site, earth, { travellerName, worldName, walking })}</p>
+    <p class="cmp-conclusion">${conclusion(there, here, { travellerName, thereLabel, walking })}</p>
     <table class="route-table cmp-table">
-      <thead><tr><th>${kindName} route</th><th>${worldName}</th><th>Earth</th></tr></thead>
+      <thead><tr><th>${kindName} route</th><th>${thereName}</th><th>${hereName}</th></tr></thead>
       <tbody>
-        ${row('Distance', fmtKm(site.dist), fmtKm(earth.dist))}
-        ${row('Climb', `↑ ${fmtM(site.up)}`, `↑ ${fmtM(earth.up)}`)}
-        ${row('Steepest slope', `${site.maxSlope.toFixed(1)}°`, `${earth.maxSlope.toFixed(1)}°`)}
-        ${row('Over 15°', `${fmtKm(site.steep15Km)}${pctOver(site)}`, `${fmtKm(earth.steep15Km)}${pctOver(earth)}`)}
-        ${row('Average slope', `${site.avgSlope.toFixed(1)}°`, `${earth.avgSlope.toFixed(1)}°`)}
-        ${row('Roughness', rel(site), rel(earth), 'height spread in ~9 km')}
-        ${row('Terrain difficulty', `${diffWord(perKm(site))} <span class="sub">${perKm(site).toFixed(2)}/km</span>`,
-    `${diffWord(perKm(earth))} <span class="sub">${perKm(earth).toFixed(2)}/km</span>`, 'slope + roughness')}
-        ${row(`All hazards at the ${worldName} site`, `${(site.dist > 0 ? site.hazardSum / site.dist : 0).toFixed(2)}/km`, '<span class="sub">no data</span>', 'incl. craters, dust, rock')}
+        ${row('Distance', fmtKm(there.dist), fmtKm(here.dist))}
+        ${row('Climb', `↑ ${fmtM(there.up)}`, `↑ ${fmtM(here.up)}`)}
+        ${row('Steepest slope', `${there.maxSlope.toFixed(1)}°`, `${here.maxSlope.toFixed(1)}°`)}
+        ${row('Over 15°', `${fmtKm(there.steep15Km)}${pctOver(there)}`, `${fmtKm(here.steep15Km)}${pctOver(here)}`)}
+        ${row('Average slope', `${there.avgSlope.toFixed(1)}°`, `${here.avgSlope.toFixed(1)}°`)}
+        ${row('Roughness', rel(there), rel(here), 'height spread in ~9 km')}
+        ${row('Terrain difficulty', `${diffWord(perKm(there))} <span class="sub">${perKm(there).toFixed(2)}/km</span>`,
+    `${diffWord(perKm(here))} <span class="sub">${perKm(here).toFixed(2)}/km</span>`, 'slope + roughness')}
+        ${row(`All hazards on ${planet === 'Moon' ? 'the Moon' : planet}`, all(there, thereWorld), all(here, hereWorld), 'incl. craters, dust, rock')}
       </tbody>
     </table>
-    <p class="sub cmp-note">${crossing
-    ? `No route was planned at the site, so this compares a west–east crossing of the site area. Plan a route on the ${worldName} map before finding analogs to compare that one.${turned === 'moved' ? ' You moved A or B here: compare the per-km and % values.' : ''}`
-    : turned === 'moved' ? `You moved A or B, so the two routes differ in length: compare the per-km and % values.`
-      : `Same straight-line length and direction as your ${worldName} route${turned ? `, turned ${Math.abs(turned)}° to stay on land` : turned === null ? ' (part of it may cross water: drag A or B onto land)' : ''}.`}
-      Same traveller, same planner and the same ~${cellKm.toFixed(1)} km terrain cells on both worlds, from slope data at the same ~2 km scale (${worldName === 'Moon' ? 'LOLA' : 'MOLA'}, ETOPO 2022).
+    <p class="sub cmp-note">${how}
+      Same traveller, same planner and the same ~${cellKm.toFixed(1)} km terrain cells on both worlds, from slope data at the same ~2 km scale (${planet === 'Moon' ? 'LOLA' : 'MOLA'}, ETOPO 2022).
       <strong>Missing on Earth:</strong> ${missing.join(', ')}; these hazards are left out of the Earth route and of the difficulty compared above.</p>`;
 }

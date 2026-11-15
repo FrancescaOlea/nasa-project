@@ -460,7 +460,9 @@ function explain(result, kind) {
  */
 export function createRoutePlanner(map, params, onChange, world = 'mars', extra = {}) {
   const cmp = extra.compare ?? null;
-  const cfg = cmp ? { ...WORLD_CFG[world], travellers: WORLD_CFG[cmp.world].travellers, traveller: WORLD_CFG[cmp.world].traveller } : WORLD_CFG[world];
+  // (on Earth, the travellers are those of the Moon / Mars site compared with)
+  const cfg = world === 'earth' && cmp && cmp.world !== 'earth'
+    ? { ...WORLD_CFG[world], travellers: WORLD_CFG[cmp.world].travellers, traveller: WORLD_CFG[cmp.world].traveller } : WORLD_CFG[world];
   const TRAVELLER_KEYS = cfg.travellers;
   const state = {
     open: false,
@@ -726,7 +728,7 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
   // While a route is shown, dim the imagery and data layers a little (20%) so the route
   // stands out; restored when the route is cleared.
   function dimImagery(on) {
-    for (const name of ['layer0', 'layer1', 'layer2', 'overlay']) {
+    for (const name of ['layer0', 'layer1', 'layer2', 'layer3', 'overlay']) {
       const pane = map.getPane(name);
       if (!pane) continue;
       if (pane.dataset.baseFilter === undefined) pane.dataset.baseFilter = pane.style.filter || '';
@@ -747,7 +749,10 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
     dangerLayer.clearLayers();
     clearRouteLook();
     const has = state.a && state.b && state.result;
-    $('route-analogs').hidden = world === 'earth' || !has; // Moon / Mars: find Earth analogs for this route
+    // Moon / Mars: find Earth analogs for this route; Earth: its Mars / Moon equivalents
+    $('route-analogs').hidden = !has || (world === 'earth' && !!cmp);
+    $('route-analogs').textContent = world === 'earth' ? '🪐 Find the Mars & Moon equivalents of this route' : '🌍 Find Earth analogs for this route';
+    if (!has) $('route-equiv').replaceChildren();
     $('route-hint').textContent = !state.a ? 'Click the map to set the start (A).'
       : !state.b ? 'Now click the destination (B).' : 'Drag A or B to change the route. Click the map to start over.';
     $('route-swap').disabled = !(state.a && state.b);
@@ -836,6 +841,18 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
     }
     return siteRuns.get(key);
   }
+  // This map's side at the comparison's cell size (only needed off Earth: the displayed route
+  // may be the precise one, or on finer cells than Earth's tiles allow)
+  const hereRuns = new Map();
+  function hereRoutes(traveller, cellKm) {
+    const ck = Math.round(cellKm * 10) / 10;
+    const key = `${state.a.lat},${state.a.lon};${state.b.lat},${state.b.lon}|${traveller}|${ck}|${state.season}`;
+    if (!hereRuns.has(key)) {
+      hereRuns.set(key, buildGrid(state.a, state.b, state.season, () => {}, world, { minCellKm: ck })
+        .then((g) => computeRoutes(state.a, state.b, state.season, traveller, () => {}, g, world, null)));
+    }
+    return hereRuns.get(key);
+  }
   let cmpToken = 0;
   async function renderCompare() {
     const box = $('route-compare');
@@ -843,28 +860,37 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
     const my = ++cmpToken;
     const { traveller } = state.result;
     const kind = state.kind;
-    const site = WORLD_CFG[cmp.world].name;
+    const fromEarth = cmp.world === 'earth';
+    const other = WORLD_CFG[cmp.world].name;
+    const head = `<span class="eyebrow">${fromEarth ? 'Compared with your Earth route' : `Compared with the ${other} site`}</span>`;
     box.hidden = false;
-    box.innerHTML = `<span class="eyebrow">Compared with the ${site} site</span><p class="sub">Finding the same route at the ${site} site…</p>`;
-    let res;
-    try { res = await siteRoutes(traveller, state.result.g.cellKm); } catch (err) {
+    box.innerHTML = `${head}<p class="sub">${fromEarth ? 'Finding the same route on Earth…' : `Finding the same route at the ${other} site…`}</p>`;
+    let there; let here = state.result;
+    try {
+      there = await siteRoutes(traveller, state.result.g.cellKm);
+      const cell = Math.max(there.g.cellKm, state.result.g.cellKm);
+      if (world !== 'earth') here = await hereRoutes(traveller, cell);
+    } catch (err) {
       console.error(err);
-      if (my === cmpToken) box.innerHTML = `<span class="eyebrow">Compared with the ${site} site</span><p class="sub">Could not load the ${site} terrain data.</p>`;
+      if (my === cmpToken) box.innerHTML = `${head}<p class="sub">Could not load the ${other} terrain data.</p>`;
       return;
     }
     if (my !== cmpToken || !state.result) return;
-    const s = res.routes[kind];
-    const e = state.result.routes[kind];
-    if (!s || !e) {
-      box.innerHTML = `<span class="eyebrow">Compared with the ${site} site</span><p class="verdict warn">${!s
-        ? `No ${KINDS[kind].name.toLowerCase()} route at the ${site} site for ${esc(travellerName(traveller))}: every way crosses ground steeper than its ${res.opts.noGoDeg}° limit.`
-        : `No ${KINDS[kind].name.toLowerCase()} route here.`}</p>`;
+    const t = there.routes[kind];
+    const h = here.routes[kind];
+    const kindName = KINDS[kind].name.toLowerCase();
+    if (!t || !h) {
+      box.innerHTML = `${head}<p class="verdict warn">${!t
+        ? `No ${kindName} route ${fromEarth ? 'on your Earth route' : `at the ${other} site`} for ${esc(travellerName(traveller))}: every way crosses ground steeper than its ${there.opts.noGoDeg}° limit.`
+        : `No ${kindName} route here.`}</p>`;
       return;
     }
-    box.innerHTML = `<span class="eyebrow">Compared with the ${site} site</span>${compareHtml({
-      site: s, earth: e, kindName: KINDS[kind].name, worldName: site, travellerName: travellerName(traveller),
-      walking: traveller === 'walk', crossing: !!cmp.crossing, turned: state.turned, missing: WORLD_CFG.earth.missing.filter((m) => cmp.world === 'mars' || m !== 'dust storms'), // (no storms on the Moon)
-      cellKm: Math.max(res.g.cellKm, state.result.g.cellKm),
+    const planet = fromEarth ? world : cmp.world;
+    box.innerHTML = `${head}${compareHtml({
+      there: t, here: h, thereWorld: cmp.world, hereWorld: world, kindName: KINDS[kind].name, travellerName: travellerName(traveller),
+      walking: traveller === 'walk', crossing: !!cmp.crossing, turned: state.turned,
+      missing: WORLD_CFG.earth.missing.filter((m) => planet === 'mars' || m !== 'dust storms'), // (no storms on the Moon)
+      cellKm: Math.max(there.g.cellKm, here.g.cellKm),
     })}`;
   }
 
@@ -922,7 +948,7 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
       ${row('Climb / descent', `↑ ${fmtM(r.up)} · ↓ ${fmtM(r.down)}`, 'measured')}
       ${row('Elevation', `${fmtM(r.lo)} to ${fmtM(r.hi)}`, 'measured')}
       ${row('Steepest slope', `${r.maxSlope.toFixed(1)}°${r.steepKm > 0 ? ` · ${fmtKm(r.steepKm)} over ${opts.cautionDeg}°` : ''}`, 'measured')}
-      ${world === 'earth' ? row('Crater rims, loose dust, rocky ground', '<span class="sub">no Earth data: not counted</span>', '') : ''}
+      ${world === 'earth' ? row('Craters, dust, rock', '<span class="sub">no Earth data</span>', '') : ''}
       ${world === 'earth' ? '' : `${row('Crater rims crossed', r.craters.length ? `${r.craters.length}${deepest ? ` · deepest ${craterDepthKm(deepest.c, world) >= 1 ? `${craterDepthKm(deepest.c, world).toFixed(1)} km` : fmtM(craterDepthKm(deepest.c, world))}` : ''}` : 'none', 'catalog')}
       ${row(world === 'moon' ? 'Loose dust' : 'Loose dust / sand', r.softKm > 0 ? fmtKm(r.softKm) : 'none', 'measured')}
       ${row('Rocky ground', r.rockyKm > 0 ? fmtKm(r.rockyKm) : 'none', 'measured')}`}
