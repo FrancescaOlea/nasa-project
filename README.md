@@ -140,6 +140,8 @@ once A and B are set). What differs:
 
 ### Efficient route: the precise route engine
 
+(Mars only. On the Moon the Efficient route is the least-climbing route from the LOLA map tiles.)
+
 `src/route/engine/` implements docs/route-algorithm.md: a drivable / walkable, energy-efficient
 route from NASA's **precise MOLA elevation** (16-bit, 1 m steps; the map's 8-bit tiles are never
 used for its climbs). In the planner it's the **Efficient** route; Safest and Shortest still come
@@ -200,6 +202,34 @@ route** in the planner brings it back after you've moved the map.
   data layers are dimmed by 20% (restored when the route is cleared); A and B pins with a dark
   ring; small arrows every ~110 px on screen show the direction of travel (redrawn on zoom).
 - The route result carries `points` (every point, A to B) and `bounds` (short-way lat/lon box).
+
+### Driving the route at an Earth analog
+
+Connects an analog to exploration: the same traveller drives the same route at the Moon / Mars
+site and at an Earth analog, compared side by side (`src/route/compare.js`).
+
+- **From a route**: plan a route on the Moon or Mars map, then **🌍 Find Earth analogs for this
+  route** (in the planner). The search area is the circle around the route (its midpoint, half its
+  length as the radius); the route goes along in the Earth page's address (`src`, `str`, `sss`).
+- **At a result**: **🛣 Drive the same route here** opens the planner on Earth with a route of the
+  same straight-line length and direction, centred on the analog area (turned by up to 90°, or
+  shifted, if it would cross water) and the same traveller. Drag A or B to change it, as on Mars.
+  Without a site route (an analog search started from the selected area), it compares a
+  west–east crossing of the site area with the same crossing at the analog.
+- **Side by side** (planner panel), for the chosen route kind: distance, climb, steepest slope,
+  km over 15°, average slope, roughness and terrain difficulty per km, plus one sentence, e.g.
+  *"A 20 km Apollo LRV traverse here has 41% gentler slopes than the Moon site and 46% less rough
+  ground."* Both routes come from the same planner (`computeRoutes`) on the same cell size (the
+  site's grid is built at the Earth grid's cell size, since Earth's tiles are coarser), from
+  slope data at the same ~1.9 km scale (MOLA / LOLA; ETOPO 2022 on Earth).
+- **Earth data**: elevation and slope from the Earth map's tiles (ETOPO 2022, Web Mercator, read
+  by `layerSampler`), coldest night from NASA POWER. Earth has no relief map: roughness is the
+  standard deviation of the cells' elevation in a ~9 km block, the same measure as the Moon /
+  Mars relief maps. **Not on Earth**: crater rims, loose dust / rocky ground (thermal inertia) and
+  dust storms: those hazards are simply absent from the Earth route, the panel says so, and the
+  compared difficulty uses slope and roughness only on both worlds (the site's full difficulty,
+  with craters, dust and rock, is shown separately). The precise MOLA route is Mars-only, so the
+  comparison uses the map-tile routes on both worlds.
 
 ### Rovers: who travels changes the route
 

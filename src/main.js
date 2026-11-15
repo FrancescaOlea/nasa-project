@@ -18,6 +18,8 @@ import { inKnownRegion, KNOWN_REGION_KM } from './knownAnalogs.js';
 import { addRuler, isMeasuring } from './ruler.js';
 import { maybeStartTutorial, startTour } from './tutorial.js';
 import { createRoutePlanner, routeEvents } from './route/planner.js';
+import { siteCrossing, sameRouteOnEarth, destination, bearingDeg } from './route/compare.js';
+import { haversineKm as routeKm } from './route/grid.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -321,7 +323,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
   let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
-  let planner = null;                          // Mars / Moon route planner (src/route/), when open
+  let planner = null;
+  let driveAt = null;                          // Earth analogs: plan the site's route at a result                          // Mars / Moon route planner (src/route/), when open
   let describe = () => {};
   function selectView(v) {
     view = v;
@@ -336,7 +339,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
   // Earth keeps where it was opened from (and an analog search's site) in its address
-  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new'].filter((k) => params.has(k)) : [];
+  const keep = key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new', 'src', 'str', 'sss'].filter((k) => params.has(k)) : [];
   function query() {
     const q = new URLSearchParams();
     for (const k of keep) q.set(k, params.get(k));
@@ -597,9 +600,9 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   };
 
   map.on('click', (e) => {
-    if (analog || similarShown) return; // paused while search results are shown
     if (isMeasuring()) return; // the ruler has the clicks
     if (planner?.isOpen()) { planner.click(e.latlng); return; } // route planner picks A and B
+    if (analog || similarShown) return; // paused while search results are shown
     // polar maps: ignore clicks in the empty corners outside the world disc
     if (proj.inside) {
       const n = 256 * 2 ** map.getZoom();
@@ -669,11 +672,14 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     return true;
   }
   $('find-analogs').onclick = () => findEarthAnalogs(current);
-  // Ask for the weights, then open Earth to search for analogs of an area around 'at'
-  async function findEarthAnalogs(at) {
+  // Ask for the weights, then open Earth to search for analogs of an area around 'at'.
+  // With a planned route: the area is the circle around the route (its midpoint, half its length,
+  // within the allowed radii), and the route goes along, to drive it again at the analogs.
+  async function findEarthAnalogs(at, route = null) {
+    const areaKm = route ? Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, Math.round(route.km / 2))) : radiusKm;
     const chosen = await askWeights({
-      heading: 'Find Earth analogs',
-      subheading: `${body.name} · ${formatLatLon(at.lat, at.lon)} · ${radiusKm} km radius`,
+      heading: route ? 'Find Earth analogs for this route' : 'Find Earth analogs',
+      subheading: `${body.name} · ${formatLatLon(at.lat, at.lon)} · ${areaKm} km radius`,
       action: 'Find Earth analogs →',
       items: Object.entries(PARAMS).map(([k, p]) => ({ key: k, name: p.name, help: p.help })),
       steps: WEIGHT_STEPS,
@@ -704,8 +710,14 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     analogWeights = chosen;
     saveToUrl();
     const site = new URLSearchParams({ from: key, site: `${at.lat.toFixed(4)},${at.lon.toFixed(4)}`,
-      sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
+      sr: areaKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
     if (analogNewOnly) site.set('new', '1');
+    if (route) {
+      const f = (p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
+      site.set('src', `${f(route.a)};${f(route.b)}`);
+      site.set('str', route.traveller);
+      if (route.season) site.set('sss', route.season);
+    }
     location.hash = `#/earth?${site}`;
   }
   $('find-similar').onclick = async () => {
@@ -821,12 +833,14 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     }
   }
 
-  // ---- Route planner (Mars and Moon): A to B, with the dangers on the way
-  const routeWorld = key === 'mars' || key === 'moon';
-  $('plan-route').hidden = !routeWorld;
+  // ---- Route planner (Mars and Moon): A to B, with the dangers on the way. On Earth only at an
+  // analog search's results, to drive the same route there (src/route/compare.js).
+  const routeWorld = key === 'mars' || key === 'moon' || (key === 'earth' && analog);
+  $('plan-route').hidden = !(key === 'mars' || key === 'moon');
+  $('route-analogs').hidden = true;
   if (routeWorld) {
     const showRoutePanels = (open) => {
-      $('select-panel').hidden = open;
+      $('select-panel').hidden = open || analog;
       if (open) $('area-panel').hidden = true; else updateSummary();
     };
     // 3D terrain of the route: the button shows once A and B are set (and stays while the
@@ -834,10 +848,37 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     const btn3d = $('btn-3d');
     const update3dButton = () => {
       const r = planner?.result();
-      btn3d.hidden = !((r?.open && r.a && r.b) || terrainView?.isOpen());
+      btn3d.hidden = key === 'earth' || !((r?.open && r.a && r.b) || terrainView?.isOpen());
     };
-    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); update3dButton(); }, key);
+    // Earth: the site route to compare with: the one planned at the site, or a crossing of the site area
+    let compare = null;
+    if (key === 'earth') {
+      const from = BODIES[params.get('from')] && params.get('from') !== 'earth' ? params.get('from') : 'mars';
+      const [sLat, sLon] = (params.get('site') ?? '').split(',').map(Number);
+      const pts = (params.get('src') ?? '').split(';').map((t) => t.split(',').map(Number));
+      const ok = pts.length === 2 && pts.every((p) => p.length === 2 && p.every(Number.isFinite));
+      compare = ok
+        ? { world: from, a: { lat: pts[0][0], lon: pts[0][1] }, b: { lat: pts[1][0], lon: pts[1][1] }, season: Number(params.get('sss')) || 0 }
+        : { world: from, ...siteCrossing({ lat: sLat, lon: sLon }, radiusKm, from) };
+      if (!params.has('tr') && params.has('str')) params.set('tr', params.get('str')); // the same traveller
+    }
+    planner = createRoutePlanner(map, params, () => {
+      showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); update3dButton();
+    }, key, { compare });
+    // Moon / Mars: with a route, find Earth analogs for it (and drive it there); the planner shows the button
     update3dButton(); // (a route restored from the address)
+    $('route-analogs').onclick = () => {
+      const res = planner.result();
+      if (!res.a || !res.b) return;
+      const km = routeKm(res.a.lat, res.a.lon, res.b.lat, res.b.lon, body.radiusKm);
+      const mid = destination(res.a, bearingDeg(res.a, res.b), km / 2, body.radiusKm);
+      findEarthAnalogs(mid, { a: res.a, b: res.b, km, traveller: res.traveller, season: res.season });
+    };
+    // Earth analogs: 'Drive the same route here' at a result
+    driveAt = async (res) => {
+      const line = await sameRouteOnEarth(compare, res);
+      planner.setRoute(line.a, line.b, { turned: line.turned });
+    };
     $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
     const set3dButton = (on) => {
       btn3d.setAttribute('aria-pressed', on);
@@ -887,7 +928,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     select(ll.lat, ll.lng);
     return true;
   };
-  return { select, clear, current: () => current, saveToUrl };
+  return { select, clear, current: () => current, saveToUrl, driveAt: (res) => driveAt?.(res) };
 }
 
 // ---- Earth page opened from "Find Earth analogs": the search and its results ---------
@@ -1047,6 +1088,12 @@ function showAnalogResults(params, selection) {
         <button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
         <button type="button" class="view-3d-btn analog-terrain">⛰ 3D terrain</button>
       </div>
+      <div class="analog-drive">
+        <button type="button" class="view-3d-btn analog-route">🛣 ${params.has('src') ? 'Drive the same route here' : 'Drive across this area'} &rarr;</button>
+        <p class="sub">${params.has('src')
+    ? `Plans your ${source.name} route (same length, same traveller) in this area and compares the two.`
+    : `Plans a route across this area with a ${source.name} traveller and compares it with the same crossing of the site. Tip: plan a route on the ${source.name} map, then "Find Earth analogs for this route".`}</p>
+      </div>
       <p class="c-title">Area ${i + 1} compared with the site</p>
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
@@ -1054,6 +1101,11 @@ function showAnalogResults(params, selection) {
       (top right) shows this Earth area's typical values from the map data.</p>
       ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}`;
     // detailed 3D landscape of this area's centre, loaded only on request
+    // drive the site's route here: the planner opens with it, compared side by side
+    box.querySelector('.analog-route').onclick = (e) => {
+      e.currentTarget.disabled = true;
+      Promise.resolve(selection?.driveAt(res)).finally(() => { e.currentTarget.disabled = false; });
+    };
     box.querySelector('.analog-3d').onclick = () => {
       location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
     };
