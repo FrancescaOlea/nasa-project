@@ -114,6 +114,13 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
 - **AWS Terrain Tiles** (Registry of Open Data on AWS; Mapzen/Tilezen, from SRTM, GMTED, ETOPO1 and
   national models). Earth 3D view terrain north of 60° N and south of 56° S.
 
+## Known analog sites
+
+`src/knownAnalogs.js`: 25 established Moon and Mars analog sites on Earth, each with one reference
+(Wikipedia articles, which cite the NASA, ESA and research sources). Coordinates checked against the
+articles' coordinates where they have them (within ~0.1°); sites spread over a large area are marked
+approximate.
+
 ## Software
 
 - Leaflet (maps), three.js (3D globes and the Moon / Mars / Earth 3D views), astronomy-engine (Sun, Earth,

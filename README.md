@@ -325,6 +325,55 @@ How it works (`src/analogs.js`):
 - The best circle is kept, then the next best at least 800 km from all kept ones, until there are as
   many as asked for (3 by default).
 
+#### Report card: how good is the analog, and where does it fail?
+
+Click a result for its **report card** (`src/reportcard.js`), under the comparison table:
+
+- **New or known**: is the place in a known analog region, or new? (see below)
+- **✓ Strong / ≈ partial / ✗ weak match**: each characteristic, by how far the place is from the site's
+  value, measured in Earth's spread of that characteristic (its 5th–95th percentile over all land): strong up
+  to 15%, weak from 50% (`STRONG_GAP`, `WEAK_GAP`).
+- **↕ Matched only relatively**: where the site is beyond anything on Earth, only the rank matches. The card
+  gives both real values, e.g. *Min. temperature: Mars −93 °C, here 6 °C; both at about the 92nd percentile of
+  their own world*.
+- **○ Not compared**: characteristics that were switched off, have no data at the site, or have no Earth
+  counterpart in the search yet (surface material, iron, ice, sunlight, dust storms, rock type, craters).
+- **What no place on Earth can reproduce** (fixed per world): gravity, vacuum or the thin CO₂ air, radiation,
+  the Moon's 29.5-day day, Mars's perchlorate soil, and Earth's life, which helps testing but contaminates
+  samples.
+
+#### Known analogs: is the place new?
+
+`src/knownAnalogs.js` lists 25 established analog sites (Haughton crater, McMurdo Dry Valleys, Atacama,
+Río Tinto, Mars Desert Research Station, HI-SEAS, Askja, Meteor Crater, Ries, Sudbury, lava-tube parks, …),
+each with what it is used for and a source. They show on the Earth map (✦, purple, from 2× zoom; click for
+details). Every result is labelled **New analog** or **Known analog region** (within 250 km of one of them,
+`KNOWN_REGION_KM`). **Only new places** in the search dialog leaves the known regions out (address: `new=1`).
+
+**Does the search find known analogs?** `tools/validate-analogs.html` (open it with `npm run dev`, at
+`/tools/validate-analogs.html`) runs the search with the default weights and a 25 km radius for Moon / Mars
+sites whose Earth analog is established, and reports how well the best area within 250 km of that analog ranks
+among all of Earth's ~96,000 areas. For comparison, the same number for 300 random land points (median):
+
+| Moon / Mars site | Known Earth analog | Why that pair | Known analog ranks in | Random land point |
+|---|---|---|---|---|
+| Phoenix landing site (Mars) | McMurdo Dry Valleys | ice-cemented polar ground | **top 1.5%** | top 36% |
+| Opportunity, Meridiani Planum (Mars) | Río Tinto | jarosite from acid water | **top 1.5%** | top 29% |
+| Apollo 15, Hadley (Moon) | Askja | Apollo field training | **top 3.9%** | top 18% |
+| Apollo 14, Fra Mauro (Moon) | Nördlinger Ries | Apollo 14 crew training | top 20% | top 34% |
+| Apollo 16, Descartes (Moon) | Sudbury Basin | Apollo 16 / 17 rock studies | top 28% | top 28% |
+| Viking 1, Chryse Planitia (Mars) | Atacama (Yungay) | Viking-like soil experiments | top 81% | top 21% |
+
+Four of six known analogs rank far above a random place, from climate and terrain alone. The two that don't
+were chosen for what the search doesn't compare: Sudbury for its impact rocks, and the Atacama for its soil
+chemistry. Viking 1's site is cold for Mars, so it is matched to places cold for Earth, while Yungay is a warm
+coastal desert. For every site, *some* known analog for its world ranks in the top 1.5%.
+
+None of the six known analogs is among the site's 10 results: the results are other places with similar
+values. Over 20 Moon and Mars sites × 10 results, **7 of 200 results (3.5%) are in a known analog region**
+(e.g. Hellas → near Haughton crater, Mars's north pole → Svalbard); the other 96.5% are new. With *Only new
+places* none are.
+
 ### Similar spots
 
 **Find similar spots** (Moon or Mars, with an area selected) looks for the places on the *same* world
@@ -354,7 +403,8 @@ Altiplano and Algeria; Meridiani the Sechura Desert (Peru), the Western Sahara a
 West Greenland, Alaska's North Slope and the Canadian Arctic; Argyre the Canadian Arctic islands and
 Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antarctica; Apollo 11 Sudan,
 Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
-Not covered yet: impact craters (e.g. Devon Island) and soil type (dusty/rocky data for Earth).
+Not covered yet: impact craters as a search characteristic and soil type (dusty/rocky data for Earth); see the
+report card's *Not compared* list.
 
 ### Moon and Mars 3D view: standing on the surface
 

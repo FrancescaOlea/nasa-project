@@ -201,7 +201,7 @@ export async function siteValues(body, bodyRadiusKm, index, lat, lon, radiusKm) 
  * weights: {param: weight}; mode: 'match' | 'extreme'; site: from siteValues().
  * Resolves to { results: [{lat, lon, score, values, targets}], targets, spreads, used }.
  */
-export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAULT_COUNT }) {
+export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAULT_COUNT, exclude = null }) {
   const grid = await loadEarthGrid();
   // parameters that take part: weight > 0, and for two-sided ones a site value
   const used = Object.keys(PARAMS).filter((k) => weights[k] > 0 && (!PARAMS[k].site || Number.isFinite(site[k])));
@@ -210,6 +210,9 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
   const c = circles(grid, radiusKm, fields);
   const n = c.cells.length;
   const candidate = (j) => c.land[j] >= 0.5;
+  // `exclude(lat, lon)`: places that may not be a result (e.g. known analog regions). They still
+  // count for Earth's spread and percentiles, so the scores don't change.
+  const allowed = exclude ? Uint8Array.from({ length: n }, (_, j) => !exclude(c.lat[j], c.lon[j])) : null;
 
   // per parameter: Earth's spread (5th-95th percentile of the circles) and the target
   const targets = {};
@@ -264,6 +267,7 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
     .sort((a, b) => scores[a] - scores[b]);
   const results = [];
   for (const j of order) {
+    if (allowed && !allowed[j]) continue;
     if (results.some((r) => distanceKm(r.lat, r.lon, c.lat[j], c.lon[j]) < MIN_SEPARATION_KM)) continue;
     results.push({
       lat: c.lat[j], lon: c.lon[j], score: scores[j],
@@ -271,7 +275,36 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
     });
     if (results.length === count) break;
   }
-  return { results, targets, spreads, extremes, relative, used };
+
+  // How well the best circle near a point ranks among all of Earth's circles: used to check
+  // whether the search finds known analogs. top = share of circles scoring better (0..1).
+  function rankNear(lat, lon, withinKm) {
+    for (let i = 0; i < order.length; i++) {
+      const j = order[i];
+      if (distanceKm(lat, lon, c.lat[j], c.lon[j]) <= withinKm) {
+        return { lat: c.lat[j], lon: c.lon[j], score: scores[j], top: i / order.length };
+      }
+    }
+    return null;
+  }
+  return { results, targets, spreads, extremes, relative, used, rankNear };
+}
+
+// A parameter's value (in Earth-grid units) as text with its unit, e.g. "-35°C", "120 mm/yr"
+export function formatValue(key, v) {
+  const d = displayValue(key, v);
+  if (!Number.isFinite(d)) return '–';
+  const p = PARAMS[key];
+  const digits = Math.abs(d) >= 100 || p.unit === '°C' || p.unit === 'm' ? 0 : Math.abs(d) >= 10 ? 1 : 2;
+  return `${d.toFixed(digits)}${p.unit === '°C' || p.unit === '°' ? p.unit : ` ${p.unit}`}`;
+}
+
+/** How far a value is from its target, in Earth spreads (as in the score). 0 = on target. */
+export function gapOf(key, value, target, spread) {
+  const p = PARAMS[key];
+  const diff = p.limit === undefined ? value - target
+    : p.better === 'low' ? Math.max(0, value - target) : Math.min(0, value - target);
+  return Math.abs(diff) / spread;
 }
 
 // Where a value falls among a body's percentiles 0..100: 0..1

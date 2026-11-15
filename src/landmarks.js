@@ -7,6 +7,7 @@
 // tier: 0 = always shown, 1 = from 2x zoom, 2 = from 4x zoom (keeps the map uncluttered)
 // Coordinates: planetocentric latitude, east longitude (-180..180).
 import L from 'leaflet';
+import { KNOWN_ANALOGS } from './knownAnalogs.js';
 
 export const LANDMARKS = {
   moon: [
@@ -296,7 +297,27 @@ const MISSION_DETAILS = {
   },
 };
 
-const ICON = { human: '◆', robotic: '●', peak: '▲', feature: '', sea: '', range: '', desert: '' };
+const ICON = { human: '◆', robotic: '●', peak: '▲', feature: '', sea: '', range: '', desert: '', analog: '✦' };
+
+// Popup of an established analog site (src/knownAnalogs.js)
+function analogPopup(a) {
+  const content = document.createElement('article');
+  content.className = 'mission-popup';
+  const heading = document.createElement('h3');
+  heading.textContent = a.name;
+  const kind = document.createElement('p');
+  kind.textContent = `Known ${a.worlds.map((w) => (w === 'moon' ? 'Moon' : 'Mars')).join(' and ')} analog`;
+  kind.className = 'analog-kind';
+  const why = document.createElement('p');
+  why.textContent = a.why + (a.approx ? ' (marker position approximate)' : '');
+  const source = document.createElement('a');
+  source.href = a.source;
+  source.target = '_blank';
+  source.rel = 'noopener noreferrer';
+  source.textContent = 'More about this site';
+  content.append(heading, kind, why, source);
+  return content;
+}
 
 function missionPopup(name, details) {
   const content = document.createElement('article');
@@ -374,6 +395,19 @@ export function addLandmarks(map, body) {
       });
     }
     tiers[tier].addLayer(marker);
+  }
+  // Earth: established Moon / Mars analog sites, clickable, from 2x zoom
+  if (body === 'earth') {
+    for (const a of KNOWN_ANALOGS) {
+      const marker = L.marker([a.lat, a.lon], {
+        icon: L.divIcon({ className: 'landmark landmark-analog landmark-mission',
+          html: `<div class="lm"><span class="lm-icon">${ICON.analog}</span><span class="lm-text"></span></div>`, iconSize: null }),
+        pane: 'labels', title: `${a.name}: known analog site`,
+      });
+      marker.on('add', () => { marker.getElement().querySelector('.lm-text').textContent = a.name; });
+      marker.bindPopup(analogPopup(a), { className: 'mission-popup-shell', minWidth: 200, maxWidth: 280, autoPanPadding: [16, 16] });
+      tiers[1].addLayer(marker);
+    }
   }
   let visible = true;
   const update = () => {

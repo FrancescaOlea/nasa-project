@@ -23,10 +23,10 @@ const fmt = (w) => (w === 0 ? 'off' : `×${w}`);
  * Show the weights dialog. `layers` are the characteristics (view keys), or `items`
  * [{ key, name, help }] for any other list; `steps` the allowed weights; `initial` any
  * saved weights. With `mode` ({ value, options: [[id, label, help]] }) a switch is shown
- * above the list. Resolves with the chosen weights (plus `mode` when used), or null if
- * cancelled.
+ * above the list. With `toggle` ({ value, label, help }) a checkbox is shown under it. Resolves
+ * with the chosen weights (plus `mode`, `count`, `toggle` when used), or null if cancelled.
  */
-export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null, defaults = null, count = null }) {
+export function askWeights({ heading, subheading, action, layers, items, steps = STEPS, initial = {}, mode = null, defaults = null, count = null, toggle = null }) {
   items ??= layers.map((k) => ({ key: k, name: VIEWS[k].name }));
   layers = items.map((it) => it.key);
   const dialog = document.getElementById('weights');
@@ -122,10 +122,20 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
     countBox.querySelector('.w-count-help').textContent = `Whole number from ${count.min} to ${count.max}.`;
     countInput.oninput = () => update();
   }
+  // optional on/off option (e.g. "Only new places")
+  const toggleBox = dialog.querySelector('.w-toggle');
+  const toggleInput = toggleBox.querySelector('input');
+  toggleBox.hidden = !toggle;
+  if (toggle) {
+    toggleInput.checked = !!toggle.value;
+    toggleBox.querySelector('.w-toggle-label').textContent = toggle.label;
+    toggleBox.querySelector('.w-toggle-help').textContent = toggle.help ?? '';
+  }
   reset.onclick = () => {
     for (const k of layers) weights[k] = defaults?.[k] ?? 1;
     if (mode?.default) { modeValue = mode.default; showMode?.(); }
     if (count) countInput.value = count.default ?? count.value;
+    if (toggle) toggleInput.checked = false;
     update();
   };
   dialog.querySelector('.w-all-0').onclick = () => { for (const k of layers) weights[k] = 0; update(); };
@@ -138,7 +148,8 @@ export function askWeights({ heading, subheading, action, layers, items, steps =
       resolve(result);
     };
     go.onclick = () => finish({ ...weights, ...(mode ? { mode: modeValue } : {}),
-      ...(count ? { count: Number(countInput.value) } : {}) });
+      ...(count ? { count: Number(countInput.value) } : {}),
+      ...(toggle ? { toggle: toggleInput.checked } : {}) });
     dialog.querySelector('.w-cancel').onclick = () => finish(null);
     dialog.onclose = () => resolve(null); // Esc key
     dialog.showModal();
