@@ -50,7 +50,7 @@ const WORLD_CFG = {
     traveller: 'lrv',
     seasons: false, // no seasons and no weather on the Moon
     ti: { softHi: 34, softSpan: 8, rockLo: 50, rockSpan: 20 },
-    record: { km: 42, text: 'longer than any rover has ever driven on the Moon (Lunokhod 2: ~42 km in 4 months, 1973)' },
+    record: { km: 35.9, text: 'longer than NASA has ever driven on the Moon (Apollo 17\'s LRV: 35.9 km in three drives, 1972)' },
     slopeSrc: 'LOLA',
     dust: 'Unusually low thermal inertia: especially fine, fluffy soil where wheels and boots sink deeper (LRO Diviner, measured). The whole Moon is covered in loose dust; this marks the loosest.',
     crater: (c, measured) => `${measured ? 'Rim-to-floor depth measured here from LRO LOLA heights' : 'Depth estimated from its width (Pike 1977, fresh lunar craters); not measured'} (Robbins lunar crater catalog).`

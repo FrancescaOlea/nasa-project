@@ -135,9 +135,8 @@ once A and B are set). What differs:
   rings hundreds of km wide, which the slope data already shows.
 - **No seasons, no dust storms** (no weather): the season dropdown is hidden.
 - **Who travels**: an astronaut on foot (20°, as on Mars), the **Apollo Lunar Roving Vehicle**
-  (25° design limit; time at ~8 km/h, the Apollo 15–17 average; 92 km battery range), and
-  **Lunokhod 1** and **Lunokhod 2** (20°, an assumption: no published limit found). Routes longer
-  than Lunokhod 2's ~42 km, the longest drive on the Moon, get a warning.
+  (25° design limit; time at ~8 km/h, the Apollo 15–17 average; 92 km battery range). Routes
+  longer than Apollo 17's 35.9 km, the farthest NASA has driven on the Moon, get a warning.
 
 ### Rovers: who travels changes the route
 

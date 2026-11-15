@@ -83,9 +83,8 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   Depths of craters ≥ 15 km measured from LRO LOLA LDEM 16 px/degree
   (`tools/build_moon_route_data.mjs`); smaller ones from Pike, R. J. (1977), "Size-dependence in
   the shape of fresh impact craters on the Moon".
-- Rover profiles: NASA NSSDC "The Apollo Lunar Roving Vehicle"; Boeing, LRV Operations Handbook
-  (1971); Apollo Lunar Surface Journal (traverse distances and driving times); NASA NSSDC Luna 17 /
-  Lunokhod 1 and Luna 21 / Lunokhod 2; LROC (ASU), Lunokhod 2's 42 km tracks on LRO images.
+- Rover profile: NASA NSSDC "The Apollo Lunar Roving Vehicle"; Boeing, LRV Operations Handbook
+  (1971); Apollo Lunar Surface Journal (traverse distances and driving times).
 
 **Rover profiles** (`src/route/rovers.js`)
 - Rankin, A. et al. (2022), "Mars Curiosity Rover Wheel Wear", JPL: mass and wheel size of
