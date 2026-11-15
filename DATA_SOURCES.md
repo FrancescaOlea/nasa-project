@@ -75,6 +75,17 @@ streamed while you browse; the data layers are processed by `tools/build_layers.
   surface traversability analysis (JPL).
 - Walking time: Tobler, W. (1993), hiking function (Earth-based).
 
+**Moon route planner**
+- **Robbins global lunar crater database** (2018 release, `lunar_crater_database_robbins_2018`):
+  1,296,796 craters ≥ 1–2 km with position and diameter (no depths); the app keeps the 909,934
+  craters ≥ 1.3 km. Robbins, S. J. (2019), JGR Planets 124, 871–892, doi:10.1029/2018JE005592;
+  USGS Astrogeology, https://astrogeology.usgs.gov/search/map/moon_crater_database_v1_robbins.
+  Depths of craters ≥ 15 km measured from LRO LOLA LDEM 16 px/degree
+  (`tools/build_moon_route_data.mjs`); smaller ones from Pike, R. J. (1977), "Size-dependence in
+  the shape of fresh impact craters on the Moon".
+- Rover profile: NASA NSSDC "The Apollo Lunar Roving Vehicle"; Boeing, LRV Operations Handbook
+  (1971); Apollo Lunar Surface Journal (traverse distances and driving times).
+
 **Rover profiles** (`src/route/rovers.js`)
 - Rankin, A. et al. (2022), "Mars Curiosity Rover Wheel Wear", JPL: mass and wheel size of
   Sojourner, Spirit/Opportunity, Curiosity and Perseverance (Table 1).

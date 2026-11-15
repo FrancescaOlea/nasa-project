@@ -1,11 +1,15 @@
 // Builds the terrain grid the route planner searches: a lat/lon box around the two
 // points, cut into cells, each holding the real NASA values read from the same data
-// tiles the map's views show (public/overlays), plus craters and dust storms
-// (public/route, made by tools/build_route_data.py).
+// tiles the map's views show (public/overlays), plus craters and (Mars) dust storms
+// (public/route, made by tools/build_route_data.py; the Moon's craters in public/route/moon,
+// made by tools/build_moon_route_data.mjs).
 import { decode, loadIndex, loadImage } from '../overlays.js';
 
 const BASE = import.meta.env.BASE_URL;
 export const MARS_R = 3389.5;
+export const MOON_R = 1737.4;
+/** Mean radius (km) of the worlds the planner works on. */
+export const RADIUS = { mars: MARS_R, moon: MOON_R };
 const rad = (d) => (d * Math.PI) / 180;
 const deg = (r) => (r * 180) / Math.PI;
 
@@ -39,7 +43,7 @@ function tilePixels(url) {
 }
 
 /** Reads one layer's values (in real units) at its most detailed tile level. */
-export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax, zoom = meta.max_zoom) {
+export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax, zoom = meta.max_zoom, world = 'mars') {
   const z = Math.min(meta.max_zoom, zoom); // a coarser level reads fewer tiles for big areas
   const W = 512 * 2 ** z;
   const H = 256 * 2 ** z;
@@ -55,7 +59,7 @@ export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax, 
       const key = `${tr}/${col}`;
       if (!tiles.has(key)) {
         tiles.set(key, null);
-        jobs.push(tilePixels(`${BASE}overlays/mars/${layer}/${z}/${key}.${meta.format}`).then((px) => tiles.set(key, px)));
+        jobs.push(tilePixels(`${BASE}overlays/${world}/${layer}/${z}/${key}.${meta.format}`).then((px) => tiles.set(key, px)));
       }
     }
   }
@@ -103,14 +107,20 @@ export async function layerSampler(layer, meta, latMin, latMax, lonMin, lonMax, 
 
 // ---- Craters and dust storms ------------------------------------------------------
 
-let routeIndex = null;
-const loadRouteIndex = () => (routeIndex ??= fetch(`${BASE}route/index.json`).then((r) => r.json()));
+// Mars data in public/route/, the Moon's in public/route/moon/
+const routeDir = (world) => (world === 'mars' ? `${BASE}route/` : `${BASE}route/${world}/`);
+const routeIndex = new Map();
+const loadRouteIndex = (world = 'mars') => {
+  if (!routeIndex.has(world)) routeIndex.set(world, fetch(`${routeDir(world)}index.json`).then((r) => r.json()));
+  return routeIndex.get(world);
+};
 const craterBlocks = new Map();
 let stormsPromise = null;
 
-/** Craters (Robbins & Hynek 2012) whose rims reach into the box. */
-export async function cratersIn(latMin, latMax, lonMin, lonMax) {
-  const index = await loadRouteIndex();
+/** Craters (Mars: Robbins & Hynek 2012; Moon: Robbins 2019) whose rims reach into the box. */
+export async function cratersIn(latMin, latMax, lonMin, lonMax, world = 'mars') {
+  const R = RADIUS[world];
+  const index = await loadRouteIndex(world);
   const B = index.craters.block_deg;
   const found = [];
   const lonRanges = [];
@@ -130,10 +140,11 @@ export async function cratersIn(latMin, latMax, lonMin, lonMax) {
         const lo2 = ((bo + 180 + 360) % 360) - 180;
         const key = `${la}_${lo2}`;
         if (!index.craters.blocks[key]) continue;
-        if (!craterBlocks.has(key)) {
-          craterBlocks.set(key, fetch(`${BASE}route/craters/${key}.bin`).then((r) => r.arrayBuffer()));
+        const url = `${routeDir(world)}craters/${key}.bin`;
+        if (!craterBlocks.has(url)) {
+          craterBlocks.set(url, fetch(url).then((r) => r.arrayBuffer()));
         }
-        jobs.push(craterBlocks.get(key).then((buf) => ({ buf, shift, key })));
+        jobs.push(craterBlocks.get(url).then((buf) => ({ buf, shift, key })));
       }
     }
   }
@@ -147,7 +158,7 @@ export async function cratersIn(latMin, latMax, lonMin, lonMax) {
       const lon = v.getInt16(o + 2, true) / 100 - shift;
       const d = v.getUint16(o + 4, true) / 10;
       const rKm = d / 2;
-      const dLat = deg((rKm * 1.3) / MARS_R);
+      const dLat = deg((rKm * 1.3) / R);
       const dLon = dLat / Math.max(0.05, Math.cos(rad(lat)));
       if (lat + dLat < latMin || lat - dLat > latMax || lon + dLon < lonMin || lon - dLon > lonMax) continue;
       const depth = v.getUint16(o + 6, true);
@@ -165,7 +176,7 @@ export async function cratersIn(latMin, latMax, lonMin, lonMax) {
 
 /** Share of mapped sols with a dust storm overhead, for one season (MDAD). */
 export async function stormGrid(season) {
-  stormsPromise ??= Promise.all([loadRouteIndex(), fetch(`${BASE}route/storms.bin`).then((r) => r.arrayBuffer())]);
+  stormsPromise ??= Promise.all([loadRouteIndex('mars'), fetch(`${BASE}route/storms.bin`).then((r) => r.arrayBuffer())]);
   const [index, buf] = await stormsPromise;
   const { rows, cols, cell_deg: cd, scale } = index.storms;
   const data = new Uint8Array(buf, season * rows * cols, rows * cols);
@@ -179,17 +190,19 @@ export async function stormGrid(season) {
 // ---- The grid -----------------------------------------------------------------------
 
 /**
- * Builds the search grid between a and b ({lat, lon}). Longitudes are unwrapped so the
- * box takes the short way round. Returns typed arrays, one value per cell.
+ * Builds the search grid between a and b ({lat, lon}) on 'mars' or 'moon'. Longitudes are
+ * unwrapped so the box takes the short way round. Returns typed arrays, one value per cell.
+ * (The Moon has no dust storms and no seasons: its storm values are all 0.)
  */
-export async function buildGrid(a, b, season, onProgress = () => {}) {
+export async function buildGrid(a, b, season, onProgress = () => {}, world = 'mars') {
+  const R = RADIUS[world];
   let lonB = b.lon;
   if (lonB - a.lon > 180) lonB -= 360;
   if (a.lon - lonB > 180) lonB += 360;
-  const distKm = haversineKm(a.lat, a.lon, b.lat, lonB);
+  const distKm = haversineKm(a.lat, a.lon, b.lat, lonB, R);
   // room to go round obstacles: a third of the distance on every side (at least 25 km)
   const marginKm = Math.max(25, distKm * 0.35);
-  const mDeg = deg(marginKm / MARS_R);
+  const mDeg = deg(marginKm / R);
   const latMin = Math.max(-MAX_LAT, Math.min(a.lat, b.lat) - mDeg);
   const latMax = Math.min(MAX_LAT, Math.max(a.lat, b.lat) + mDeg);
   const midLat = (latMin + latMax) / 2;
@@ -199,13 +212,13 @@ export async function buildGrid(a, b, season, onProgress = () => {}) {
   const lonMax = Math.max(a.lon, lonB) + lonPad;
 
   const index = await loadIndex();
-  const metas = index.mars;
+  const metas = index[world];
   // Cells: as fine as the slope data (~2.6 km per tile pixel at its top level), coarser
   // only when the box would hold too many cells.
   const slopePxDeg = 180 / (256 * 2 ** metas.slope.max_zoom);
-  const heightKm = rad(latMax - latMin) * MARS_R;
-  const widthKm = rad(lonMax - lonMin) * MARS_R * cosMid;
-  let cellKm = Math.max(rad(slopePxDeg) * MARS_R, Math.sqrt((heightKm * widthKm) / MAX_CELLS));
+  const heightKm = rad(latMax - latMin) * R;
+  const widthKm = rad(lonMax - lonMin) * R * cosMid;
+  let cellKm = Math.max(rad(slopePxDeg) * R, Math.sqrt((heightKm * widthKm) / MAX_CELLS));
   const rows = Math.max(3, Math.ceil(heightKm / cellKm));
   const cols = Math.max(3, Math.ceil(widthKm / cellKm));
   cellKm = heightKm / rows;
@@ -213,25 +226,22 @@ export async function buildGrid(a, b, season, onProgress = () => {}) {
   const dLon = (lonMax - lonMin) / cols;
 
   onProgress('Reading NASA terrain data…');
+  const box = [latMin, latMax, lonMin, lonMax];
   const [slope, elev, relief, surface, tmin, storm] = await Promise.all([
-    layerSampler('slope', metas.slope, latMin, latMax, lonMin, lonMax),
-    layerSampler('elevation', metas.elevation, latMin, latMax, lonMin, lonMax),
-    layerSampler('relief', metas.relief, latMin, latMax, lonMin, lonMax),
-    layerSampler('surface', metas.surface, latMin, latMax, lonMin, lonMax),
-    layerSampler('temp_min', metas.temp_min, latMin, latMax, lonMin, lonMax),
-    stormGrid(season),
+    ...['slope', 'elevation', 'relief', 'surface', 'temp_min'].map((k) => layerSampler(k, metas[k], ...box, undefined, world)),
+    world === 'mars' ? stormGrid(season) : () => 0,
   ]);
 
   const n = rows * cols;
   const g = {
-    rows, cols, cellKm, latMin, latMax, lonMin, lonMax, dLat, dLon, distKm,
-    elev: new Float32Array(n),      // km above the MOLA datum (mean)
+    world, R, rows, cols, cellKm, latMin, latMax, lonMin, lonMax, dLat, dLon, distKm,
+    elev: new Float32Array(n),      // km above the MOLA / LOLA datum (mean)
     slopeMax: new Float32Array(n),  // steepest 1.9 km slope inside the cell, degrees
     slopeMean: new Float32Array(n),
     relief: new Float32Array(n),    // km, terrain roughness (elevation spread in ~9 km blocks)
     ti: new Float32Array(n),        // thermal inertia (TIU): low = loose dust, high = rock
-    tmin: new Float32Array(n),      // coldest-season night temperature, deg C (model)
-    storm: new Float32Array(n),     // share of sols with a dust storm overhead (MDAD)
+    tmin: new Float32Array(n),      // coldest night temperature, deg C (Mars: model; Moon: Diviner)
+    storm: new Float32Array(n),     // share of sols with a dust storm overhead (MDAD; Moon: 0)
     crater: new Float32Array(n),    // 0..1 crater rim / wall hazard
     craterId: new Int32Array(n).fill(-1),
     valid: new Uint8Array(n),
@@ -271,29 +281,38 @@ export async function buildGrid(a, b, season, onProgress = () => {}) {
   }
 
   onProgress('Mapping craters…');
-  const craters = await cratersIn(latMin, latMax, lonMin, lonMax);
+  const craters = await cratersIn(latMin, latMax, lonMin, lonMax, world);
   markCraters(g, craters);
   g.craters = craters;
   return g;
 }
 
-/** Estimated depth when the catalog has none: fresh simple craters are ~1/5 as deep as wide. */
-export const craterDepthKm = (c) => c.depthKm ?? Math.min(0.2 * c.d, 1.5 + 0.02 * c.d);
+/**
+ * Estimated depth when the catalog has none: fresh simple craters are ~1/5 as deep as wide.
+ * Moon: Pike (1977) for fresh lunar craters, 0.196 D (simple, D < 15 km), else 1.044 D^0.301.
+ */
+export const craterDepthKm = (c, world = 'mars') => c.depthKm ?? (world === 'moon'
+  ? (c.d < 15 ? 0.196 * c.d : 1.044 * c.d ** 0.301)
+  : Math.min(0.2 * c.d, 1.5 + 0.02 * c.d));
 
 // Crater hazard: the rim and inner wall (0.7-1.15 x the radius) are steep and rocky; small
 // bowl-shaped craters are a hazard all the way across. Only craters at least half a cell
 // wide are marked, smaller ones are invisible at this grid size anyway.
 function markCraters(g, craters) {
   const minD = Math.max(1, g.cellKm * 0.5);
+  // Moon: the catalog also lists the giant impact basins (Imbrium, Serenitatis, ... 300-2,500 km).
+  // Their "rims" are broad mountain rings, hundreds of km across, not one wall: the slope data
+  // already shows those mountains, so basins are not marked as crater rims.
+  const maxD = g.world === 'moon' ? 300 : Infinity;
   craters.forEach((cr, idx) => {
-    if (cr.d < minD) return;
+    if (cr.d < minD || cr.d > maxD) return;
     const R = cr.d / 2;
-    const depth = craterDepthKm(cr);
+    const depth = craterDepthKm(cr, g.world);
     const bowl = cr.d < 7; // simple craters: steep everywhere inside
     const hazard = Math.min(1, depth / 1.0) * (cr.degradation === 1 ? 0.6 : 1); // worn-down rims are gentler
     const outer = R * 1.15;
     const inner = bowl ? 0 : R * 0.7;
-    const dLatC = deg(outer / MARS_R);
+    const dLatC = deg(outer / g.R);
     const r0 = Math.max(0, Math.floor((g.latMax - (cr.lat + dLatC)) / g.dLat));
     const r1 = Math.min(g.rows - 1, Math.floor((g.latMax - (cr.lat - dLatC)) / g.dLat));
     for (let r = r0; r <= r1; r++) {
@@ -304,7 +323,7 @@ function markCraters(g, craters) {
       const c1 = Math.min(g.cols - 1, Math.floor((cr.lon + dLonC - g.lonMin) / g.dLon));
       for (let c = c0; c <= c1; c++) {
         const lon = g.lonMin + (c + 0.5) * g.dLon;
-        const dKm = haversineKm(lat, lon, cr.lat, cr.lon);
+        const dKm = haversineKm(lat, lon, cr.lat, cr.lon, g.R);
         if (dKm > outer + g.cellKm / 2 || dKm < inner - g.cellKm / 2) continue;
         const i = r * g.cols + c;
         if (hazard > g.crater[i]) { g.crater[i] = hazard; g.craterId[i] = idx; }

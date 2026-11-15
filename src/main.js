@@ -318,7 +318,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
   let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
-  let planner = null;                          // Mars route planner (src/route/), when open
+  let planner = null;                          // Mars / Moon route planner (src/route/), when open
   let describe = () => {};
   function selectView(v) {
     view = v;
@@ -814,9 +814,10 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     }
   }
 
-  // ---- Route planner (Mars only): A to B, with the dangers on the way
-  $('plan-route').hidden = key !== 'mars';
-  if (key === 'mars') {
+  // ---- Route planner (Mars and Moon): A to B, with the dangers on the way
+  const routeWorld = key === 'mars' || key === 'moon';
+  $('plan-route').hidden = !routeWorld;
+  if (routeWorld) {
     const showRoutePanels = (open) => {
       $('select-panel').hidden = open;
       if (open) $('area-panel').hidden = true; else updateSummary();
@@ -828,7 +829,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       const r = planner?.result();
       btn3d.hidden = !((r?.open && r.a && r.b) || terrainView?.isOpen());
     };
-    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); update3dButton(); });
+    planner = createRoutePlanner(map, params, () => { showRoutePanels(planner?.isOpen() ?? true); saveToUrl(); update3dButton(); }, key);
     update3dButton(); // (a route restored from the address)
     $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
     const set3dButton = (on) => {
@@ -842,6 +843,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       if (shapes) clear();
       set3dButton(true);
       terrainView.open({
+        world: key,
         planner,
         onClose: () => { set3dButton(false); update3dButton(); },
         getLeafletView: () => {

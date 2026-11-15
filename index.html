@@ -138,10 +138,10 @@
         </div>
       </aside>
 
-      <!-- Mars route planner: A to B, shortest / easiest / safest (src/route/) -->
+      <!-- Route planner (Mars and Moon): A to B, shortest / easiest / safest (src/route/) -->
       <aside id="route-panel" class="panel route-panel" hidden aria-label="Route planner" aria-live="polite">
         <div class="panel-head">
-          <span class="eyebrow">Route planner · Mars</span>
+          <span class="eyebrow">Route planner · <span id="route-world">Mars</span></span>
           <button id="route-close" class="icon-btn" aria-label="Close route planner">&times;</button>
         </div>
         <p id="route-hint" class="hint"></p>
@@ -168,7 +168,7 @@
           <span class="eyebrow">Dangers on the way</span>
           <ol id="route-dangers" class="route-dangers"></ol>
           <p id="route-no-dangers" class="sub" hidden>No major hazards found at this map scale.</p>
-          <p class="route-note">Measured = spacecraft data (MOLA, TES); catalog = Robbins crater database;
+          <p id="route-note" class="route-note">Measured = spacecraft data (MOLA, TES); catalog = Robbins crater database;
             observed = dust storms mapped from orbit (MDAD); model / estimate = calculated here from assumptions
             (rover limits and weights: src/route/rovers.js). The data is 2–300 km per pixel,
             so this compares corridors; it can't see single boulders or small cliffs.</p>
