@@ -1,19 +1,119 @@
-> **Mars Rover Route** · NASA Space Apps Challenge 2026. Built on *Planet Maps* by
-> [gumenion594-ai](https://github.com/gumenion594-ai/nasa-project) (maps, data layers, Earth analog
-> search). Added here by Francesca Olea: the **Mars route planner** (safest / easiest / shortest
-> routes with their dangers), **rover-aware routing** (Sojourner, Spirit, Opportunity, Curiosity,
-> Perseverance) and the **interactive 3D terrain** view. See *Mars route planner* and *3D terrain* below.
+# Planet Maps: finding Earth analogs for the Moon and Mars
 
-# Planet Maps
+Pick any spot on the Moon or Mars and Planet Maps searches every land area on Earth for the places most like
+it, using open data from NASA and partner agencies on all three worlds. Each result comes with a report card:
+what matches, what doesn't, whether the place is already a known analog, and what no place on Earth can
+reproduce.
 
-Pick the Moon or Mars on the home page, explore its map, select an area and look for Earth analogs.
+**Open the app:** https://gumenion594-ai.github.io/nasa-project/ (no install needed) ·
+NASA Space Apps Challenge 2026
 
-**Open the app online:** https://gumenion594-ai.github.io/nasa-project/ (no install needed)
+## What we found
 
-It's published with GitHub Pages: `.github/workflows/pages.yml` builds the site (`npm run build`), pushes it to the `gh-pages` branch
-and publishes it every time `main` changes. To run it on your own computer instead, see *Run it* below.
+Three analogs from the search, each a strong match on several characteristics and none of them an
+established analog site. All use the default weights and a 25 km radius; the links open the same search in the
+app. Values are area averages from the data described in [METHODS.md](METHODS.md).
+
+### 1. Apollo 11's landing plain ↔ the Borkou plains of northern Chad
+
+![Apollo 11 site and its best Earth analog in northern Chad](docs/findings/apollo11-chad.jpg)
+
+Mare Tranquillitatis, where Apollo 11 landed, against all of Earth: the best match (93%) is a bare plain in
+northern Chad, 66 km from the Aorounga impact crater.
+[Open this search](https://gumenion594-ai.github.io/nasa-project/#/earth?from=moon&site=0.674,23.473&sr=25&w=tmax:2,tmin:1,swing:1,slope:2,relief:2,dry:2,sun:1,bare:1&mode=match&n=3)
+
+| | Moon (Apollo 11) | Chad | |
+|---|---|---|---|
+| Terrain slope | 0.65° | 0.65° | ✓ strong |
+| Terrain relief | 31 m | 34 m | ✓ strong |
+| Rain | – | 6 mm a year | ✓ hyperarid |
+| Bare ground | all | 100% | ✓ strong |
+| Hottest afternoon | 122 °C | 57 °C | ↕ rank only: both ~98th percentile of their world |
+| Coldest night | −178 °C | 0 °C | ↕ rank only: both ~93rd percentile |
+| Sunlight | 433 W/m² | 283 W/m² | ↕ rank only: both the sunniest of their world |
+
+**Doesn't match:** the rock: sandstone and wind-blown sand instead of mare basalt (rock type isn't compared).
+Wind shapes everything here; the Moon has none. And the temperatures only match in rank: the Moon's swing is
+300 °C, Chad's 25 °C.
+**What it could be used for:** landing and driving on a plain as flat and bare as a lunar mare, with no
+vegetation or water to complicate navigation or remote sensing, and a real impact crater (Aorounga, 13 km)
+within a day's drive for impact-geology training.
+
+### 2. Gale crater (Curiosity) ↔ Isabela Island, Galápagos
+
+![Gale crater and its best Earth analog on Isabela Island, Galápagos](docs/findings/gale-galapagos.jpg)
+
+The best match (85%) for Gale crater is the young basalt shield volcanoes of Isabela Island, between the Darwin
+and Alcedo volcanoes.
+[Open this search](https://gumenion594-ai.github.io/nasa-project/#/earth?from=mars&site=-4.5895,137.4417&sr=25&w=tmax:2,tmin:1,swing:1,slope:2,relief:2,dry:2,sun:1,bare:1,frozen:1,dust:1&mode=match&n=3)
+
+| | Mars (Gale) | Isabela | |
+|---|---|---|---|
+| Terrain slope | 3.3° | 4.2° | ✓ strong |
+| Terrain relief | 213 m | 200 m | ✓ strong |
+| Bare ground | all | 57% | ✓ strong |
+| Rain | – | 275 mm a year | ✓ almost desert-dry |
+| Frozen ground | no ground ice | never frozen | ✓ strong |
+| Hottest afternoon | 15 °C | 40 °C | ≈ partial |
+| Coldest night | −93 °C | 18 °C | ↕ rank only |
+
+**Doesn't match:** Gale's rocks are lake and river sediments (Mount Sharp); Isabela's are fresh lava. The
+upper slopes are green, the ocean keeps nights warm, and the islands are a national park and World Heritage
+Site, so field tests would need permits: it is a better analog for imagery and data than a test range.
+**What it could be used for:** comparing how basalt, Mars's most common rock, weathers in a dry climate, from
+orbit and on the ground; and training rover image analysis on a volcanic surface at the same slopes and relief
+as Gale.
+
+### 3. Valles Marineris ↔ the Karakoram near the Shimshal valley
+
+![Valles Marineris and its best Earth analog in the Karakoram](docs/findings/valles-marineris-karakoram.jpg)
+
+For the walls of Mars's great canyon (13.9° S, 59.2° W), the best match (81%) is the Karakoram near the
+Shimshal valley (Gilgit-Baltistan, Pakistan).
+[Open this search](https://gumenion594-ai.github.io/nasa-project/#/earth?from=mars&site=-13.9,-59.2&sr=25&w=tmax:2,tmin:1,swing:1,slope:2,relief:2,dry:2,sun:1,bare:1,frozen:1,dust:1&mode=match&n=3)
+
+| | Mars (Valles Marineris) | Karakoram | |
+|---|---|---|---|
+| Terrain relief | 549 m | 539 m | ✓ strong |
+| Terrain slope | 7.8° | 14° | ✓ strong (steeper here) |
+| Hottest afternoon | 19 °C | 22 °C | ✓ strong |
+| Rain | – | 231 mm a year | ✓ desert-dry |
+| Bare ground | all | 60% | ✓ strong |
+| Coldest night | −87 °C | −52 °C | ≈ partial |
+| Frozen ground | no ground ice | −6 °C yearly mean: permafrost | ✗ weak |
+
+**Doesn't match:** the Karakoram is a mountain range pushed up by colliding plates and carved by glaciers;
+Valles Marineris is a rift that pulled apart. Its ground is frozen and glaciers fill the valleys; Valles
+Marineris is dry. The canyon is up to 7 km deep over thousands of km; the match is at the ~10 km scale of its
+walls.
+**What it could be used for:** route planning, navigation and communication in deep, steep-walled terrain
+where slopes exceed rover limits and valley walls block the sky; studying the rockfalls and landslides that
+line both.
+
+## Does the search work?
+
+- **It finds known analogs.** For six Moon and Mars sites with an established Earth analog (e.g. Phoenix ↔
+  McMurdo Dry Valleys, Apollo 15 ↔ Askja), the known analog ranks above a random place on Earth for five,
+  three of them in the top 5% of all ~96,000 areas. The sixth (Viking 1 ↔ Atacama) was chosen for soil
+  chemistry, which the search can't compare.
+- **Its results are mostly new.** Over 20 sites × 10 results, 94% are more than 250 km from any of 25
+  established analog sites; *Only new places* in the search dialog removes the rest.
+- Details and the check itself (`tools/validate-analogs.html`): [METHODS.md](METHODS.md#known-analogs-is-the-place-new).
+
+## Where the analogy breaks down
+
+**What no place on Earth can reproduce:** the Moon's 1/6 and Mars's 3/8 gravity; the Moon's vacuum and Mars's
+thin CO₂ air (0.6% of Earth's pressure); their radiation (no magnetic field: Curiosity measured ~0.7 mSv a
+day, about a year of Earth's natural dose every 3–4 days); the Moon's two-week days and nights; Mars's
+perchlorate-laden soil; and sterility: Earth has life almost everywhere. Every report card lists these.
+
+**What the search doesn't compare (yet):** rock type and minerals, surface material (dust vs rock), and impact
+craters (shown on the map and in the report card, but not scored). Temperatures, sunlight and dust that are
+beyond anything on Earth are only matched by rank, never in absolute value, and every report card says which.
+The Earth search grid is 0.5° (~50 km); results for small radii are positioned with ~5 km terrain data.
 
 ## Run it
+
 Requires Node.js 18+ (https://nodejs.org) and Git (https://git-scm.com).
 
 **Easiest:** double-click `start.bat` (Windows) or `start.command` (Mac).
@@ -21,6 +121,9 @@ It pulls the latest changes, installs dependencies and opens the app in your bro
 Close that window to stop the app.
 
 Or by hand: `npm install`, then `npm run dev`.
+
+The online version is published with GitHub Pages: `.github/workflows/pages.yml` builds the site
+(`npm run build`), pushes it to the `gh-pages` branch and publishes it every time `main` changes.
 
 ## Using it
 - Click a world on the home page to open its map; **← Home** (or the browser back button) returns.
@@ -46,7 +149,7 @@ Or by hand: `npm install`, then `npm run dev`.
   (`src/reproject.js`). Selection, views, radius and the area summary carry over; the projection
   is kept in the address (`proj=`).
 - **☰ View** (Moon and Mars): show one coloured data layer over the map (blue = low, red = high,
-  with a legend). See *Map views* below for what's available on each body.
+  with a legend). See [Map views](METHODS.md#map-views-data-and-method) for what's available on each body.
 - Selection panel (bottom right): coordinates, the **Find** buttons and the selection **radius**
   (a slider from 1 to 250 km, logarithmic so small sizes get as much room as big ones; default 10).
 - **Ruler** (top left, next to Home / View): measure the distance between two points (great-circle
@@ -58,8 +161,8 @@ Or by hand: `npm install`, then `npm run dev`.
   anywhere moves to the next step. It's shown once per browser, and any time from the **?** button (top left on
   the maps).
 - Bottom-left: **Landmarks** on/off (on every time a map opens). **Find Earth analogs** searches Earth for
-  the places most like the selected area (see *Earth analog search* below); **Find similar spots**
-  searches the same world (see *Similar spots* below).
+  the places most like the selected area (see [Earth analog search](METHODS.md#earth-analog-search)); **Find similar spots**
+  searches the same world (see [Similar spots](METHODS.md#similar-spots)).
   The selection is kept in the address (e.g. `#/mars?lat=18.44&lon=77.45&r=10&view=slope`), so links and the
   back button bring it back.
 - The home page shows spinning 3D globes of the Moon and Mars (three.js, textures made from the
@@ -302,393 +405,16 @@ the route's area if there is a route, otherwise the area the 2D map shows (up to
 Upgrade path for sharper 3D: NASA/USGS's HRSC-MOLA blended elevation (200 m per pixel, global)
 would need its own 16-bit elevation tiles (the current ones are 8-bit, 2.6 km).
 
-## Where the maps come from
+## Data and methods
 
-Every NASA and partner data set is listed, with dataset IDs, in [DATA_SOURCES.md](DATA_SOURCES.md).
+- [METHODS.md](METHODS.md): how every map layer, the analog search, its report card and validation, simulation
+  planning (equipment, cost and team to recreate a site's environment at an analog), similar spots, the 3D views and the thermal models work, and how to rebuild the data.
+- [DATA_SOURCES.md](DATA_SOURCES.md): every NASA and partner data set, with dataset IDs.
 
-Map images are streamed as tiles from these services while you browse, so nothing is downloaded up front:
+## Credits
 
-| World | Zoomed out | Zoomed in (sharpest detail) |
-|-------|------------|-----------------------------|
-| Earth | Esri World Imagery (satellite) | under 1 m per pixel in many places |
-| Moon  | LRO WAC mosaic (NASA), ~100 m/pixel | Kaguya TC mosaic (JAXA, via NASA Moon Trek), ~21 m/pixel |
-| Mars  | Viking colour mosaic (NASA), ~232 m/pixel | CTX mosaic (NASA/Caltech, via Esri), ~5 m/pixel, tinted Mars-coloured |
-
-Past that detail the images are enlarged, so the very closest zoom levels get soft. Change sources in `src/bodies.js`.
-
-## Map views: data and method
-
-All views come from NASA (and partner) data in the Planetary Data System, built by
-`tools/build_layers.py`. Blue = low, red = high. Where a quantity exists on both bodies,
-both share one colour range, so the same colour means the same value on each.
-
-| View | Moon | Mars | Scale |
-|---|---|---|---|
-| Elevation | LRO LOLA, ~1.9 km | MGS MOLA, ~1.9 km | linear |
-| Terrain slope | LOLA, ~1.9 km | MOLA, ~1.9 km | log, 0.1-30 deg |
-| Dusty or rocky terrain | Thermal inertia (low = dust, high = rock), **calculated** from Diviner's midnight temperatures (GHRM mosaic) with a thermal model, ~1 km, 70S-70N | MGS TES night thermal inertia (low = dust, high = rock), ~3 km, 70S-70N | log, TIU; own range per body (Moon 25-400, Mars 30-1000) |
-| Minerals: iron content | Lunar Prospector GRS, FeO wt%, ~60 km | Mars Odyssey GRS, Fe as FeO wt%, ~300 km, 57.5S-57.5N | linear; own range per body |
-| Underground ice | *no global map product found* | Mars Odyssey averaged neutron data (~12 Mars years): % fewer epithermal neutrons than the driest ground (hydrogen, mostly ice near the poles), ~300 km | linear |
-| Temperature | Diviner: average over a full lunar day, ~15 km | **Calculated** (see below): average over a Mars year, ~60 km | linear |
-| Daily temperature variation | Diviner: hottest minus coldest time of day, ~15 km | **Calculated**: typical day-night swing | linear |
-| Sunlight | **Calculated**: average solar power on flat ground over day, night and the year, from the Sun's path; beyond 75° with crater and mountain shadows from the LOLA polar terrain models (permanently shadowed craters = 0) | **Calculated**: Mars's orbit, dimmed by typical dust (optical depth 0.3 at 610 Pa, scaled with pressure from MOLA elevation); no dust storms | linear; own range per body |
-| Yearly temperature range | *not added* | **Calculated**: hottest minus coldest moment of the year | linear |
-| Maximum temperature | Diviner: hottest time of a typical day, ~15 km | **Calculated**: hottest month's average afternoon maximum | linear |
-| Minimum temperature | Diviner: coldest time of a typical night, ~15 km | **Calculated**: coldest month's average night minimum | linear |
-
-Maximum / minimum temperature are defined like Earth's (NASA POWER): the hottest month's average daily
-maximum and the coldest month's average daily minimum. On Mars a "month" is a sliding 1/12 of the
-Mars year (~56 sols). The Moon has no real seasons, so its typical day's max and night's min are used.
-
-On the Moon (1.5 deg axial tilt) the maximum variation is essentially the daily variation, and
-Diviner's archived product holds per-time-of-day averages, not all-time extremes, so it isn't added.
-
-### Projections
-
-| | Equirectangular | Mercator | North / South pole |
-|---|---|---|---|
-| Moon, Mars | their own (NASA Trek) | warped | warped |
-| Earth | warped | its own (Esri) | warped |
-
-`src/projections.js` defines each projection (lat/lon <-> map position, scale, zoom limits);
-the polar ones are azimuthal equidistant: distance from the centre = angle from the pole, so
-the opposite pole is the disc's rim.
-`src/reproject.js` draws tiles of one projection in another: a 17 x 17 grid of points per tile
-is converted to lat/lon and to source-tile pixels, each 16 px cell is drawn as two affine
-triangles straight from the source tiles (subdivided where the mapping bends, e.g. at a pole,
-or at the edge of a source's coverage). Drawing, rather than reading pixels, also works for
-imagery from other sites. Data layers are warped first and coloured afterwards.
-
-Limits: Mercator can't show the poles (stops at 85 deg), so Earth's polar views have a small round
-gap within 5 deg of the pole (its sources are Mercator). Equirectangular sources store little detail
-right at a pole (every pixel row wraps around a tiny circle): the source detail used there is
-capped so a view never needs thousands of tiles, which makes close-ups within a few degrees of
-a pole soft. The Moon's LRO WAC mosaic also has no data in the last ~1-2 deg around the poles.
-
-### Earth data
-
-| View | Source | Detail |
-|---|---|---|
-| Elevation, slope | (elevation uses a relief palette - green lowlands to white peaks - so low land doesn't look like water) NOAA ETOPO 2022, 60 arc-seconds (from NASA SRTM and other data); slope at the same ~1.9 km scale as the Moon and Mars | ~2-4 km |
-| Max. / min. temperature, daily swing | NASA POWER `TS_MAX`, `TS_MIN`, `TS_RANGE`: **ground-surface** ("skin") temperature, long-term monthly averages. Max = hottest month's average daily maximum, min = coldest month's average daily minimum, swing = yearly mean | ~50 km |
-| Dryness | NASA POWER `PRECTOTCORR` (MERRA-2 / GPM), yearly total; colour scale reversed so red = driest | ~50 km |
-| UV radiation | NASA POWER `ALLSKY_SFC_UV_INDEX` (CERES), UV index averaged over day and night incl. clouds | ~100 km |
-| Sunlight | NASA POWER `ALLSKY_SFC_SW_DWN` (CERES), solar power reaching the ground incl. clouds, yearly average, W/m² (same quantity as the Moon and Mars maps) | ~50 km |
-
-Surface (not air) temperatures are used so Earth compares with the Moon and Mars surface maps.
-The land mask comes from ETOPO: below-sea-level areas count as water only if bigger than
-50,000 km2, so Death Valley, the Dead Sea shore and the Qattara Depression stay land. Earth tiles
-are Web Mercator (to match the satellite basemap) with the ocean in a lossless alpha channel.
-Download the climate data with `python3 tools/fetch_power.py` (cached, resumable), then build
-with `python3 tools/build_layers.py earth`.
-
-### Earth analog search
-
-**Find Earth analogs** (Moon or Mars, with an area selected) first asks how much each characteristic
-should count (off, ×0.5, ×1, ×2, ×3; at least one on), how many places to find (1-10, default 3) and
-what a good analog is. **Defaults** restores the default weights, mode and number:
-max. temperature ×2, min. temperature ×1, daily swing ×1, slope ×2, relief ×2, dryness ×2, UV and
-altitude off. These were chosen by running 18 Moon and Mars sites and checking that different sites
-get different places: only 9% of results are shared between sites (it was 41% with every weight at
-×1, when most searches ended in the Atacama or Tibet). UV and altitude have no Mars/Moon value, so
-they pull every search towards the same highlands.
-
-- **Match my site**: places whose values are closest to the site's. Where the site is beyond anything
-  on Earth (Mars nights are always colder, its day-night swing always bigger), it is matched
-  *relatively*: a site that is cold for its world (say its 20th percentile by area) is matched to
-  places equally cold for Earth (Earth's 20th percentile). Taking Earth's extreme instead gave
-  every site the same target and the same results (always the Atacama and Tibet). The comparison
-  table shows the percentile and the Earth value it was matched to.
-- **Most extreme**: for the temperatures, Earth's extreme on the site's side, whatever the site's value.
-
-| Characteristic | Site value (Moon / Mars) | Earth (`public/search`) | How it's compared |
-|---|---|---|---|
-| Max. / min. temperature, daily swing | area mean of the temperature layers | NASA POWER | matched (or most extreme) |
-| Terrain slope | mean of log10(slope), ~1.9 km scale | ETOPO 2022, same scale | matched |
-| Terrain relief | mean elevation standard deviation inside ~9 km blocks | ETOPO 2022, same blocks | matched |
-| Dryness | – (no Mars/Moon equivalent) | yearly rain, log | any desert (under 250 mm/yr) counts as dry enough; wetter places count against |
-| UV radiation | – | average UV index | highest wins |
-| Altitude (thin air) | – | mean elevation | highest wins |
-
-How it works (`src/analogs.js`):
-- `tools/build_search_grid.py` stores, for each of the ~96,000 half-degree cells with land, the
-  land-area mean of each characteristic (2.7 MB, loaded only when a search starts).
-- For the chosen radius, every land cell becomes the centre of a circle; the cells inside are
-  combined, weighted by land area (circles smaller than a cell use the cell, centred on its land).
-  Circles that are less than half land are skipped. Every circle is scored: nothing is sampled.
-- Each characteristic's distance to its target is divided by its spread across Earth (5th-95th
-  percentile), so degrees, millimetres and slopes become comparable. The score is the weighted
-  root-mean-square; "% match" = 100 % minus the score (0 % = a whole Earth spread away).
-- The best circle is kept, then the next best at least 800 km from all kept ones, until there are as
-  many as asked for (3 by default).
-
-#### Report card: how good is the analog, and where does it fail?
-
-Click a result for its **report card** (`src/reportcard.js`), under the comparison table:
-
-- **New or known**: is the place in a known analog region, or new? (see below)
-- **✓ Strong / ≈ partial / ✗ weak match**: each characteristic, by how far the place is from the site's
-  value, measured in Earth's spread of that characteristic (its 5th–95th percentile over all land): strong up
-  to 15%, weak from 50% (`STRONG_GAP`, `WEAK_GAP`).
-- **↕ Matched only relatively**: where the site is beyond anything on Earth, only the rank matches. The card
-  gives both real values, e.g. *Min. temperature: Mars −93 °C, here 6 °C; both at about the 92nd percentile of
-  their own world*.
-- **○ Not compared**: characteristics that were switched off, have no data at the site, or have no Earth
-  counterpart in the search yet (surface material, iron, ice, sunlight, dust storms, rock type, craters).
-- **What no place on Earth can reproduce** (fixed per world): gravity, vacuum or the thin CO₂ air, radiation,
-  the Moon's 29.5-day day, Mars's perchlorate soil, and Earth's life, which helps testing but contaminates
-  samples.
-
-#### Known analogs: is the place new?
-
-`src/knownAnalogs.js` lists 25 established analog sites (Haughton crater, McMurdo Dry Valleys, Atacama,
-Río Tinto, Mars Desert Research Station, HI-SEAS, Askja, Meteor Crater, Ries, Sudbury, lava-tube parks, …),
-each with what it is used for and a source. They show on the Earth map (✦, purple, from 2× zoom; click for
-details). Every result is labelled **New analog** or **Known analog region** (within 250 km of one of them,
-`KNOWN_REGION_KM`). **Only new places** in the search dialog leaves the known regions out (address: `new=1`).
-
-**Does the search find known analogs?** `tools/validate-analogs.html` (open it with `npm run dev`, at
-`/tools/validate-analogs.html`) runs the search with the default weights and a 25 km radius for Moon / Mars
-sites whose Earth analog is established, and reports how well the best area within 250 km of that analog ranks
-among all of Earth's ~96,000 areas. For comparison, the same number for 300 random land points (median):
-
-| Moon / Mars site | Known Earth analog | Why that pair | Known analog ranks in | Random land point |
-|---|---|---|---|---|
-| Phoenix landing site (Mars) | McMurdo Dry Valleys | ice-cemented polar ground | **top 1.5%** | top 36% |
-| Opportunity, Meridiani Planum (Mars) | Río Tinto | jarosite from acid water | **top 1.5%** | top 29% |
-| Apollo 15, Hadley (Moon) | Askja | Apollo field training | **top 3.9%** | top 18% |
-| Apollo 14, Fra Mauro (Moon) | Nördlinger Ries | Apollo 14 crew training | top 20% | top 34% |
-| Apollo 16, Descartes (Moon) | Sudbury Basin | Apollo 16 / 17 rock studies | top 28% | top 28% |
-| Viking 1, Chryse Planitia (Mars) | Atacama (Yungay) | Viking-like soil experiments | top 81% | top 21% |
-
-Four of six known analogs rank far above a random place, from climate and terrain alone. The two that don't
-were chosen for what the search doesn't compare: Sudbury for its impact rocks, and the Atacama for its soil
-chemistry. Viking 1's site is cold for Mars, so it is matched to places cold for Earth, while Yungay is a warm
-coastal desert. For every site, *some* known analog for its world ranks in the top 1.5%.
-
-None of the six known analogs is among the site's 10 results: the results are other places with similar
-values. Over 20 Moon and Mars sites × 10 results, **7 of 200 results (3.5%) are in a known analog region**
-(e.g. Hellas → near Haughton crater, Mars's north pole → Svalbard); the other 96.5% are new. With *Only new
-places* none are.
-
-### Mars and Moon equivalents of an Earth place (the reverse search)
-
-`src/equivalents.js`. On the Earth map, select an area and press **🪐 Find the Mars & Moon
-equivalents**: the spots on Mars and on the Moon most like it, each with a % match, the nearest
-named place (e.g. "near Hellas Planitia") and a button that opens it on that world's map.
-
-- **Compared**: hottest-month maximum, coldest-month minimum, day–night swing (ground
-  temperatures), slope and relief, the characteristics both sides have; weights 2 / 1 / 1 / 2 / 2
-  as in the analog search. The Earth place uses the analog search's Earth grid (land-area means
-  over the circle); every Moon / Mars spot the "Find similar spots" circle means, same radius.
-- **Like the analog search, the other way round**: slope and relief are matched by value;
-  a temperature that exists on that world is matched by value, one beyond it (Earth's nights are
-  far warmer than Mars's) relatively: the same percentile of that world as the place has on Earth.
-  Score = weighted RMS of the differences, each divided by the world's 5–95% spread; % match =
-  (1 − score) × 100.
-- **Rain**: the Moon and Mars are bone dry, so rain beyond a desert's (250 mm a year) lowers the
-  % match of every spot alike.
-- **No close equivalent**: below 86% the panel says so and gives the nearest spot with its %.
-  Calibrated on known places: classic Mars analogs score 92–96% on Mars (Atacama 93%, Devon
-  Island 92%, Antarctic Dry Valleys 96%), deserts ~88% (Sahara, Death Valley); wet or green
-  places don't reach it (London 80%, Iceland 78%, Hawaii and the Amazon 70%).
-
-**For a route**: the route planner also works on the Earth map. Plan a route there, then
-**Find the Mars (or Moon) equivalent of this route**: the same search for the circle around the
-route (its midpoint, half its length); it then opens that world's planner with the same route
-(same straight-line length and direction, same traveller where that world has it) at the
-best-matching spot, with its % match (or "no close equivalent") and a side-by-side comparison with
-the Earth route. Earth opened from Mars offers only the Mars button, from the Moon only the Moon
-one; Earth opened from the home page (**Earth view**, top right) offers both.
-
-### Map reliability
-
-- **Moon / Mars imagery gaps**: the imagery comes from NASA Trek, which can be slow or drop tiles.
-  A bundled whole-world layer sits underneath (`public/basemap/`, made by
-  `tools/build_fallback_basemap.py` from the globe textures shaded with the 8 px/degree LOLA /
-  MOLA relief), so a missing tile shows the shaded relief instead of a black square.
-- **Earth 3D ("Stand here in 3D")**: the far landscape now comes from the AWS terrain tiles (small
-  PNGs, fast), so it appears within seconds; NASADEM (Microsoft Planetary Computer) is used for
-  the detailed rings with a 25 s limit, falling back to the AWS tiles; the satellite ground images
-  get 30 s, and if they don't arrive the ground keeps its plain colour instead of turning black.
-
-### Similar spots
-
-**Find similar spots** (Moon or Mars, with an area selected) looks for the places on the *same* world
-most like the selected area, at least 500 km away from it. It asks how much each data layer should count
-(all ×1 by default) and how many spots to find (1-10, default 3). The results appear as numbered circles
-with a "% match" and the distance from the site; click one for a site-vs-spot comparison table. Map clicks
-are paused until **Exit results**.
-
-How it works (`src/similar.js`):
-- Each layer is read from its own map tiles at zoom level 1 (1024 x 512 pixels for the whole world:
-  ~21 km per pixel on Mars, ~11 km on the Moon). The tile pyramid is box-averaged, so each pixel is the
-  area mean of the detailed data (the mean of the log for slope and thermal inertia).
-- Around every pixel, each layer is averaged over a circle of the selected radius (per-row running sums,
-  so this takes about a second); the site gets the same treatment. Smaller radii than a pixel compare
-  single pixels. Circles less than half covered by a layer (beyond its latitude limits) are skipped.
-- Score and "% match" work as for Earth analogs: distance to the site's value divided by the layer's
-  spread across the world (5th-95th percentile by area), weighted root-mean-square.
-- Spots closer than 500 km to the site are left out; the best spot is kept, then the next best at least
-  500 km from every kept one.
-
-Results show as numbered circles of the site's radius. Click one (on the map or in the list) for its
-area summary and a site-vs-Earth comparison. Selecting new areas is paused until **Exit results**;
-data layers can still be shown. A search takes 0.1-1 s.
-
-Checks, with the default weights (3 places, 25 km radius): Gale gives the Peruvian Andes, the Bolivian
-Altiplano and Algeria; Meridiani the Sechura Desert (Peru), the Western Sahara and the Namib; Hellas
-West Greenland, Alaska's North Slope and the Canadian Arctic; Argyre the Canadian Arctic islands and
-Chukotka; Jezero, Utopia, the Mars poles and Shackleton different parts of Antarctica; Apollo 11 Sudan,
-Niger and Oman; the Moon's far side Oman, the Danakil and Morocco.
-Not covered yet: impact craters as a search characteristic and soil type (dusty/rocky data for Earth); see the
-report card's *Not compared* list.
-
-### Moon and Mars 3D view: standing on the surface
-
-On the Moon or Mars, select a point and click **Stand here in 3D**: you stand there with your eyes
-1.8 m above the ground (`#/moon3d?lat=..&lon=..&t=..` or `#/mars3d?...`). Drag to look around, scroll
-or pinch to zoom (arrow keys and +/− work too). The time panel sets the date and time (default: now);
-the slider moves ±15 days on the Moon and ±3 sols on Mars, and **Play** runs time (Moon: 1, 6 or 24
-hours per second; Mars: 15 min, 1 h or 3 h per second), so you can watch a sunrise or a whole day.
-The panel says whether it's day or night, where the Sun, Earth (and on Mars, Phobos and Deimos) are,
-and when the next sunrise or sunset is. A compass strip along the top marks them.
-
-How it works (`src/surface3d/`, loaded only when opened; per-world settings in `worlds.js`):
-- **Terrain** (`dem.js`, `terrain.js`): four nested square heightfields around you, including the Moon's
-  curvature (a 1.8 m person's horizon is only ~2.5 km away; beyond it only higher ground shows):
-
-  | Ring | Size | Grid | Source |
-  |---|---|---|---|
-  | foot | ±100 m | 1 m | 'near' + made-up small craters (0.6-25 m), rocks and regolith texture |
-  | near | ±5 km | 20 m | LOLA 118 m + made-up craters 70-600 m |
-  | mid | ±40 km | 250 m | LOLA 118 m, every 4th sample (~470 m) |
-  | far | ±250 km | 2 km | LOLA 8 px/deg (~3.8 km), bundled: `public/surface3d/moon_8ppd.bin` |
-
-  On Mars the same rings use the HRSC + MOLA blended DEM (200 m; mid ring every 2nd sample) and MOLA
-  8 px/deg (`public/surface3d/mars_8ppd.bin`, far ring ±400 km), with made-up craters from 120 m.
-  The ground colour is a rust tone whose brightness follows the Viking colour mosaic (dark basalt sand
-  vs. bright dust).
-
-  The 118 m LOLA DEM is read straight from the USGS Astrogeology server: the file stores one image row
-  per strip, so the browser asks for just the bytes it needs of each row (HTTP range requests, 6 at a
-  time, `cache: 'no-store'` so Chrome doesn't queue them one by one). About 90 + 175 small requests;
-  ~5-10 s. The coarse landscape shows first, the detail fills in. Each ring fades its made-up detail
-  out and blends into the next coarser ring towards its edge.
-  Made-up detail is seeded by the location, so a place always looks the same.
-- **Sun and Earth** (`sky.js`): `astronomy-engine` gives the Sun, Earth and the Moon's rotation (IAU
-  model) for any time; from these come their directions in the observer's sky (Earth with parallax,
-  its size and lit fraction). Checked: at Apollo 11's landing (20 July 1969, 20:17 UTC) the Sun was
-  10.7° up in the east (historically ~10.8°); full and new moon put the sub-solar point at 0° / 180°.
-- **Shadows**: the terrain shader marches from each pixel towards the Sun through the four heightfields
-  (up to 250 km), with a soft edge the size of the Sun's disc, so a crater rim or a distant mountain
-  shades you correctly at any time. Rocks also cast shadow-mapped shadows within ~100 m.
-- **Light**: no air, so the sky is black and shadows are dark (a little light bounced from sunlit ground).
-  At night the ground is lit by earthshine, brightest at "full Earth" (lunar midnight on the near side);
-  the exposure adapts like eyes would. On the far side the Earth never rises.
-- **Mars sky**: a dusty atmosphere (optical depth 0.5): butterscotch sky by day, a blue glow round the
-  Sun at sunrise and sunset, sunlight dimmed and reddened near the horizon, haze over distance (~45 km).
-  The Sun is ~2/3 the size seen from Earth; Earth is a bright star. Mars's rotation comes from the IAU
-  model; checked: Curiosity's landing (6 Aug 2012, 05:17 UTC) gives mid-afternoon local solar time
-  (15:35), as reported.
-- **Phobos and Deimos** are drawn from mean orbital elements (JPL, with the precession of their orbits),
-  so their positions are approximate (a few degrees). Checked: on 2 April 2022 Phobos crosses the Sun
-  as seen from Jezero, the eclipse Perseverance filmed. Phobos rises in the west and sets in the east
-  twice a day; neither is visible from near the poles (above ~70° for Phobos).
-
-### Earth analogs in 3D
-
-On the Earth map, pick an analog result (or select a point) and click **Stand here in 3D**
-(`#/earth3d?lat=..&lon=..&t=..`). Same view and controls as on the Moon and Mars, with Earth's data:
-- **Heights**: NASA **NASADEM** (the Space Shuttle radar mission SRTM, reprocessed), 1 arc second
-  (~30 m), 60° N to 56° S: near ring at full resolution, mid ring every 8th sample, far ring (±150 km)
-  from the file's coarsest overview. One cloud-optimised GeoTIFF per 1° tile on Microsoft Planetary
-  Computer, read in small pieces; the browser first fetches a free anonymous access token. No tile =
-  sea. North of 60° N and south of 56° S (Devon Island, Svalbard, Antarctica) the heights come from the
-  AWS Terrain Tiles (web-Mercator PNGs, ~40 m there), with the sea floor cut off at sea level.
-- **Ground**: Esri World Imagery as a texture per ring (up to ~1 m per pixel in deserts; where the
-  finest level is missing, the next coarser one), with its own shadows from when it was taken.
-  No made-up craters; rocks and small bumps are made up.
-- **Sky** (`sky.js`): Sun and Moon from astronomy-engine's observer functions (with refraction); the
-  Moon is a grey globe lit by the Sun, so it shows its phase. Blue sky, orange glow at sunset, haze
-  over distance (~90 km). Checked: noon Sun at 23° S on 21 June is 43.6° up (90 − 23 − 23.44).
-- Not yet: stars and planets, a real map of the Earth (it's a cloudy blue stand-in), the 5 m south-pole
-  DEM. Very close to the poles (above ~88°) the DEM rows are read at full width, so loading is slower.
-
-`tools/build_far_dem.mjs moon|mars` makes the far-terrain files from PDS `ldem_16.img` / MOLA
-`megt90n000eb.img` (downloaded to `data/raw/`).
-
-### Moon thermal inertia: from Diviner's midnight temperatures
-
-Both worlds show thermal inertia, made the same way: ground with a high thermal inertia (rocks,
-bedrock) stores the day's heat and stays warmer at night; fine dust cools fast. Mars's map (TES) was
-calculated from night temperatures by the TES team; for the Moon, `tools/moon_thermal_inertia.py`
-does it from Diviner's global mosaic of the bolometric (whole-surface, rocks included) temperature
-at slope-adjusted midnight (128 px/deg, streamed and averaged to 32 px/deg by
-`tools/fetch_diviner_night.py`, so the 3.3 GB file is never stored):
-
-- A thermal model (uniform ground, the 29.53-day lunar day, sunlight 1361 W/m², albedo 0.12,
-  emissivity 0.95, 40 layers, implicit time steps) gives the midnight temperature for 48 thermal
-  inertias (10-3000 TIU) at every degree of latitude, e.g. at the equator 103 K for 50 TIU,
-  195 K for 1000 TIU (measured lunar nights: ~95-105 K over typical soil).
-- Each spot's measured temperature is matched to its thermal inertia.
-
-Results: typical soil 42-46 TIU (published lunar values ~50); fresh craters much higher (Tycho's
-floor ~200, up to ~430; Aristarchus ~110). Like the TES map it's an apparent (bulk) value: boulders
-in fine soil give an in-between number. Albedo differences (0.07-0.16) shift it by ~10-15%.
-
-### Mars temperatures: a thermal model
-
-No global measured surface-temperature map of Mars exists in the PDS (orbiters only pass each
-place at ~2-3 am and pm). `tools/mars_thermal.py` calculates them instead, in the spirit of
-NASA/USGS's KRC model, for every 1 x 1 degree cell from NASA data:
-
-- **Inputs:** MGS TES albedo (`mgs-m-tes-special-v1`), TES night thermal inertia, MOLA elevation.
-- **Sunlight:** Mars's real orbit (eccentricity 0.0934, tilt 25.19 deg), hour by hour over the year;
-  dimmed by dust (optical depth 0.3) along the slanted path, half of it arriving as skylight.
-- **Atmosphere's infrared glow:** 5.5% of local noon sunlight.
-- **Ground:** heat diffusion through 30 layers (heat capacity 1.2 MJ/m3/K, conductivity from thermal inertia).
-- **CO2 frost:** the surface can't cool below the frost point (~148 K, from local pressure);
-  extra cooling builds frost (albedo 0.6) that must evaporate before the ground warms.
-- Two Mars years are simulated (implicit time steps, Newton iterations on frost-free ground);
-  the second is kept. All of Mars runs in a few minutes on 4 cores (numba).
-
-**Check against landers** (typical night / day surface temperature, model vs. published):
-Curiosity 189 / 269 K vs ~180-200 / 270-295 K; InSight 185 / 274 K vs ~170-190 / 250-270 K;
-Perseverance 191 / 269 K vs ~180-190 / 270-290 K; Viking 1 188 / 264 K vs ~180-190 / 260-270 K.
-Within ~10 K. It is still a model: no dust storms, seasonal pressure changes or water-ice caps.
-
-**Why linear or logarithmic.** Elevation, iron, temperatures and ice are roughly bell-shaped over a
-limited range, and equal steps are what people compare: linear. Slope, rock cover and thermal
-inertia each span 2-3 orders of magnitude with most values bunched at the low end (e.g. half of
-Mars has slopes under 0.6 deg, 99% under 13 deg): logarithmic, otherwise most of the map is one colour.
-
-**Methods.**
-- Slope: steepness between neighbouring points, both bodies at the same ~1.9 km pixel size
-  (MOLA 32 px/deg; LOLA 64 px/deg averaged to 16).
-- Diviner temperatures: the Global Cumulative Product gives the surface temperature of every
-  0.5 deg spot for 96 times of day. Each spot is seen at ~55-65% of those times; gaps of up to
-  2 h are filled by interpolating along the daily cycle, spots with longer gaps are left out.
-- Mars ice: hydrogen slows neutrons, so fewer epithermal neutrons escape; shown as % below the
-  driest 5% of the planet. Seasonal CO2 frost (up to ~1 m in winter) hides the ice beneath it, so
-  poleward of 45 deg only that hemisphere's frost-free summer is averaged (north Ls 105-165, south
-  Ls 285-345); elsewhere all seasons. (An earlier version used HEND's first months of 2002, during
-  northern winter, which made the north pole look dry.)
-- Coarse data (iron, ice) is smoothed at about half its cell size, ignoring gaps, so it reads
-  as a map instead of squares; small holes in the Diviner temperatures are filled from
-  neighbours.
-- Orbit-track stripes (TES thermal inertia, Diviner rock abundance) are removed by subtracting
-  the part of the east-west detail that stays consistent over a long north-south stretch, then
-  smoothing a little more across the stripes than along them.
-- Layers that don't cover the whole globe are cut at a clean latitude line in the browser.
-  (A "no data" value in the tiles wouldn't survive lossy compression.)
-- Iron uses a separate colour range per body: Mars only varies between ~15 and 23% FeO,
-  which on the Moon's 0-24% range would be one flat colour.
-
-The layers are stored as 8-bit WebP "data tiles" in `public/overlays/` (value -> real units in
-`index.json`); the browser colours them. To rebuild (downloads ~3.6 GB into `data/raw/`):
-
-    pip install numpy scipy pandas pillow numba tifffile imagecodecs
-    python3 tools/fetch_power.py               # Earth climate (NASA POWER), ~10 min
-    python3 tools/build_layers.py              # or e.g.: python3 tools/build_layers.py mars iron
-    python3 tools/build_search_grid.py         # Earth grid for the analog search, ~1 min
+> **Mars Rover Route** · NASA Space Apps Challenge 2026. Built on *Planet Maps* by
+> [gumenion594-ai](https://github.com/gumenion594-ai/nasa-project) (maps, data layers, Earth analog
+> search). Added here by Francesca Olea: the **Mars route planner** (safest / easiest / shortest
+> routes with their dangers), **rover-aware routing** (Sojourner, Spirit, Opportunity, Curiosity,
+> Perseverance) and the **interactive 3D terrain** view. See *Route planner* and *3D terrain* above.

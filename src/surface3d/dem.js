@@ -29,7 +29,7 @@ function grid({ data, rows, cols, lat0, lon0, dLat, dLon, wrap }) {
 }
 
 /** Rejects if `p` hasn't settled within `ms`. */
-function withTimeout(p, ms, what) {
+function timeLimit(p, ms, what) {
   let timer;
   return Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${what}: no answer in ${ms / 1000} s`)), ms); })])
     .finally(() => clearTimeout(timer));
@@ -42,7 +42,7 @@ export function loadFar(world, lat, lon) {
   // small PNGs that load in a second or two, so the landscape appears quickly (NASADEM's
   // big GeoTIFFs are used for the detailed rings, where they matter)
   if (!world.far) {
-    return withTimeout(loadTerrarium(world, lat, lon, world.farHalf * 1.05, 960), 30000, 'terrain tiles')
+    return timeLimit(loadTerrarium(world, lat, lon, world.farHalf * 1.05, 960), 30000, 'terrain tiles')
       .catch(() => flat()); // offline: a flat plain rather than a black screen
   }
   if (!farCache.has(world.far)) {
@@ -77,15 +77,7 @@ function strips(url) {
  * least), keeping every `step`-th row and column. `onRow(done, total)` reports progress.
  */
 export async function loadDetail(world, lat, lon, halfM, step, onRow) {
-  if (world.dem.source === 'nasadem') {
-    // NASADEM (Microsoft Planetary Computer) can be slow or unreachable: give it a time limit,
-    // then use the AWS terrain tiles (SRTM and other sources, ~30 m at the finest) instead
-    return withTimeout(loadNasadem(world, lat, lon, halfM, step, onRow), 25000, 'NASADEM')
-      .catch((err) => {
-        console.warn(`${err.message}: using the AWS terrain tiles`);
-        return loadTerrarium(world, lat, lon, halfM, Math.max(30, 30 * step));
-      });
-  }
+  if (world.dem.source === 'nasadem') return loadNasadem(world, lat, lon, halfM, step, onRow); // (time limit and fallback inside)
   const { url, width: DW, height: DH, scale } = world.dem;
   const offsets = await strips(url);
   const ppd = DW / 360; // square pixels: DH = DW / 2
@@ -293,6 +285,26 @@ function box(R, lat, lon, halfM) {
 async function loadNasadem(world, lat, lon, halfM, step, onTile) {
   const b = box(world.radius, lat, lon, halfM);
   if (b.s < NASADEM_LAT[0] || b.n > NASADEM_LAT[1]) return loadTerrarium(world, lat, lon, halfM, 30 * step);
+  // NASADEM can fail (the shared access token expiring mid-read, a slow or unreachable server):
+  // retry once with a fresh token, then fall back to the AWS terrain tiles (SRTM-based, ~30 m+)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await withTimeout(readNasadem(world, b, step, onTile), NASADEM_TIMEOUT_MS);
+    } catch (err) {
+      console.warn(`NASADEM (attempt ${attempt + 1}):`, err);
+      token = null;
+      tifCache.clear();
+    }
+  }
+  const g = await loadTerrarium(world, lat, lon, halfM, 30 * step);
+  return { ...g, source: 'terrarium' };
+}
+
+const NASADEM_TIMEOUT_MS = 40000;
+const withTimeout = (promise, ms) => Promise.race([promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`no answer in ${ms / 1000} s`)), ms))]);
+
+async function readNasadem(world, b, step, onTile) {
   const query = await nasademToken();
   // the overview (full, 1/2, 1/4, 1/8 resolution) that is just fine enough for the step
   const level = Math.min(3, Math.max(0, Math.floor(Math.log2(step))));

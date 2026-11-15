@@ -49,13 +49,38 @@ export const PARAMS = {
     help: 'Average UV index; no Mars/Moon value, so the highest wins' },
   alt: { name: 'Altitude (thin air)', unit: 'km', field: 'alt', better: 'high',
     help: 'Height above sea level: thinner air, closer to Mars; the highest wins' },
+  // Matched by rank: Mars gets ~40% of Earth's sunlight, so absolute matching would favour
+  // Earth's cloudiest mid-latitudes (Mars's equator gets as much as Britain).
+  sun: { name: 'Sunlight', unit: 'W/m²', site: ['sunlight', 'mean'], field: 'sun', relativeOnly: true,
+    help: 'As sunny for Earth as the site is for its world (yearly average solar power on the ground)' },
+  bare: { name: 'Bare ground', unit: '%', field: 'bare', toUnit: 100, better: 'high', limit: 0.5,
+    help: 'Share of the land that is bare rock, sand or soil (MODIS); half or more counts fully' },
+  frozen: { name: 'Frozen ground', unit: '°C', site: ['ice', 'mean'], field: 'tmean', worlds: ['mars'],
+    // the Mars ice map says whether the site has ice in the ground; Earth's yearly mean ground
+    // temperature says whether the ground stays frozen (below 0 °C: permafrost)
+    siteFormat: (v) => `${Math.round(v)}% ground-ice signal`,
+    rule: (ice) => (ice >= ICE_RICH ? { better: 'low', limit: 0 } : { better: 'high', limit: 0 }),
+    help: 'Ice-rich Mars ground (Odyssey) looks for permafrost (yearly mean ground temperature below 0 °C), dry ground for unfrozen' },
+  dust: { name: 'Dust in the air', unit: 'µg/m³', site: ['storms', 'mean'], field: 'dust', log: true, worlds: ['mars'],
+    relativeOnly: true, siteFormat: (v) => `dust storms on ${Math.round(v * 100)}% of days`,
+    help: 'As dusty for Earth (MERRA-2 dust near the ground) as the site is for Mars (how often dust storms cover it)' },
+};
+// Mars ice map value (% fewer neutrons than the driest ground) from which the ground counts as
+// ice-rich. Odyssey's map reads 20-40% at the equator (mostly water bound in minerals) and over
+// 60% poleward of ~60°, where ground ice lies within ~1 m (e.g. Phoenix 77%)
+export const ICE_RICH = 50;
+// how a parameter is compared for this site: { better, limit } (one-sided) or {} (matched)
+export const ruleFor = (k, siteValue) => {
+  const p = PARAMS[k];
+  if (p.rule) return Number.isFinite(siteValue) ? p.rule(siteValue) : {};
+  return { better: p.better, limit: p.limit };
 };
 export const WEIGHT_STEPS = [0, 0.5, 1, 2, 3];
 // Defaults, tested on 18 Moon and Mars sites so that different sites get different places
 // (only 9% of results shared between sites): the characteristics that differ between sites
 // count most. UV and altitude are off: they have no Mars/Moon value, so they would pull every
 // search towards the same few highlands (Tibet, the Andes).
-export const DEFAULT_WEIGHTS = { tmax: 2, tmin: 1, swing: 1, slope: 2, relief: 2, dry: 2, uv: 0, alt: 0 };
+export const DEFAULT_WEIGHTS = { tmax: 2, tmin: 1, swing: 1, slope: 2, relief: 2, dry: 2, uv: 0, alt: 0, sun: 1, bare: 1, frozen: 1, dust: 1 };
 
 // Earth value of a parameter in display units (fields are stored as log10, km, ...)
 export function displayValue(key, v) {
@@ -185,6 +210,13 @@ export async function siteValues(body, bodyRadiusKm, index, lat, lon, radiusKm) 
   await Promise.all(Object.entries(PARAMS).map(async ([k, p]) => {
     if (!p.site) return;
     const [layer, stat] = p.site;
+    if (layer === 'storms') {
+      if (body !== 'mars') return;
+      const d = await marsDustAt(lat, lon, radiusKm);
+      out[k] = d.value;
+      quantiles[k] = d.quantiles;
+      return;
+    }
     const meta = index[layer];
     if (!meta) return;
     const res = await summarize(body, layer, meta, lat, lon, radiusKm, bodyRadiusKm);
@@ -205,6 +237,7 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
   const grid = await loadEarthGrid();
   // parameters that take part: weight > 0, and for two-sided ones a site value
   const used = Object.keys(PARAMS).filter((k) => weights[k] > 0 && (!PARAMS[k].site || Number.isFinite(site[k])));
+  const rules = Object.fromEntries(used.map((k) => [k, ruleFor(k, site[k])]));
   if (!used.length) return { results: [], used };
   const fields = used.map((k) => PARAMS[k].field);
   const c = circles(grid, radiusKm, fields);
@@ -229,11 +262,12 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
     spreads[k] = Math.max(1e-6, percentile(sorted, 0.95) - percentile(sorted, 0.05));
     extremes[k] = [lo, hi];
     const p = PARAMS[k];
-    if (p.limit !== undefined) targets[k] = p.limit; // good enough beyond a limit (e.g. any desert)
-    else if (p.better) targets[k] = p.better === 'low' ? lo : hi;
-    else if (mode === 'extreme' && !p.always) {
+    const rule = rules[k];
+    if (rule.limit !== undefined) targets[k] = rule.limit; // good enough beyond a limit (e.g. any desert)
+    else if (rule.better) targets[k] = rule.better === 'low' ? lo : hi;
+    else if (mode === 'extreme' && !p.always && !p.relativeOnly) {
       targets[k] = site[k] < percentile(sorted, 0.5) ? lo : hi;
-    } else if (site[k] >= lo && site[k] <= hi) {
+    } else if (!p.relativeOnly && site[k] >= lo && site[k] <= hi) {
       targets[k] = site[k];
     } else {
       // beyond anything on Earth: same percentile of Earth (by area) as the site has on its world
@@ -253,11 +287,7 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
     for (const k of used) {
       const v = c.values[PARAMS[k].field][j];
       if (!Number.isFinite(v)) { ok = false; break; }
-      const p = PARAMS[k];
-      // with a limit, only the wrong side counts (any desert is dry enough)
-      const diff = p.limit === undefined ? v - targets[k]
-        : p.better === 'low' ? Math.max(0, v - targets[k]) : Math.min(0, v - targets[k]);
-      s += weights[k] * (diff / spreads[k]) ** 2;
+      s += weights[k] * gapOf(k, v, targets[k], spreads[k], rules[k]) ** 2;
     }
     if (ok) scores[j] = Math.sqrt(s / totalW);
   }
@@ -287,7 +317,7 @@ export async function findAnalogs({ site, weights, mode, radiusKm, count = DEFAU
     }
     return null;
   }
-  return { results, targets, spreads, extremes, relative, used, rankNear };
+  return { results, targets, spreads, extremes, relative, used, rules, rankNear };
 }
 
 // A parameter's value (in Earth-grid units) as text with its unit, e.g. "-35°C", "120 mm/yr"
@@ -295,16 +325,71 @@ export function formatValue(key, v) {
   const d = displayValue(key, v);
   if (!Number.isFinite(d)) return '–';
   const p = PARAMS[key];
-  const digits = Math.abs(d) >= 100 || p.unit === '°C' || p.unit === 'm' ? 0 : Math.abs(d) >= 10 ? 1 : 2;
-  return `${d.toFixed(digits)}${p.unit === '°C' || p.unit === '°' ? p.unit : ` ${p.unit}`}`;
+  const digits = Math.abs(d) >= 100 || ['°C', 'm', '%', 'W/m²'].includes(p.unit) ? 0 : Math.abs(d) >= 10 ? 1 : 2;
+  return `${d.toFixed(digits)}${['°C', '°', '%'].includes(p.unit) ? p.unit : ` ${p.unit}`}`;
+}
+
+// A site's value as text: in the Earth unit, or the site's own unit where they differ (ice, dust)
+export function formatSite(key, v) {
+  const p = PARAMS[key];
+  if (!Number.isFinite(v)) return '–';
+  return p.siteFormat ? p.siteFormat(v) : formatValue(key, v);
 }
 
 /** How far a value is from its target, in Earth spreads (as in the score). 0 = on target. */
-export function gapOf(key, value, target, spread) {
-  const p = PARAMS[key];
-  const diff = p.limit === undefined ? value - target
-    : p.better === 'low' ? Math.max(0, value - target) : Math.min(0, value - target);
+// With a limit, only the wrong side counts (any desert is dry enough).
+export function gapOf(key, value, target, spread, rule = ruleFor(key)) {
+  const diff = rule.limit === undefined ? value - target
+    : rule.better === 'low' ? Math.max(0, value - target) : Math.min(0, value - target);
   return Math.abs(diff) / spread;
+}
+
+// ---- Mars dust storms at a site (public/route/storms.bin) ------------------------
+// 4 seasons x 90 x 180 cells of 2°, uint8: share of observed sols with a dust storm, in 1/250
+// steps (Mars Dust Activity Database). The site value is the yearly mean over the circle;
+// its quantiles (area-weighted, 0..100) place it among all of Mars.
+let stormsPromise = null;
+function loadStorms() {
+  stormsPromise ??= fetch(`${import.meta.env.BASE_URL}route/storms.bin`).then((r) => r.arrayBuffer()).then((buf) => {
+    const raw = new Uint8Array(buf);
+    const year = new Float32Array(90 * 180);
+    for (let i = 0; i < year.length; i++) {
+      year[i] = (raw[i] + raw[i + 16200] + raw[i + 32400] + raw[i + 48600]) / 4 / 250;
+    }
+    const idx = Array.from(year.keys()).sort((a, b) => year[a] - year[b]);
+    const w = (i) => Math.cos(rad(90 - (Math.floor(i / 180) + 0.5) * 2));
+    const total = idx.reduce((a, i) => a + w(i), 0);
+    const quantiles = [];
+    let acc = 0; let q = 0;
+    for (const i of idx) {
+      acc += w(i);
+      while (q <= 100 && acc >= (q / 100) * total) { quantiles.push(year[i]); q++; }
+    }
+    while (quantiles.length < 101) quantiles.push(year[idx[idx.length - 1]]);
+    return { year, quantiles };
+  });
+  return stormsPromise;
+}
+async function marsDustAt(lat, lon, radiusKm) {
+  const { year, quantiles } = await loadStorms();
+  const R = 3389.5;
+  let sum = 0; let sw = 0;
+  for (let r = 0; r < 90; r++) {
+    const la = 90 - (r + 0.5) * 2;
+    for (let c = 0; c < 180; c++) {
+      const lo = -180 + (c + 0.5) * 2;
+      const a = Math.sin(rad(la - lat) / 2) ** 2 + Math.cos(rad(lat)) * Math.cos(rad(la)) * Math.sin(rad(lo - lon) / 2) ** 2;
+      if (2 * R * Math.asin(Math.min(1, Math.sqrt(a))) > radiusKm) continue;
+      const w = Math.cos(rad(la));
+      sum += w * year[r * 180 + c]; sw += w;
+    }
+  }
+  if (!sw) { // circle smaller than a cell: the cell under the centre
+    const r = Math.min(89, Math.floor((90 - lat) / 2));
+    const c = Math.min(179, Math.floor((lon + 180) / 2));
+    return { value: year[r * 180 + c], quantiles };
+  }
+  return { value: sum / sw, quantiles };
 }
 
 // Where a value falls among a body's percentiles 0..100: 0..1

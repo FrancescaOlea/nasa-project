@@ -301,7 +301,17 @@ export function createView3D({ routeEvents }) {
   }
 
   // ---- building the terrain
-  async function build(region) {
+  // build() never leaves the view stuck on "Reading…": a failure shows in the status line
+  function build(region) {
+    const my = building + 1;
+    return buildTerrain(region).catch((err) => {
+      console.error(err);
+      if (my !== building) return;
+      root.classList.remove('busy');
+      setStatus(`Could not load the elevation data (${err.message || err}). Close the 3D view and open it again to retry.`);
+    });
+  }
+  async function buildTerrain(region) {
     const my = ++building;
     setStatus(world === 'earth' ? 'Reading NASA elevation data (NASADEM)…' : 'Reading NASA elevation data…');
     root.classList.add('busy');
@@ -337,6 +347,7 @@ export function createView3D({ routeEvents }) {
       const dem = await loadDetail(W, lat0, lon0, halfM, step,
         (d, t) => setStatus(`Reading NASA elevation data (NASADEM)… ${Math.round((100 * d) / t)}%`));
       if (my !== building) return;
+      if (dem.source) demSource = dem.source; // NASADEM unreachable: AWS terrain tiles instead
       for (let r = 0; r < rows; r++) {
         const lat = latOf(r);
         for (let c = 0; c < cols; c++) raw[r * cols + c] = dem.get(lat, lonOf(c)) / 1000; // km
