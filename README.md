@@ -140,7 +140,11 @@ once A and B are set). What differs:
 
 ### Efficient route: the precise route engine
 
-(Mars only. On the Moon the Efficient route is the least-climbing route from the LOLA map tiles.)
+(Mars and the Moon. Moon: `python3 tools/build_route_grids.py --body moon` packs LRO LOLA's
+`ldem_16.img` (16 px/deg, ~1.9 km; 0.5 m steps) into `public/route/moon/grid/` (L0 4 px/deg, L1
+16 px/deg); the engine then works the same with the Moon's radius, and its dust / rock / cold
+factors use the ends of the Moon's own ranges: thermal inertia below ~34 or above ~50 TIU, nights
+below −200 °C. Without the grids the Efficient route is an estimate from the map tiles, and says so.)
 
 `src/route/engine/` implements docs/route-algorithm.md: a drivable / walkable, energy-efficient
 route from NASA's **precise MOLA elevation** (16-bit, 1 m steps; the map's 8-bit tiles are never
@@ -466,6 +470,28 @@ None of the six known analogs is among the site's 10 results: the results are ot
 values. Over 20 Moon and Mars sites × 10 results, **7 of 200 results (3.5%) are in a known analog region**
 (e.g. Hellas → near Haughton crater, Mars's north pole → Svalbard); the other 96.5% are new. With *Only new
 places* none are.
+
+### Mars and Moon equivalents of an Earth place (the reverse search)
+
+`src/equivalents.js`. On the Earth map, select an area and press **🪐 Find the Mars & Moon
+equivalents**: the spots on Mars and on the Moon most like it, each with a % match, the nearest
+named place (e.g. "near Hellas Planitia") and a button that opens it on that world's map.
+
+- **Compared**: hottest-month maximum, coldest-month minimum, day–night swing (ground
+  temperatures), slope and relief, the characteristics both sides have; weights 2 / 1 / 1 / 2 / 2
+  as in the analog search. The Earth place uses the analog search's Earth grid (land-area means
+  over the circle); every Moon / Mars spot the "Find similar spots" circle means, same radius.
+- **Like the analog search, the other way round**: slope and relief are matched by value;
+  a temperature that exists on that world is matched by value, one beyond it (Earth's nights are
+  far warmer than Mars's) relatively: the same percentile of that world as the place has on Earth.
+  Score = weighted RMS of the differences, each divided by the world's 5–95% spread; % match =
+  (1 − score) × 100.
+- **Rain**: the Moon and Mars are bone dry, so rain beyond a desert's (250 mm a year) lowers the
+  % match of every spot alike.
+- **No close equivalent**: below 86% the panel says so and gives the nearest spot with its %.
+  Calibrated on known places: classic Mars analogs score 92–96% on Mars (Atacama 93%, Devon
+  Island 92%, Antarctic Dry Valleys 96%), deserts ~88% (Sahara, Death Valley); wet or green
+  places don't reach it (London 80%, Iceland 78%, Hawaii and the Amazon 70%).
 
 ### Similar spots
 

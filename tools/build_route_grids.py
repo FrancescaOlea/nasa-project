@@ -15,8 +15,14 @@ Levels (docs/route-algorithm.md, section 2):
 Blocks are 256 x 256 cells: public/route/grid/<level>/<row>_<col>.webp, row 0 at 90 N, col 0 at
 180 W. public/route/grid/index.json describes them. The app loads only the blocks a search needs.
 
+Moon (--body moon, into public/route/moon/grid/), from LRO LOLA's gridded elevation:
+    L0  4 px/deg   (~7.6 km)   LOLA LDEM 16 px/deg, averaged over 4 x 4 pixels
+    L1  16 px/deg  (~1.9 km)   LOLA LDEM 16 px/deg (ldem_16.img, 32 MB; little-endian int16 in 0.5 m steps)
+
 Usage:
     python3 tools/build_route_grids.py                      # L0 + L1 (downloads megt90n000fb.img if needed)
+    python3 tools/build_route_grids.py --body moon          # the Moon (downloads ldem_16.img if needed)
+    python3 tools/build_route_grids.py --body moon --src data/raw/ldem_16.img
     python3 tools/build_route_grids.py --src path/to/megt90n000fb.img
     python3 tools/build_route_grids.py --l2 -10,0,130,140   # also L2 for a lat/lon box (south,north,west,east)
     python3 tools/build_route_grids.py --l2-dir data/raw/meg128   # where the 128 px/deg tiles are (or get downloaded)
@@ -36,7 +42,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW = os.path.join(ROOT, 'data', 'raw')
 OUT = os.path.join(ROOT, 'public', 'route', 'grid')
 PDS = 'https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/mgsl_300x'
-R_KM = 3389.5
+LOLA = 'https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/lrolol_1xxx/data/lola_gdr/cylindrical/img'
+R_KM = 3389.5  # Mars; 1737.4 for --body moon
 BLOCK = 256
 OFFSET = 10000
 SLOPE_STEP = 0.25
@@ -58,6 +65,14 @@ def read_megdr(path, ppd, rows=None):
     rows = rows or n // cols
     dem = np.memmap(path, dtype='>i2', mode='r', shape=(rows, cols))
     return np.asarray(dem, dtype=np.float32)
+
+
+def read_ldem(path, ppd=16):
+    """LRO LOLA LDEM: little-endian int16, 0.5 m steps above a 1737.4 km sphere, rows from the
+    top edge (90 N), columns from 0 E."""
+    cols = 360 * ppd
+    dem = np.memmap(path, dtype='<i2', mode='r', shape=(180 * ppd, cols))
+    return np.asarray(dem, dtype=np.float32) * 0.5
 
 
 def to_180w(dem):
@@ -167,13 +182,17 @@ def build_l2(box, l2_dir, index):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--src', help='MOLA MEGDR 32 px/deg file (megt90n000fb.img); downloaded if missing')
+    ap.add_argument('--body', choices=['mars', 'moon'], default='mars')
+    ap.add_argument('--src', help='MOLA MEGDR 32 px/deg file (megt90n000fb.img), or for --body moon LOLA ldem_16.img; downloaded if missing')
     ap.add_argument('--ppd', type=int, default=32, help='pixels per degree of --src (32; 4 for megt90n000cb.img, tests only)')
     ap.add_argument('--l2', help='also build L2 for south,north,west,east (degrees, west/east in -180..180)')
     ap.add_argument('--l2-dir', default=os.path.join(RAW, 'meg128'))
     ap.add_argument('--out', help='output folder (default public/route/grid)')
     args = ap.parse_args()
-    global OUT
+    global OUT, R_KM
+    if args.body == 'moon':
+        R_KM = 1737.4
+        OUT = os.path.join(ROOT, 'public', 'route', 'moon', 'grid')
     if args.out:
         OUT = args.out
 
@@ -181,11 +200,28 @@ def main():
     index_path = os.path.join(OUT, 'index.json')
     index = json.load(open(index_path)) if os.path.exists(index_path) else {'levels': {}}
 
+    if args.body == 'moon':
+        src = args.src or fetch(f'{LOLA}/ldem_16.img')
+        print(f'reading {src}')
+        dem = to_180w(read_ldem(src, 16))
+        s1 = steepest_slope(dem, 16, 90.0)
+        index['levels']['L1'] = write_level('L1', dem, s1, 16)
+        index['levels']['L1']['smax_from'] = 'L1 pixels and their 8 neighbours'
+        index['levels']['L0'] = write_level('L0', block_reduce(dem, 4, 'mean'), block_reduce(s1, 4, 'max'), 4)
+        index['levels']['L0']['smax_from'] = 'L1'
+        index['radius_km'] = R_KM
+        index['source'] = 'LRO LOLA gridded elevation LDEM_16 (NASA PDS Geosciences Node), LRO-L-LOLA-4-GDR-V1.0'
+        index['format'] = 'R,G = elevation m + offset (16 bit, R high byte); B = steepest slope inside the cell / slope_step; block 256x256, row 0 at 90N, col 0 at 180W'
+        json.dump(index, open(index_path, 'w'), indent=1)
+        print('wrote', index_path)
+        return
+
     src = args.src or fetch(f'{PDS}/meg032/megt90n000fb.img')
     ppd = args.ppd
     print(f'reading {src}')
     dem = to_180w(read_megdr(src, ppd))
     s1 = steepest_slope(dem, ppd, 90.0)
+    index['radius_km'] = R_KM
     if ppd == 32:
         # L1: the MEGDR itself. Its steepest slope comes from its own pixels (no L2 everywhere).
         index['levels']['L1'] = write_level('L1', dem, s1, 32)

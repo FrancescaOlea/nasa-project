@@ -1,6 +1,7 @@
 // Terrain for the route engine in the browser (runs inside the Web Worker): reads the precise
-// elevation blocks made by tools/build_route_grids.py (public/route/grid/) and the map's
-// "Dusty or rocky terrain" and "Min. temperature" tiles for the secondary factors.
+// elevation blocks made by tools/build_route_grids.py (Mars: public/route/grid/ from MOLA;
+// Moon: public/route/moon/grid/ from LRO LOLA) and the map's "Dusty or rocky terrain" and
+// "Min. temperature" tiles for the secondary factors.
 import { makeGrid } from './engine.js';
 
 const BLOCK = 256;
@@ -20,17 +21,19 @@ async function pixels(url) {
  * The resolution ladder available in this build: [{ name, band, optional, window(s, n, w, e) }].
  * base: the app's base URL (import.meta.env.BASE_URL of the page).
  */
-export async function createLevels(base) {
-  const index = await fetch(`${base}route/grid/index.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+export const gridDir = (world) => (world === 'moon' ? 'route/moon/grid' : 'route/grid');
+export async function createLevels(base, world = 'mars') {
+  const dir = gridDir(world);
+  const index = await fetch(`${base}${dir}/index.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!index?.levels?.L0) return null; // precise grids not built
   const overlays = await fetch(`${base}overlays/index.json`).then((r) => r.json()).catch(() => ({}));
-  const sec = secondary(base, overlays.mars ?? {});
+  const sec = secondary(base, overlays[world] ?? {}, world);
   const cache = new Map();
   const block = (name, br, bc) => {
     const key = `${name}/${br}_${bc}`;
     if (!cache.has(key)) {
       if (cache.size > 400) cache.delete(cache.keys().next().value);
-      cache.set(key, index.levels[name].blockSet.has(`${br}_${bc}`) ? pixels(`${base}route/grid/${key}.webp`).catch(() => null) : Promise.resolve(null));
+      cache.set(key, index.levels[name].blockSet.has(`${br}_${bc}`) ? pixels(`${base}${dir}/${key}.webp`).catch(() => null) : Promise.resolve(null));
     }
     return cache.get(key);
   };
@@ -90,6 +93,7 @@ export async function createLevels(base) {
   if (index.levels.L1) levels.push(level('L1', 30, false));
   if (index.levels.L2) levels.push(level('L2', 8, true));
   if (index.levels.L3) levels.push(level('L3', 1, true));
+  levels.radiusKm = index.radius_km ?? 3389.5;
   return { levels, index };
 }
 
@@ -97,8 +101,16 @@ export async function createLevels(base) {
 //   f_dust: rising as thermal inertia falls below ~150 TIU (deep fine dust)
 //   f_rock: rising above ~600 TIU (boulder fields)
 //   f_cold: rising as the coldest night falls below -90 C
+// The Moon's thermal inertia (Diviner) only spans ~25-60 TIU and all its nights are far below
+// -90 C, so there the ends of the Moon's own ranges are used (as in the planner): dust below
+// ~34 TIU, rock above ~50 TIU, cold below -200 C (the permanently shadowed polar craters).
 // No data (e.g. thermal inertia beyond 70 deg) -> 0.
-function secondary(base, metas) {
+const SECONDARY = {
+  mars: { dustHi: 150, dustSpan: 100, rockLo: 600, rockSpan: 600, coldBelow: -90, coldSpan: 30 },
+  moon: { dustHi: 34, dustSpan: 8, rockLo: 50, rockSpan: 20, coldBelow: -200, coldSpan: 30 },
+};
+function secondary(base, metas, world = 'mars') {
+  const T = SECONDARY[world] ?? SECONDARY.mars;
   const tileCache = new Map();
   const sampler = async (layer, south, north, west, east) => {
     const meta = metas[layer];
@@ -112,7 +124,7 @@ function secondary(base, metas) {
       for (let tcu = c0 >> 8; tcu <= c1 >> 8; tcu++) {
         const tc = ((tcu % (W / 256)) + W / 256) % (W / 256);
         const key = `${layer}/${z}/${tr}/${tc}`;
-        if (!tileCache.has(key)) tileCache.set(key, pixels(`${base}overlays/mars/${key}.${meta.format}`).catch(() => null));
+        if (!tileCache.has(key)) tileCache.set(key, pixels(`${base}overlays/${world}/${key}.${meta.format}`).catch(() => null));
         jobs.push(tileCache.get(key).then((px) => tiles.set(`${tr}/${tc}`, px)));
       }
     }
@@ -153,9 +165,9 @@ function secondary(base, metas) {
           if (c % stride && c > 0) { g.dust[i] = g.dust[i - 1]; g.rock[i] = g.rock[i - 1]; g.cold[i] = g.cold[i - 1]; continue; }
           const lon = ((((g.lonOf(c) + 180) % 360) + 360) % 360) - 180;
           const t = ti(lat, lon); const m = tmin(lat, lon);
-          g.dust[i] = Number.isNaN(t) ? 0 : clamp01((150 - t) / 100);
-          g.rock[i] = Number.isNaN(t) ? 0 : clamp01((t - 600) / 600);
-          g.cold[i] = Number.isNaN(m) ? 0 : clamp01((-90 - m) / 30);
+          g.dust[i] = Number.isNaN(t) ? 0 : clamp01((T.dustHi - t) / T.dustSpan);
+          g.rock[i] = Number.isNaN(t) ? 0 : clamp01((t - T.rockLo) / T.rockSpan);
+          g.cold[i] = Number.isNaN(m) ? 0 : clamp01((T.coldBelow - m) / T.coldSpan);
         }
       }
     },

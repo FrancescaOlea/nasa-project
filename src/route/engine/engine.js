@@ -12,7 +12,10 @@
 //      -> string-pull smoothing (+ optional Catmull-Rom), always re-checking the limits
 //   6. output contract for the UI (status, mode, points, bounds, totals, segments, blocked, levels)
 
-export const R_KM = 3389.5;
+// Radius of the world searched (km): Mars by default; findRoute sets it from the levels
+// (the Moon's precise grids say radius_km: 1737.4). One search runs at a time per worker.
+export let R_KM = 3389.5;
+export const setRadius = (km) => { R_KM = km; };
 export const CAP = 0.25;
 const RAD = Math.PI / 180;
 
@@ -413,6 +416,7 @@ export function catmullRom(g, line, lim, perSeg = 6) {
  */
 export async function findRoute(a, b, levels, settings = {}, { onProgress = () => {}, shouldStop = () => false } = {}) {
   const t0 = Date.now();
+  setRadius(settings.radiusKm ?? levels.radiusKm ?? 3389.5);
   const allModes = [
     ['rover', { ...MODES.rover, maxSlope: settings.roverMaxSlope ?? MODES.rover.maxSlope, maxCross: settings.roverMaxSlope ?? MODES.rover.maxCross, kUp: settings.kUpRover ?? MODES.rover.kUp, kDown: settings.kDown ?? 1 }],
     ['foot', { ...MODES.foot, maxSlope: settings.footMaxSlope ?? MODES.foot.maxSlope, maxCross: settings.footMaxSlope ?? MODES.foot.maxCross, kUp: settings.kUpFoot ?? MODES.foot.kUp, kDown: settings.kDown ?? 1 }],

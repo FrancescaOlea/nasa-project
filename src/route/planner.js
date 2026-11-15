@@ -23,7 +23,7 @@ export const KINDS = {
     aboutMoon: 'Avoids steep ground, crater rims, rough, rocky and loose terrain, as far as this traveller needs to, even if that takes longer.',
     aboutEarth: 'Avoids steep and rough ground, as far as this traveller needs to, even if that takes longer (Earth has no crater, dust or rock data here).' },
   efficient: { name: 'Efficient', colour: '#4cd387', about: 'The energy-efficient route, from NASA\'s precise MOLA elevation (1 m steps): as little climbing energy as possible within the slope limits. Dust, rocks and cold can tip the choice between similar routes but never add more than 25%.',
-    aboutMoon: 'Least effort: as little climbing as possible within the slope limit (LOLA elevation from the map tiles).',
+    aboutMoon: 'The energy-efficient route, from NASA\'s precise LRO LOLA elevation: as little climbing energy as possible within the slope limits. Loose dust, rocks and the coldest craters can tip the choice between similar routes but never add more than 25%.',
     aboutEarth: 'Least effort: as little climbing as possible within the slope limit (ETOPO elevation from the map tiles, as at the site).' },
   shortest: { name: 'Shortest', colour: '#6ec6ff', about: 'Fewest kilometres while staying under the slope limit.' },
 };
@@ -40,6 +40,7 @@ const WORLD_CFG = {
     ti: { softHi: 150, softSpan: 100, rockLo: 600, rockSpan: 900 },
     record: { km: 45.16, text: 'longer than any rover has ever driven (Opportunity\'s record: 45.16 km in 14 years)' },
     slopeSrc: 'MOLA',
+    dem: 'MOLA', // precise 16-bit elevation for the efficient route (src/route/engine/)
     dust: 'Very low thermal inertia: fine dust or sand where wheels sink and slip (MGS TES, measured). Spirit got stuck in soft sand in 2009; Curiosity once hit 98.7% wheel slip.',
     crater: (c, measured) => `${measured ? 'Rim-to-floor depth measured from MOLA' : 'Depth estimated (~1/5 of the width); not measured'} (Robbins & Hynek crater catalog).`
       + `${measured && c.d < 10 ? ' MOLA depths of craters under 10 km are only rough.' : ''}`,
@@ -57,6 +58,7 @@ const WORLD_CFG = {
     ti: { softHi: 34, softSpan: 8, rockLo: 50, rockSpan: 20 },
     record: { km: 35.9, text: 'longer than NASA has ever driven on the Moon (Apollo 17\'s LRV: 35.9 km in three drives, 1972)' },
     slopeSrc: 'LOLA',
+    dem: 'LRO LOLA',
     dust: 'Unusually low thermal inertia: especially fine, fluffy soil where wheels and boots sink deeper (LRO Diviner, measured). The whole Moon is covered in loose dust; this marks the loosest.',
     crater: (c, measured) => `${measured ? 'Rim-to-floor depth measured here from LRO LOLA heights' : 'Depth estimated from its width (Pike 1977, fresh lunar craters); not measured'} (Robbins lunar crater catalog).`
       + `${measured && c.d < 30 ? ' LOLA depths of craters under ~30 km are only rough.' : ''}`,
@@ -131,13 +133,14 @@ export function optsFor(traveller, world = 'mars') {
   return { traveller, world, noGoDeg: m.noGoDeg, cautionDeg: m.cautionDeg, weights: m.weights, ti: WORLD_CFG[world].ti };
 }
 
-// ---- The precise route (src/route/engine/): a Web Worker on NASA's 16-bit MOLA blocks ----------
+// ---- The precise route (src/route/engine/): a Web Worker on NASA's 16-bit MOLA / LOLA blocks ----
 
 export const DEFAULT_SETTINGS = { roverMaxSlope: 20, footMaxSlope: 15, kUp: 8, weights: { dust: 1, rock: 1, cold: 0.5 } };
 let preciseWorker = null;
+const PRECISE = { mars: 1, moon: 1 }; // worlds with a precise elevation engine (src/route/engine/)
 let preciseId = 0;
 /** Run the precise search; a newer call cancels the running one. Resolves to the engine's result. */
-function runPrecise(a, b, traveller, settings, onProgress) {
+function runPrecise(a, b, traveller, settings, onProgress, world = 'mars') {
   preciseWorker ??= new Worker(new URL('./engine/route.worker.js', import.meta.url), { type: 'module' });
   const id = ++preciseId;
   preciseWorker.postMessage({ type: 'cancel', id: id - 1 });
@@ -157,7 +160,7 @@ function runPrecise(a, b, traveller, settings, onProgress) {
       else reject(new Error(data.message));
     };
     preciseWorker.addEventListener('message', onMsg);
-    preciseWorker.postMessage({ type: 'search', id, a, b, settings: engineSettings, base: new URL(import.meta.env.BASE_URL, location.href).href });
+    preciseWorker.postMessage({ type: 'search', id, a, b, world, settings: engineSettings, base: new URL(import.meta.env.BASE_URL, location.href).href });
   });
 }
 
@@ -208,7 +211,7 @@ function fromPrecise(result, g, a, opts, res) {
   });
   const steep = slope.reduce((bi, v, k) => (v > slope[bi] ? k : bi), 0);
   dangers.push({ type: 'slope', k: steep, title: `${slope[steep] > opts.cautionDeg ? 'Steep' : 'Steepest point'}: ${slope[steep].toFixed(1)}° slope`,
-    text: `Steepest stretch of this route, from NASA's precise MOLA elevation (${result.finest}, ~${fmtKm(result.finest_km)} cells). Steepest slope inside any cell it crosses: ${result.totals.max_slope_deg}°.` });
+    text: `Steepest stretch of this route, from NASA's precise ${WORLD_CFG[g.world].dem} elevation (${result.finest}, ~${fmtKm(result.finest_km)} cells). Steepest slope inside any cell it crosses: ${result.totals.max_slope_deg}°.` });
   dangers.sort((x, y) => x.k - y.k);
   return {
     ...d, pts, seg, slope, elev, hard, dangers, hours, steepKm,
@@ -224,9 +227,10 @@ function fromPrecise(result, g, a, opts, res) {
  */
 export async function computeRoutes(a, b, season, traveller, onProgress = () => {}, grid = null, world = 'mars', settings = DEFAULT_SETTINGS) {
   const opts = optsFor(traveller, world);
-  // on Mars the precise route (16-bit MOLA) runs in its own worker at the same time
-  const precisePromise = world !== 'mars' || !settings ? Promise.resolve(null)
-    : runPrecise(a, b, traveller, settings, (p) => onProgress(`Precise route (NASA MOLA, ${p.level}${p.mode === 'foot' ? ', on foot' : ''}): ${Math.round((p.fraction ?? 0) * 100)}%…`))
+  // on Mars and the Moon the precise route (16-bit MOLA / LOLA) runs in its own worker meanwhile
+  const usePrecise = world in PRECISE && !!settings;
+  const precisePromise = !usePrecise ? Promise.resolve(null)
+    : runPrecise(a, b, traveller, settings, (p) => onProgress(`Precise route (NASA ${WORLD_CFG[world].dem}, ${p.level}${p.mode === 'foot' ? ', on foot' : ''}): ${Math.round((p.fraction ?? 0) * 100)}%…`), world)
       .catch((err) => { console.error(err); return null; });
   const g = grid ?? await buildGrid(a, b, season, onProgress, world);
   onProgress(`Searching ${(g.rows * g.cols).toLocaleString()} terrain cells (${g.cellKm.toFixed(1)} km each)…`);
@@ -248,9 +252,9 @@ export async function computeRoutes(a, b, season, traveller, onProgress = () => 
       routes[k].bounds = routeBounds(pts);
     }
   }
-  // the efficient route: precise if the MOLA blocks are built, else the map-tile estimate
+  // the efficient route: precise if the MOLA / LOLA blocks are built, else the map-tile estimate
+  let preciseState = usePrecise ? 'missing' : 'none';
   const precise = await precisePromise;
-  let preciseState = world === 'mars' && settings ? 'missing' : 'none'; // the precise engine is Mars-only (MOLA)
   if (precise?.status === 'ok' || precise?.status === 'foot-only') {
     routes.efficient = fromPrecise(precise, g, a, opts, res);
     preciseState = precise.status;
@@ -421,13 +425,13 @@ function explain(result, kind) {
   if (kind === 'efficient' && r.precise) {
     const p = r.precise;
     const lim = p.mode === 'foot' ? result.settings.footMaxSlope : result.settings.roverMaxSlope;
-    out.why.unshift(`Least energy: ${p.totals.energy_km_equiv.toLocaleString()} km-equivalent of flat ${p.mode === 'foot' ? 'walking' : 'driving'} (distance plus ${p.mode === 'foot' ? result.settings.kUp === 8 ? 10 : result.settings.kUp : result.settings.kUp}× every km climbed), found coarse to fine on NASA MOLA (${p.levels.filter((l) => l.mode === p.mode).map((l) => l.level).join(' → ')}).`);
+    out.why.unshift(`Least energy: ${p.totals.energy_km_equiv.toLocaleString()} km-equivalent of flat ${p.mode === 'foot' ? 'walking' : 'driving'} (distance plus ${p.mode === 'foot' ? result.settings.kUp === 8 ? 10 : result.settings.kUp : result.settings.kUp}× every km climbed), found coarse to fine on NASA ${cfg.dem} (${p.levels.filter((l) => l.mode === p.mode).map((l) => l.level).join(' → ')}).`);
     if (p.totals.extra_cost_from_secondary_pct > 0.1) out.why.push(`Dust, rocks and cold add ${p.totals.extra_cost_from_secondary_pct}% to its energy (capped at 25%).`);
     out.verdict = {
       ok: !tooFar,
       text: tooFar
         ? `Beyond ${name}'s capabilities: ${fmtKm(r.dist)} is far more than it could manage (${model.rangeWhy}). The route is shown only to compare terrain.`
-        : `${p.mode === 'foot' ? 'Walkable' : 'Drivable'} under the limits: no step and no cell crossed steeper than ${lim}° (steepest ${p.totals.max_slope_deg}°), checked on MOLA at ~${fmtKm(p.finest_km)}. Not checked: boulders, dunes and metre-scale slopes.`,
+        : `${p.mode === 'foot' ? 'Walkable' : 'Drivable'} under the limits: no step and no cell crossed steeper than ${lim}° (steepest ${p.totals.max_slope_deg}°), checked on ${cfg.dem} at ~${fmtKm(p.finest_km)}. Not checked: boulders${g.world === 'mars' ? ', dunes' : ''} and metre-scale slopes.`,
     };
     if (result.preciseState === 'foot-only') out.warnings.push(`No rover route within ${result.settings.roverMaxSlope}°: this is the on-foot route (limit ${result.settings.footMaxSlope}°).`);
     if (traveller !== 'walk' && cfg.record && r.dist > cfg.record.km && !tooFar) out.warnings.push(`At ${fmtKm(r.dist)}, this is ${cfg.record.text}.`);
@@ -483,7 +487,7 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
   $('route-world').textContent = cmp ? `Earth analog vs ${WORLD_CFG[cmp.world].name} site` : cfg.name;
   $('route-note').innerHTML = cfg.note;
   panel.querySelector('.season-pick').hidden = !cfg.seasons;
-  panel.querySelector('.route-settings').hidden = world !== 'mars'; // the settings tune the precise (MOLA) route
+  panel.querySelector('.route-settings').hidden = !(world in PRECISE); // the settings tune the precise (MOLA / LOLA) route
   $('route-traveller').replaceChildren(...TRAVELLER_KEYS.map((k) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -879,14 +883,14 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
         L.marker([bl.where[0], wrap(bl.where[1])], {
           pane: 'route', keyboard: false, title: 'Steepest unavoidable stretch',
           icon: L.divIcon({ className: '', html: '<span class="danger-pin danger-blocked">⛔</span>', iconSize: [26, 26], iconAnchor: [13, 13] }),
-        }).bindPopup(`<strong>Steepest unavoidable stretch: ${bl.slope_deg}°</strong><br>Every way from A to B crosses ground at least this steep (NASA MOLA).`).addTo(dangerLayer);
+        }).bindPopup(`<strong>Steepest unavoidable stretch: ${bl.slope_deg}°</strong><br>Every way from A to B crosses ground at least this steep (NASA ${cfg.dem}).`).addTo(dangerLayer);
       }
     } else if (R.preciseState === 'foot-only' && R.traveller !== 'walk') {
       box.classList.add('warn');
       box.innerHTML = `<strong>On foot only.</strong> No rover route within ${S.roverMaxSlope}°; the efficient route is the on-foot route (max ${S.footMaxSlope}°).`;
     } else if (R.preciseState === 'missing') {
       box.classList.add('warn');
-      box.innerHTML = 'The efficient route is an <strong>estimate from the map tiles</strong>: the precise NASA MOLA grids aren\'t built in this copy (see tools/build_route_grids.py).';
+      box.innerHTML = `The efficient route is an <strong>estimate from the map tiles</strong>: the precise NASA ${cfg.dem} grids aren't built in this copy (see tools/build_route_grids.py${world === 'moon' ? ' --body moon' : ''}).`;
     } else {
       box.hidden = true;
       return;

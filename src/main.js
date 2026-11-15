@@ -20,6 +20,7 @@ import { maybeStartTutorial, startTour } from './tutorial.js';
 import { createRoutePlanner, routeEvents } from './route/planner.js';
 import { siteCrossing, sameRouteOnEarth, destination, bearingDeg } from './route/compare.js';
 import { haversineKm as routeKm } from './route/grid.js';
+import { findEquivalents, SHARED, CLOSE_MATCH } from './equivalents.js';
 import { projection, PROJECTIONS } from './projections.js';
 import { WarpedImagery, sourceGrid } from './reproject.js';
 import moonTexture from './assets/moon-texture.jpg';
@@ -366,8 +367,90 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     lastPage[key] = location.hash; // so 'Back to Mars view' (and leaving the 3D view) restores it
   };
   saveToUrl();
-  // No analog search from Earth itself
+  // No analog search from Earth itself; instead the reverse: the Mars and Moon equivalents
   document.querySelector('#select-info .actions').hidden = key === 'earth';
+  $('equiv').hidden = key !== 'earth' || analog;
+  let equivToken = 0;
+  function resetEquiv() {
+    equivToken++;
+    $('equiv-status').textContent = '';
+    $('equiv-results').replaceChildren();
+    $('find-equiv').disabled = false;
+  }
+  resetEquiv();
+  $('find-equiv').onclick = async () => {
+    if (!current) return;
+    const my = ++equivToken;
+    const at = { ...current };
+    $('find-equiv').disabled = true;
+    $('equiv-results').replaceChildren();
+    const status = (t) => { if (my === equivToken) $('equiv-status').textContent = t; };
+    try {
+      const index = await loadIndex();
+      const found = await findEquivalents({ lat: at.lat, lon: at.lon, radiusKm, index, onProgress: status });
+      if (my !== equivToken) return;
+      if (!found) { status('No land data here: pick a place on land (not the sea or the ice sheets).'); return; }
+      status(`Most like this ${radiusKm} km area on Earth (temperatures, slope and relief):`);
+      $('equiv-results').replaceChildren(...['mars', 'moon'].map((w) => equivGroup(w, found)));
+    } catch (err) {
+      console.error(err);
+      status('The search failed to load its data.');
+    } finally {
+      if (my === equivToken) $('find-equiv').disabled = false;
+    }
+  };
+  // One world's matches: the best % (or "no close equivalent"), the spots, a comparison table
+  function equivGroup(world, { place, worlds }) {
+    const W = worlds[world];
+    const name = BODIES[world].name;
+    const the = world === 'moon' ? 'the Moon' : name;
+    const box = document.createElement('section');
+    box.className = `equiv-world ${W.close ? 'close' : 'far'}`;
+    const best = W.results[0];
+    const where = (r) => (r.landmark ? `near ${r.landmark.name}${r.landmark.km > 25 ? ` (${Math.round(r.landmark.km)} km)` : ''}` : formatLatLon(r.lat, r.lon));
+    box.innerHTML = `<p class="equiv-head"><strong>${name}</strong> ${W.close
+      ? `<span class="equiv-badge ok">${best.match}% match</span>`
+      : `<span class="equiv-badge far">no close equivalent</span>`}</p>
+      <p class="sub">${!best ? `No ${name} data to compare with.` : W.close
+    ? `The closest ${name} equivalent is ${where(best)}.`
+    : `Nothing on ${the} reaches ${CLOSE_MATCH}%: the nearest is ${where(best)}, a ${best.match}% match.`}</p>`;
+    // the best spot shown; the others and the comparison folded away (keeps the panel short)
+    const list = document.createElement('ol');
+    list.className = 'equiv-list';
+    const more = document.createElement('ol');
+    more.className = 'equiv-list';
+    W.results.forEach((r, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<button type="button" title="Open this spot on the ${name} map"><span class="where"></span><span class="sim">${r.match}%</span></button>`;
+      li.querySelector('.where').innerHTML = `${r.landmark ? `${r.landmark.name}<span class="sub"> · ${formatLatLon(r.lat, r.lon)}</span>` : formatLatLon(r.lat, r.lon)}`;
+      li.querySelector('button').onclick = () => {
+        location.hash = `#/${world}?lat=${r.lat.toFixed(4)}&lon=${r.lon.toFixed(4)}&r=${radiusKm}`;
+      };
+      (i ? more : list).append(li);
+    });
+    box.append(list);
+    if (best) {
+      const rows = Object.entries(SHARED).map(([k, s]) => {
+        const rel = k in W.relative ? ` <span class="sub" title="Beyond anything on ${name}: matched to the same percentile of ${name}">(as ${Math.round(W.relative[k] * 100)}th pct)</span>` : '';
+        return `<tr><td>${s.name}</td><td>${s.fmt(place[k])}${rel}</td><td>${Number.isFinite(best.values[k]) ? s.fmt(best.values[k]) : '–'}</td></tr>`;
+      });
+      rows.push(`<tr><td>Rain</td><td>${Math.round(place.rainMm).toLocaleString()} mm/yr</td><td>none</td></tr>`);
+      const det = document.createElement('details');
+      det.className = 'equiv-compare';
+      det.innerHTML = `<summary>Compare${W.results.length > 1 ? ` · ${W.results.length - 1} more spots` : ''}</summary>
+        <table><thead><tr><th></th><th>Earth</th><th>${name}</th></tr></thead><tbody>${rows.join('')}</tbody></table>
+        <p class="sub">Averages over a ${radiusKm} km circle on both worlds. Temperatures beyond anything on ${the} are matched relatively:
+        as hot or cold for ${the} as this place is for Earth. Rain beyond a desert's (250 mm a year) lowers the % match.</p>`;
+      if (more.children.length) {
+        const h = document.createElement('p');
+        h.className = 'sub';
+        h.textContent = `Next best on ${the} (at least 500 km apart):`;
+        det.append(h, more);
+      }
+      box.append(det);
+    }
+    return box;
+  }
 
   // ---- Menu drawer
   const menu = $('menu');
@@ -548,6 +631,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   function select(lat, lon, opts) {
     current = { lat, lon };
     zoomedIn = false;
+    resetEquiv();
     $('select-hint').hidden = true;
     $('select-info').hidden = false;
     $('select-coords').textContent = formatLatLon(lat, lon);
