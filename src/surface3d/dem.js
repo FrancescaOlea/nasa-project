@@ -273,6 +273,26 @@ function box(R, lat, lon, halfM) {
 async function loadNasadem(world, lat, lon, halfM, step, onTile) {
   const b = box(world.radius, lat, lon, halfM);
   if (b.s < NASADEM_LAT[0] || b.n > NASADEM_LAT[1]) return loadTerrarium(world, lat, lon, halfM, 30 * step);
+  // NASADEM can fail (the shared access token expiring mid-read, a slow or unreachable server):
+  // retry once with a fresh token, then fall back to the AWS terrain tiles (SRTM-based, ~30 m+)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await withTimeout(readNasadem(world, b, step, onTile), NASADEM_TIMEOUT_MS);
+    } catch (err) {
+      console.warn(`NASADEM (attempt ${attempt + 1}):`, err);
+      token = null;
+      tifCache.clear();
+    }
+  }
+  const g = await loadTerrarium(world, lat, lon, halfM, 30 * step);
+  return { ...g, source: 'terrarium' };
+}
+
+const NASADEM_TIMEOUT_MS = 40000;
+const withTimeout = (promise, ms) => Promise.race([promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`no answer in ${ms / 1000} s`)), ms))]);
+
+async function readNasadem(world, b, step, onTile) {
   const query = await nasademToken();
   // the overview (full, 1/2, 1/4, 1/8 resolution) that is just fine enough for the step
   const level = Math.min(3, Math.max(0, Math.floor(Math.log2(step))));
