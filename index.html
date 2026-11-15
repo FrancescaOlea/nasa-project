@@ -26,6 +26,11 @@
     <div id="loader" role="status"><span>Site is loading, please wait…</span></div>
     <main id="home" class="home">
       <canvas id="stars" class="stars" aria-hidden="true"></canvas>
+      <!-- Earth (top right): its own routes and places, and their Mars / Moon equivalents -->
+      <button id="home-earth" class="switch-world home-earth" type="button" aria-label="Earth view">
+        <img alt="" width="34" height="34" />
+        <span class="sw-text">Earth<span class="sw-long"> view</span></span>
+      </button>
       <h1>Choose a landing site</h1>
       <div class="bodies">
         <button class="body-btn" data-body="moon" aria-label="Open Moon map">
@@ -201,6 +206,12 @@
           <button id="route-zoom" type="button" hidden title="Frame the whole route on screen">⤢ Zoom to route</button>
           <button id="route-swap" type="button">⇅ Swap A and B</button>
           <button id="route-clear" type="button">Start over</button>
+        </div>
+        <!-- Earth: the Mars / Moon equivalent of this route (one button per world the page allows) -->
+        <div id="route-eq" class="route-eq" hidden>
+          <button id="route-eq-mars" type="button" class="route-analogs-btn">🔴 Find the Mars equivalent of this route</button>
+          <button id="route-eq-moon" type="button" class="route-analogs-btn">🌕 Find the Moon equivalent of this route</button>
+          <p id="route-eq-status" class="sub" aria-live="polite"></p>
         </div>
         <button id="route-analogs" type="button" class="route-analogs-btn" hidden
           title="Find places on another world like this route's area, then drive the same route there">🌍 Find Earth analogs for this route</button>

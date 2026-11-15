@@ -340,7 +340,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   // Keep selection, radius and view in the address, without adding history
   // steps, so coming back to this page (e.g. from Earth) restores them.
   // Earth keeps where it was opened from (and an analog search's site) in its address
-  const keep = (key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new', 'src', 'str', 'sss'] : ['cmp', 'ca']).filter((k) => params.has(k));
+  const keep = (key === 'earth' ? ['from', 'site', 'sr', 'w', 'mode', 'n', 'new', 'src', 'str', 'sss'] : ['cmp', 'ca', 'em']).filter((k) => params.has(k));
   function query() {
     const q = new URLSearchParams();
     for (const k of keep) q.set(k, params.get(k));
@@ -943,7 +943,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     };
     // Moon / Mars opened from an Earth route's equivalents: compare with that Earth route
     if (key !== 'earth' && params.get('cmp') === 'earth' && pairOf(params.get('ca'))) {
-      compare = { world: 'earth', ...pairOf(params.get('ca')), season: 0 };
+      compare = { world: 'earth', ...pairOf(params.get('ca')), season: 0, match: params.has('em') ? Number(params.get('em')) : NaN };
     }
     if (key === 'earth' && analog) {
       const from = BODIES[params.get('from')] && params.get('from') !== 'earth' ? params.get('from') : 'mars';
@@ -966,54 +966,56 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       if (!res.a || !res.b) return;
       const km = routeKm(res.a.lat, res.a.lon, res.b.lat, res.b.lon, body.radiusKm);
       const mid = destination(res.a, bearingDeg(res.a, res.b), km / 2, body.radiusKm);
-      if (key === 'earth') routeEquivalents(res, km, mid);
-      else findEarthAnalogs(mid, { a: res.a, b: res.b, km, traveller: res.traveller, season: res.season });
+      findEarthAnalogs(mid, { a: res.a, b: res.b, km, traveller: res.traveller, season: res.season });
     };
-    // Earth: the Mars and Moon areas most like this route's area (a circle around it), and the
-    // same route (length, direction, traveller) driven there, compared on arrival
+    // Earth: the Mars / Moon equivalent of a route. Opened from Mars (or the Moon) only that world
+    // is offered; opened from the home page, both. The search looks at the circle around the
+    // route (its midpoint, half its length), then opens that world's planner with the same route
+    // (length, direction, traveller) at the best-matching spot, compared with the Earth route.
+    if (key === 'earth') {
+      const fromWorld = params.get('from');
+      const offered = fromWorld === 'mars' || fromWorld === 'moon' ? [fromWorld] : ['mars', 'moon'];
+      for (const w of ['mars', 'moon']) {
+        const btn = $(`route-eq-${w}`);
+        btn.hidden = !offered.includes(w);
+        btn.disabled = false;
+        btn.textContent = `${w === 'mars' ? '🔴 Find the Mars' : '🌕 Find the Moon'} equivalent of this route`;
+        btn.onclick = () => routeEquivalent(w, btn);
+      }
+      $('route-eq-status').textContent = '';
+    }
     let equivToken2 = 0;
-    async function routeEquivalents(res, km, mid) {
+    async function routeEquivalent(w, btn) {
+      const res = planner.result();
+      if (!res.a || !res.b) return;
       const my = ++equivToken2;
-      const box = $('route-equiv');
-      const say = (t) => { if (my === equivToken2) box.innerHTML = `<p class="sub">${t}</p>`; };
+      const label = btn.textContent;
+      const say = (t) => { if (my === equivToken2) $('route-eq-status').textContent = t; };
+      const km = routeKm(res.a.lat, res.a.lon, res.b.lat, res.b.lon, body.radiusKm);
+      const mid = destination(res.a, bearingDeg(res.a, res.b), km / 2, body.radiusKm);
       const areaKm = Math.min(MAX_RADIUS_KM, Math.max(MIN_RADIUS_KM, Math.round(km / 2)));
+      const the = w === 'moon' ? 'the Moon' : 'Mars';
+      btn.disabled = true;
+      btn.textContent = `Searching ${the}…`;
       try {
-        const found = await findEquivalents({ lat: mid.lat, lon: mid.lon, radiusKm: areaKm, index: await loadIndex(), onProgress: say });
+        const found = await findEquivalents({ lat: mid.lat, lon: mid.lon, radiusKm: areaKm, index: await loadIndex(), onProgress: say, worlds: [w] });
         if (my !== equivToken2) return;
-        if (!found) { say('No land data around this route (sea or ice sheet): no equivalents to look for.'); return; }
+        const best = found?.worlds[w]?.results[0];
+        if (!found) { say('No land data around this route (sea or ice sheet): nothing to compare.'); return; }
+        if (!best) { say(`No ${BODIES[w].name} data to compare with.`); return; }
+        say(`${best.match}% match${best.match >= CLOSE_MATCH ? '' : ' (no close equivalent)'}: opening ${the}…`);
+        // the same route at the best spot: same length and direction, centred on it
+        const R = BODIES[w].radiusKm;
         const brg = bearingDeg(res.a, res.b);
+        const line = { a: destination(best, (brg + 180) % 360, km / 2, R), b: destination(best, brg, km / 2, R) };
         const f = (p) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
-        box.replaceChildren(...['mars', 'moon'].map((w) => {
-          const W = found.worlds[w];
-          const best = W.results[0];
-          const the = w === 'moon' ? 'the Moon' : 'Mars';
-          const sec = document.createElement('section');
-          sec.className = `equiv-world ${W.close ? 'close' : 'far'}`;
-          const where = best?.landmark ? `near ${best.landmark.name}${best.landmark.km > 25 ? ` (${Math.round(best.landmark.km)} km)` : ''}` : best ? formatLatLon(best.lat, best.lon) : '';
-          sec.innerHTML = `<p class="equiv-head"><strong>${BODIES[w].name}</strong> ${W.close
-            ? `<span class="equiv-badge ok">${best.match}% match</span>` : '<span class="equiv-badge far">no close equivalent</span>'}</p>
-            <p class="sub">${!best ? `No ${BODIES[w].name} data to compare with.` : W.close
-    ? `This route's ${areaKm} km area is most like ${the} ${where}.`
-    : `Nothing on ${the} reaches ${CLOSE_MATCH}%: the nearest is ${where}, a ${best.match}% match.`}</p>`;
-          if (best) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'view-3d-btn equiv-drive';
-            btn.textContent = `🛣 Drive this route on ${the} →`;
-            btn.onclick = () => {
-              const R = BODIES[w].radiusKm;
-              const line = { a: destination(best, (brg + 180) % 360, km / 2, R), b: destination(best, brg, km / 2, R) };
-              const q = new URLSearchParams({
-                route: `${f(line.a)};${f(line.b)}`, tr: res.traveller, cmp: 'earth', ca: `${f(res.a)};${f(res.b)}` });
-              location.hash = `#/${w}?${q}`;
-            };
-            sec.append(btn);
-          }
-          return sec;
-        }));
+        const q = new URLSearchParams({ route: `${f(line.a)};${f(line.b)}`, tr: res.traveller, cmp: 'earth', ca: `${f(res.a)};${f(res.b)}`, em: best.match });
+        location.hash = `#/${w}?${q}`;
       } catch (err) {
         console.error(err);
         say('The search failed to load its data.');
+      } finally {
+        if (my === equivToken2 && btn.isConnected) { btn.disabled = false; btn.textContent = label; }
       }
     }
     // Earth analogs: 'Drive the same route here' at a result
@@ -1266,6 +1268,9 @@ function showAnalogResults(params, selection) {
 // The last address of each Moon/Mars map, so switching back restores its view and selection.
 const lastPage = {};
 const ICONS = { earth: iconEarth, moon: iconMoon, mars: iconMars };
+// Earth view from the home page: Earth on its own (route equivalents on both Mars and the Moon)
+$('home-earth').querySelector('img').src = iconEarth;
+$('home-earth').onclick = () => { location.hash = '#/earth'; };
 
 function setUpWorldSwitch(key, params) {
   const btn = $('switch-world');

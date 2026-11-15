@@ -494,11 +494,12 @@ named place (e.g. "near Hellas Planitia") and a button that opens it on that wor
   places don't reach it (London 80%, Iceland 78%, Hawaii and the Amazon 70%).
 
 **For a route**: the route planner also works on the Earth map. Plan a route there, then
-**🪐 Find the Mars & Moon equivalents of this route**: the same search for the circle around the
-route (its midpoint, half its length), and **🛣 Drive this route on Mars / the Moon** opens that
-world's planner with the same route (same straight-line length and direction, same traveller where
-that world has it) at the best-matching spot, compared side by side with the Earth route
-(the same summary as at an Earth analog, the other way round).
+**Find the Mars (or Moon) equivalent of this route**: the same search for the circle around the
+route (its midpoint, half its length); it then opens that world's planner with the same route
+(same straight-line length and direction, same traveller where that world has it) at the
+best-matching spot, with its % match (or "no close equivalent") and a side-by-side comparison with
+the Earth route. Earth opened from Mars offers only the Mars button, from the Moon only the Moon
+one; Earth opened from the home page (**Earth view**, top right) offers both.
 
 ### Map reliability
 

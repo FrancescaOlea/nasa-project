@@ -61,12 +61,12 @@ export function nearestLandmark(world, lat, lon) {
  * { place, worlds: { mars: { results, best, close, relative, targets }, moon: {...} } }
  * with results [{ lat, lon, match (%), values: {tmax, ...}, landmark }].
  */
-export async function findEquivalents({ lat, lon, radiusKm, index, count = 3, onProgress }) {
+export async function findEquivalents({ lat, lon, radiusKm, index, count = 3, onProgress, worlds: only = WORLDS }) {
   onProgress?.('Reading this place on Earth…');
   const place = await earthPlace(lat, lon, radiusKm);
   if (!place) return null;
   const worlds = {};
-  for (const world of WORLDS) {
+  for (const world of only) {
     const layers = index[world] ?? {};
     const targets = Object.fromEntries(Object.entries(SHARED).map(([k, s]) => [s.layer, { value: place[k], pct: place.pct[k] }]));
     const found = await findMatches({

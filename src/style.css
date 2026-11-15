@@ -596,3 +596,8 @@ body.in-3d #ruler-btn, body.in-3d #help-btn, body.in-3d #ruler-panel, body.in-3d
 .equiv-compare td, .equiv-compare th { padding: .18rem .2rem; border-bottom: 1px solid #2a2a30; text-align: right; }
 .equiv-compare td:first-child, .equiv-compare th:first-child { text-align: left; color: #aaa; }
 .equiv #equiv-results { max-height: min(42vh, 380px); overflow-y: auto; padding-right: 2px; }
+
+/* Earth view button on the home page (top right, like the one on the maps) */
+#home-earth { position: fixed; top: 12px; right: 12px; left: auto; z-index: 5; }
+.route-eq { margin-top: .5rem; display: grid; gap: .35rem; }
+.route-eq .route-analogs-btn { margin-top: 0; }

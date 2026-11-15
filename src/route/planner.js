@@ -9,6 +9,7 @@ import { isCylindrical, routeBounds, unwrapLons, zoomToRoute } from './zoom.js';
 import { ROVERS, MOON_ROVERS, roverOf, travellerModel, travellerName, roverIcon } from './rovers.js';
 import { formatLatLon } from '../geo.js';
 import { compareHtml } from './compare.js';
+import { CLOSE_MATCH } from '../equivalents.js';
 
 // Mars seasons by solar longitude (Ls); northern-hemisphere names. Ls 180-360 is the
 // dusty season (Mars is closest to the Sun).
@@ -750,9 +751,9 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
     clearRouteLook();
     const has = state.a && state.b && state.result;
     // Moon / Mars: find Earth analogs for this route; Earth: its Mars / Moon equivalents
-    $('route-analogs').hidden = !has || (world === 'earth' && !!cmp);
-    $('route-analogs').textContent = world === 'earth' ? '🪐 Find the Mars & Moon equivalents of this route' : '🌍 Find Earth analogs for this route';
-    if (!has) $('route-equiv').replaceChildren();
+    $('route-analogs').hidden = !has || world === 'earth';
+    $('route-eq').hidden = !has || world !== 'earth' || !!cmp;
+    if (!has) $('route-eq-status').textContent = '';
     $('route-hint').textContent = !state.a ? 'Click the map to set the start (A).'
       : !state.b ? 'Now click the destination (B).' : 'Drag A or B to change the route. Click the map to start over.';
     $('route-swap').disabled = !(state.a && state.b);
@@ -862,7 +863,9 @@ export function createRoutePlanner(map, params, onChange, world = 'mars', extra 
     const kind = state.kind;
     const fromEarth = cmp.world === 'earth';
     const other = WORLD_CFG[cmp.world].name;
-    const head = `<span class="eyebrow">${fromEarth ? 'Compared with your Earth route' : `Compared with the ${other} site`}</span>`;
+    const matchNote = fromEarth && Number.isFinite(cmp.match)
+      ? (cmp.match >= CLOSE_MATCH ? ` · <span class="equiv-badge ok">${cmp.match}% match</span>` : ` · <span class="equiv-badge far">no close equivalent (best ${cmp.match}%)</span>`) : '';
+    const head = `<span class="eyebrow">${fromEarth ? `${WORLD_CFG[world].name} equivalent of your Earth route` : `Compared with the ${other} site`}</span>${matchNote}`;
     box.hidden = false;
     box.innerHTML = `${head}<p class="sub">${fromEarth ? 'Finding the same route on Earth…' : `Finding the same route at the ${other} site…`}</p>`;
     let there; let here = state.result;
