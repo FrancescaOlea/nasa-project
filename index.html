@@ -259,6 +259,21 @@
         <input id="w-count-input" type="number" step="1" inputmode="numeric">
         <span class="w-count-help"></span>
       </div>
+      <div class="w-countries" role="group" aria-label="Country filter" hidden>
+        <div class="w-c-row">
+          <span class="w-c-label">Countries</span>
+          <div class="w-c-modes" role="radiogroup" aria-label="Country filter">
+            <button type="button" role="radio" data-mode="any">Anywhere</button>
+            <button type="button" role="radio" data-mode="avoid">Avoid…</button>
+            <button type="button" role="radio" data-mode="only">Only in…</button>
+          </div>
+        </div>
+        <div class="w-c-pick" hidden>
+          <div class="w-c-chosen" aria-live="polite"></div>
+          <input class="w-c-search" type="search" placeholder="Search countries…" aria-label="Search countries">
+          <div class="w-c-list" role="group" aria-label="Countries"></div>
+        </div>
+      </div>
       <label class="w-toggle" hidden>
         <input type="checkbox">
         <span><span class="w-toggle-label"></span><small class="w-toggle-help"></small></span>

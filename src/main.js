@@ -14,6 +14,8 @@ import { findSimilar, MIN_DISTANCE_KM as SIMILAR_MIN_KM, DEFAULT_COUNT as SIMILA
   MAX_COUNT as SIMILAR_MAX_COUNT, cellKm } from './similar.js';
 import { addLandmarks } from './landmarks.js';
 import { reportCardHtml, novelty, ordinal } from './reportcard.js';
+import { loadCountries, parseCountryFilter, formatCountryFilter, filteredOut, describeFilter } from './countries.js';
+import { fieldPlanHtml } from './fieldplan.js';
 import { inKnownRegion, KNOWN_REGION_KM } from './knownAnalogs.js';
 import { refineResults, REFINE_BELOW_KM } from './refine.js';
 import { featuresNear, featuresHtml } from './features.js';
@@ -320,6 +322,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   let analogMode = params.get('am') === 'extreme' ? 'extreme' : 'match';
   let analogCount = parseCount(params.get('an'));
   let analogNewOnly = params.get('anew') === '1';
+  let analogCountries = parseCountryFilter(params.get('ac')); // countries to avoid / keep to
   let similarCount = parseCount(params.get('sn'), SIMILAR_DEFAULT_COUNT);
   let similarShown = false;                    // 'Find similar spots' results are on the map
   let available = {};                          // data layers for this body (from index.json)
@@ -356,6 +359,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
       q.set('am', analogMode);
       q.set('an', analogCount);
       if (analogNewOnly) q.set('anew', '1');
+      if (formatCountryFilter(analogCountries)) q.set('ac', formatCountryFilter(analogCountries));
     }
     return q.toString();
   }
@@ -673,7 +677,9 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
   $('find-analogs').onclick = () => findEarthAnalogs(current);
   // Ask for the weights, then open Earth to search for analogs of an area around 'at'
   async function findEarthAnalogs(at) {
+    const countryData = await loadCountries().catch(() => null); // the filter is optional
     const chosen = await askWeights({
+      countries: countryData ? { value: analogCountries, list: countryData.list } : null,
       heading: 'Find Earth analogs',
       subheading: `${body.name} · ${formatLatLon(at.lat, at.lon)} · ${radiusKm} km radius`,
       action: 'Find Earth analogs →',
@@ -700,6 +706,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     if (!chosen) return;
     analogNewOnly = chosen.toggle;
     delete chosen.toggle;
+    if (chosen.countries) analogCountries = chosen.countries;
+    delete chosen.countries;
     analogMode = chosen.mode;
     analogCount = chosen.count;
     delete chosen.mode;
@@ -709,6 +717,7 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     const site = new URLSearchParams({ from: key, site: `${at.lat.toFixed(4)},${at.lon.toFixed(4)}`,
       sr: radiusKm, w: formatWeights(analogWeights), mode: analogMode, n: analogCount });
     if (analogNewOnly) site.set('new', '1');
+    if (formatCountryFilter(analogCountries)) site.set('c', formatCountryFilter(analogCountries));
     location.hash = `#/earth?${site}`;
   }
   $('find-similar').onclick = async () => {
@@ -948,6 +957,7 @@ function showAnalogResults(params, selection) {
   const mode = params.get('mode') === 'extreme' ? 'extreme' : 'match';
   const count = parseCount(params.get('n'));
   const newOnly = params.get('new') === '1';
+  const countryFilter = parseCountryFilter(params.get('c'));
 
   $('results-analogs').hidden = true;
   $('analog-heading').textContent = 'Earth analogs for';
@@ -972,11 +982,19 @@ function showAnalogResults(params, selection) {
   $('analog-banner').hidden = false;
 
   const thisMap = map;
+  let countries = null;
   (async () => {
     const index = await loadIndex();
     const site = await siteValues(from, source.radiusKm, index[from] ?? {}, lat, lon, r);
     const t0 = performance.now();
-    const found = await findAnalogs({ site, weights, mode, radiusKm: r, count, exclude: newOnly ? inKnownRegion : null });
+    // countries: shown for every result, and (optionally) used to leave places out
+    countries = await loadCountries().catch(() => null);
+    if (countries && countryFilter.mode !== 'any') {
+      $('analog-radius').textContent += ` · ${describeFilter(countryFilter, countries)}`;
+    }
+    const exclude = (la, lo) => (newOnly && inKnownRegion(la, lo)) ||
+      (countries ? filteredOut(countryFilter, countries.at(la, lo)) : false);
+    const found = await findAnalogs({ site, weights, mode, radiusKm: r, count, exclude });
     if (map !== thisMap) return; // the page has changed meanwhile
     if (r < REFINE_BELOW_KM && found.results.length) {
       $('analog-status').textContent = 'Refining positions with ~5 km terrain data…';
@@ -997,7 +1015,7 @@ function showAnalogResults(params, selection) {
     $('analog-status').textContent = results.length
       ? (results.length === 1 ? 'Best area.' : `Best ${results.length} areas, at least ${MIN_SEPARATION_KM} km apart.`) +
         (skipped.length ? ` No ${source.name} data here for: ${skipped.map((k) => PARAMS[k].name).join(', ')}.` : '')
-      : 'No matching areas found.';
+      : (countryFilter.mode !== 'any' ? 'No matching areas found with this country filter.' : 'No matching areas found.');
     const group = L.layerGroup().addTo(map);
     const markers = [];
     const buttons = results.map((res, i) => {
@@ -1013,6 +1031,13 @@ function showAnalogResults(params, selection) {
       li.innerHTML = '<button type="button" aria-pressed="false"><span class="num"></span><span class="where"></span><span class="sim"></span><span class="nov"></span></button>';
       li.querySelector('.num').textContent = i + 1;
       li.querySelector('.where').textContent = formatLatLon(res.lat, res.lon);
+      res.country = countries ? countries.nameAt(res.lat, res.lon) : null;
+      if (res.country) {
+        const c = document.createElement('span');
+        c.className = 'country';
+        c.textContent = res.country;
+        li.querySelector('.where').append(c);
+      }
       li.querySelector('.sim').textContent = `${similarity(res.score)}% match`;
       const nov = novelty(res.lat, res.lon);
       const novEl = li.querySelector('.nov');
@@ -1055,16 +1080,22 @@ function showAnalogResults(params, selection) {
         <button type="button" class="view-3d-btn analog-3d">Stand here in 3D &rarr;</button>
         <button type="button" class="view-3d-btn analog-terrain">⛰ 3D terrain</button>
       </div>
-      <p class="c-title">Area ${i + 1} compared with the site</p>
+      <p class="c-title">Area ${i + 1}${res.country ? ` · ${res.country}` : ''} compared with the site</p>
       <table><thead><tr><th></th><th>${source.name}</th><th>Earth</th></tr></thead><tbody>${rows.join('')}</tbody></table>
       <p class="sub" style="margin-top:.4rem">Values beyond anything on Earth are matched relatively:
       as cold (or warm) for Earth as the site is for ${source.name}. Search values are averages over the area. The area summary
       (top right) shows this Earth area's typical values from the map data.</p>
-      ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}`;
+      ${reportCardHtml({ from, worldName: source.name, res, site, found, weights })}
+      <div class="field-plan-slot"></div>`;
     featuresNear(res.lat, res.lon, r).then((f) => {
       const slot = box.querySelector('.rc-features-slot');
       if (slot) slot.outerHTML = featuresHtml(f);
     }).catch(() => {});
+    // equipment, team and yearly cost of field research here (needs the Earth grid's values)
+    fieldPlanHtml({ from, worldName: source.name, lat: res.lat, lon: res.lon, country: res.country }).then((html) => {
+      const slot = box.querySelector('.field-plan-slot');
+      if (slot) slot.innerHTML = html;
+    }).catch((err) => console.error(err));
     // detailed 3D landscape of this area's centre, loaded only on request
     box.querySelector('.analog-3d').onclick = () => {
       location.hash = `#/earth3d?lat=${res.lat.toFixed(5)}&lon=${res.lon.toFixed(5)}`;
