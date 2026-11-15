@@ -841,7 +841,8 @@ function setUpSelection(key, body, params, { analog = false } = {}) {
     $('plan-route').onclick = () => { if (shapes) clear(); planner.open(); };
     const set3dButton = (on) => {
       btn3d.setAttribute('aria-pressed', on);
-      btn3d.textContent = on ? '🗺 2D map' : '⛰ 3D terrain';
+      // the long word is hidden on phones, where the top bar is short of space
+      btn3d.innerHTML = on ? '🗺 2D<span class="long"> map</span>' : '⛰ 3D<span class="long"> terrain</span>';
     };
     set3dButton(false);
     btn3d.onclick = async () => {

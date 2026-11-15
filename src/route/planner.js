@@ -4,7 +4,8 @@
 // The terrain grid comes from grid.js, the search runs in search.worker.js, the rovers'
 // specs and the model's assumptions about them are in rovers.js.
 import L from 'leaflet';
-import { buildGrid, cellOf, cellLatLon, craterDepthKm, haversineKm, MAX_LAT } from './grid.js';
+import { buildGrid, cellOf, cellLatLon, craterDepthKm, haversineKm, MAX_LAT, RADIUS } from './grid.js';
+import { isCylindrical, routeBounds, unwrapLons, zoomToRoute } from './zoom.js';
 import { ROVERS, MOON_ROVERS, roverOf, travellerModel, travellerName, roverIcon } from './rovers.js';
 import { formatLatLon } from '../geo.js';
 
@@ -120,10 +121,15 @@ export async function computeRoutes(a, b, season, traveller, onProgress = () => 
   const routes = {};
   for (const k of Object.keys(KINDS)) {
     const r = res.routes[k];
-    routes[k] = r.path ? describe(g, r.path, a, opts, res) : null;
+    // A and B in the same terrain cell: the route is just A -> B
+    const path = r.path && r.path.length === 1 ? [r.path[0], r.path[0]] : r.path;
+    routes[k] = path ? describe(g, path, a, opts, res) : null;
     if (routes[k]) {
       const pts = routes[k].pts;
       pts[pts.length - 1] = [b.lat, b.lon + Math.round((bLon - b.lon) / 360) * 360];
+      // what the zoom (and anything else) needs: every point, and the short-way bounds
+      routes[k].points = pts;
+      routes[k].bounds = routeBounds(pts);
     }
   }
   return { g, routes, opts, traveller, season };
@@ -450,26 +456,32 @@ export function createRoutePlanner(map, params, onChange, world = 'mars') {
     }
   }
 
-  // Zoom the 2D map so the whole route fills the space next to the panel.
+  // Zoom the 2D map so the whole route (A, B and everything between) fills the part of the
+  // screen the panels leave free. See zoom.js.
   function fitRoute() {
     const r = state.result?.routes?.[state.kind] ?? Object.values(state.result?.routes ?? {}).find(Boolean);
     if (!r) return;
-    const pts = r.pts.map(([lat, lon]) => [lat, wrap(lon)]);
-    const lons = pts.map((p) => p[1]);
-    if (Math.max(...lons) - Math.min(...lons) > 180) return; // crosses the map's edge: leave the view
-    const bounds = L.latLngBounds(pts);
-    const wide = window.innerWidth > 600;
-    const panelW = wide ? Math.min(400, window.innerWidth - 24) + 24 : 0;
-    map.flyToBounds(bounds, {
-      paddingTopLeft: [50, 80],
-      paddingBottomRight: wide ? [panelW + 50, 50] : [30, Math.round(window.innerHeight * 0.55)],
-      maxZoom: map.getMaxZoom(),
-      duration: 0.9,
-    });
+    let pts = r.points ?? r.pts;
+    // A flat map ends at 180 deg longitude and doesn't repeat, so a route crossing it is drawn in
+    // two pieces at opposite edges. Frame the bigger piece (the note in the panel suggests a
+    // polar view, where the route is in one piece).
+    if (isCylindrical(map) && r.bounds?.crosses180) {
+      // The map can't scroll past its edge, so a piece always ends up against it. With the
+      // planner panel on the right, use the piece at the west (-180) edge so it isn't under the
+      // panel; on phones (panel at the bottom) use the bigger piece.
+      const parts = splitAtEdge(pts);
+      const length = (part) => part.reduce((s, p, i) => (i ? s + haversineKm(part[i - 1][0], part[i - 1][1], p[0], p[1]) : 0), 0);
+      const west = parts.filter((part) => part.some(([, lon]) => lon < 0));
+      const wide = map.getSize().x > 600;
+      pts = wide && west.length ? west[0] : parts.reduce((best, part) => (length(part) > length(best) ? part : best), parts[0]);
+    }
+    zoomToRoute(map, pts, RADIUS[world]);
   }
 
-  // Leaflet lines can't cross the map's edge at +/-180: split them there.
+  // Leaflet lines can't cross a cylindrical map's edge at +/-180: split them there.
+  // Polar maps have no such edge: the line stays in one piece.
   function splitAtEdge(pts) {
+    if (!isCylindrical(map)) return [pts.map(([lat, lon]) => [lat, wrap(lon)])];
     const parts = [[]];
     let prev = null;
     for (const [lat, lon0] of pts) {
@@ -481,9 +493,63 @@ export function createRoutePlanner(map, params, onChange, world = 'mars') {
     return parts;
   }
 
+  // Small arrows along the chosen route showing the direction of travel, about every 110 px on
+  // screen (so they stay readable at any zoom). Redrawn after every zoom.
+  const arrowLayer = L.layerGroup().addTo(map);
+  function drawArrows() {
+    arrowLayer.clearLayers();
+    const r = state.result?.routes?.[state.kind];
+    if (!r || !state.open) return;
+    const z = map.getZoom();
+    const cyl = isCylindrical(map);
+    const pts = cyl ? unwrapLons(r.pts) : r.pts.map(([lat, lon]) => [lat, wrap(lon)]);
+    const px = pts.map(([lat, lon]) => map.project(L.latLng(lat, lon), z));
+    const SPACING = 110;
+    let next = SPACING * 0.6;
+    let walked = 0;
+    for (let i = 1; i < px.length; i++) {
+      const dx = px[i].x - px[i - 1].x; const dy = px[i].y - px[i - 1].y;
+      const len = Math.hypot(dx, dy);
+      if (cyl && Math.abs(wrap(pts[i][1]) - wrap(pts[i - 1][1])) > 180) { walked += len; continue; } // the map's edge
+      while (walked + len >= next && len > 0) {
+        const t = (next - walked) / len;
+        const p = L.point(px[i - 1].x + dx * t, px[i - 1].y + dy * t);
+        const ll = map.unproject(p, z);
+        const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+        L.marker([ll.lat, wrap(ll.lng)], {
+          pane: 'route', interactive: false, keyboard: false,
+          icon: L.divIcon({ className: '', html: `<span class="route-arrow" style="transform:rotate(${angle.toFixed(1)}deg)">➤</span>`, iconSize: [14, 14], iconAnchor: [7, 7] }),
+        }).addTo(arrowLayer);
+        next += SPACING;
+      }
+      walked += len;
+    }
+  }
+  map.on('zoomend', drawArrows);
+
+  // While a route is shown, dim the imagery and data layers a little (20%) so the route
+  // stands out; restored when the route is cleared.
+  function dimImagery(on) {
+    for (const name of ['layer0', 'layer1', 'layer2', 'overlay']) {
+      const pane = map.getPane(name);
+      if (!pane) continue;
+      if (pane.dataset.baseFilter === undefined) pane.dataset.baseFilter = pane.style.filter || '';
+      const base = pane.dataset.baseFilter;
+      pane.style.filter = on ? `${base} brightness(0.8)`.trim() : base;
+    }
+  }
+  function clearRouteLook() {
+    arrowLayer.clearLayers();
+    dimImagery(false);
+    $('route-zoom').hidden = true;
+    $('route-edge-note').hidden = true;
+  }
+  $('route-zoom').onclick = () => fitRoute();
+
   function render() {
     layer.clearLayers();
     dangerLayer.clearLayers();
+    clearRouteLook();
     const has = state.a && state.b && state.result;
     $('route-hint').textContent = !state.a ? 'Click the map to set the start (A).'
       : !state.b ? 'Now click the destination (B).' : 'Drag A or B to change the route. Click the map to start over.';
@@ -505,12 +571,17 @@ export function createRoutePlanner(map, params, onChange, world = 'mars') {
     for (const k of [...found.filter((x) => x !== state.kind), state.kind]) {
       const chosen = k === state.kind;
       for (const part of splitAtEdge(routes[k].pts)) {
-        if (chosen) L.polyline(part, { pane: 'route', color: '#000', weight: 7, opacity: 0.45, interactive: false }).addTo(layer);
-        L.polyline(part, { pane: 'route', color: KINDS[k].colour, weight: chosen ? 4 : 2.5, opacity: chosen ? 1 : 0.7, dashArray: chosen ? null : '6 6' })
+        // a dark halo under a bright line, so the route shows on any imagery or data layer
+        L.polyline(part, { pane: 'route', color: '#000', weight: chosen ? 9 : 5, opacity: chosen ? 0.8 : 0.5, lineCap: 'round', lineJoin: 'round', interactive: false }).addTo(layer);
+        L.polyline(part, { pane: 'route', color: KINDS[k].colour, weight: chosen ? 4.5 : 2.5, opacity: chosen ? 1 : 0.75, dashArray: chosen ? null : '6 6', lineCap: 'round', lineJoin: 'round' })
           .on('click', (e) => { L.DomEvent.stop(e); state.kind = k; onChange(); render(); emit(); })
           .addTo(layer);
       }
     }
+    drawArrows();
+    dimImagery(true);
+    $('route-zoom').hidden = false;
+    $('route-edge-note').hidden = !(isCylindrical(map) && routes[state.kind].bounds?.crosses180);
     $('route-tabs').replaceChildren(...Object.entries(KINDS).map(([k, info]) => {
       const r = routes[k];
       const b = document.createElement('button');
@@ -646,6 +717,7 @@ export function createRoutePlanner(map, params, onChange, world = 'mars') {
   function close() {
     state.open = false;
     panel.hidden = true;
+    clearRouteLook();
     state.a = state.b = null;
     state.result = null;
     placeMarkers();

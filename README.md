@@ -138,6 +138,32 @@ once A and B are set). What differs:
   (25° design limit; time at ~8 km/h, the Apollo 15–17 average; 92 km battery range). Routes
   longer than Apollo 17's 35.9 km, the farthest NASA has driven on the Moon, get a warning.
 
+### Zoom to route
+
+`src/route/zoom.js`. As soon as a route is found, the map zooms and pans so the whole route
+(A, B and every point between) fills the part of the screen the panels leave free; **⤢ Zoom to
+route** in the planner brings it back after you've moved the map.
+
+- **Free area from the real panels**: every visible panel (planner, selection, area summary, View,
+  legend, top buttons, zoom bar, Earth switch, landmarks switch, zoom readout) is measured on
+  screen and pushes the free area in from the side that costs the least map; then at least 40 px
+  on every side, plus room for the A / B pins. On phones that's the bottom panel's real height.
+- **Every projection**: route points (plus a 5 km ring around A and B) are projected to map
+  pixels with the map's own CRS, and the zoom and centre come from that pixel box, so it works the
+  same in equirectangular, Mercator and both polar views (where a lat/lon box would fail near the
+  pole). Cylindrical maps use the short way round at 180°.
+- **Limits**: never closer than the map's maximum zoom (~1 km across), and at least ~5 km kept in
+  view around A and B, so very short routes still show their surroundings; very long routes zoom
+  out as far as needed (down to the whole map). Animation 0.7 s (`map.flyTo`).
+- **180° on the flat maps**: the flat maps end at 180° and don't repeat, so a route crossing it is
+  drawn in two pieces at opposite edges. The view frames the piece at the west edge (clear of the
+  planner panel; on phones the bigger piece) and the panel says to use a polar view (☰ View) to see
+  it in one piece.
+- **Route stands out**: a dark halo under a bright line; while a route is shown the imagery and
+  data layers are dimmed by 20% (restored when the route is cleared); A and B pins with a dark
+  ring; small arrows every ~110 px on screen show the direction of travel (redrawn on zoom).
+- The route result carries `points` (every point, A to B) and `bounds` (short-way lat/lon box).
+
 ### Rovers: who travels changes the route
 
 **Who travels** offers an astronaut on foot and NASA's five Mars rovers: **Sojourner, Spirit,
